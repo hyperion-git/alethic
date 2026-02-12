@@ -1,0 +1,135 @@
+"""Data models for the Alethic math agent."""
+
+from __future__ import annotations
+
+import enum
+import time
+from dataclasses import dataclass, field
+
+
+class Verdict(enum.Enum):
+    """Verifier verdict on a candidate solution."""
+
+    CORRECT = "correct"
+    MINOR_ISSUES = "minor_issues"
+    MAJOR_FLAW = "major_flaw"
+    UNSOLVED = "unsolved"  # strategic failure admission
+
+
+@dataclass
+class AgentConfig:
+    """Configuration for the Alethic agent.
+
+    Attributes:
+        model: Anthropic model ID.
+        max_iterations: Max generate-verify-revise cycles before giving up.
+        max_revisions_per_cycle: Max revisions within a single cycle before
+            restarting from the generator.
+        enable_code_execution: Allow Python sandbox for computational verification.
+        temperature_generator: Sampling temperature for the generator.
+        temperature_verifier: Sampling temperature for the verifier (lower = stricter).
+        temperature_reviser: Sampling temperature for the reviser.
+        max_tokens: Max tokens per API call.
+        verbose: Print progress to stdout.
+    """
+
+    model: str = "claude-opus-4-6"
+    max_iterations: int = 5
+    max_revisions_per_cycle: int = 3
+    enable_code_execution: bool = True
+    temperature_generator: float = 1.0
+    temperature_verifier: float = 0.2
+    temperature_reviser: float = 0.7
+    max_tokens: int = 16384
+    verbose: bool = True
+
+
+@dataclass
+class Solution:
+    """A candidate mathematical solution produced by the Generator."""
+
+    problem: str
+    solution_text: str
+    iteration: int
+    timestamp: float = field(default_factory=time.time)
+
+    def __str__(self) -> str:
+        return self.solution_text
+
+
+@dataclass
+class VerificationResult:
+    """Result from the Verifier subagent."""
+
+    verdict: Verdict
+    critique: str
+    confidence: float  # 0.0 to 1.0
+    issues: list[str] = field(default_factory=list)
+
+    @property
+    def is_acceptable(self) -> bool:
+        return self.verdict == Verdict.CORRECT
+
+    @property
+    def needs_revision(self) -> bool:
+        return self.verdict in (Verdict.MINOR_ISSUES, Verdict.MAJOR_FLAW)
+
+    def __str__(self) -> str:
+        lines = [
+            f"Verdict: {self.verdict.value}",
+            f"Confidence: {self.confidence:.0%}",
+            f"Critique: {self.critique}",
+        ]
+        if self.issues:
+            lines.append("Issues:")
+            for issue in self.issues:
+                lines.append(f"  - {issue}")
+        return "\n".join(lines)
+
+
+@dataclass
+class Revision:
+    """A revision produced by the Reviser subagent."""
+
+    revised_solution: str
+    changes_made: str
+    revision_number: int
+    based_on_critique: str
+
+
+@dataclass
+class AgentResult:
+    """Final result from the Alethic agent's solve() method."""
+
+    problem: str
+    solution: str | None
+    verdict: Verdict
+    confidence: float
+    iterations_used: int
+    total_revisions: int
+    admitted_failure: bool
+    history: list[dict] = field(default_factory=list)
+    elapsed_seconds: float = 0.0
+
+    @property
+    def solved(self) -> bool:
+        return self.verdict == Verdict.CORRECT and self.solution is not None
+
+    def __str__(self) -> str:
+        status = "SOLVED" if self.solved else "UNSOLVED"
+        lines = [
+            f"{'=' * 60}",
+            f"Result: {status}",
+            f"Confidence: {self.confidence:.0%}",
+            f"Iterations: {self.iterations_used}",
+            f"Total revisions: {self.total_revisions}",
+            f"Time: {self.elapsed_seconds:.1f}s",
+            f"{'=' * 60}",
+        ]
+        if self.solution:
+            lines.append("")
+            lines.append(self.solution)
+        elif self.admitted_failure:
+            lines.append("")
+            lines.append("[Agent admitted failure — problem could not be solved reliably]")
+        return "\n".join(lines)
