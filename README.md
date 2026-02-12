@@ -41,9 +41,10 @@ The `/solve` command runs Alethic natively inside Claude Code, using Task sub-ag
 # Clone the repo
 git clone https://github.com/hyperion-git/alethic.git
 
-# Copy the skill into your Claude Code skills directory
-mkdir -p ~/.claude/skills/solve
-cp alethic/skill/skills/solve/SKILL.md ~/.claude/skills/solve/SKILL.md
+# Install into Claude Code's plugin cache
+DEST=~/.claude/plugins/cache/local/alethic/0.2.0
+mkdir -p "$DEST"
+cp -r alethic/skill/.claude-plugin alethic/skill/skills "$DEST/"
 ```
 
 Restart Claude Code. The `/solve` command is now available.

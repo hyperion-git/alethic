@@ -41,10 +41,13 @@ python -m alethic.examples --pick 1
 ## Skill Installation
 
 ```bash
-# Copy into Claude Code skills directory
-mkdir -p ~/.claude/skills/solve
-cp skill/skills/solve/SKILL.md ~/.claude/skills/solve/SKILL.md
-# Restart Claude Code, then: /solve "Prove sqrt(2) is irrational"
+# Install into Claude Code's plugin cache
+DEST=~/.claude/plugins/cache/local/alethic/0.2.0
+mkdir -p "$DEST"
+cp -r skill/.claude-plugin skill/skills "$DEST/"
+
+# Register in installed_plugins.json (if not already present)
+# Then restart Claude Code: /solve "Prove sqrt(2) is irrational"
 ```
 
 ## Architecture
