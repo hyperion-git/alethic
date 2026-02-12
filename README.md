@@ -2,6 +2,8 @@
 
 A mathematical reasoning agent inspired by [Google DeepMind's Aletheia](https://arxiv.org/abs/2602.10177), built on **Claude (Opus 4.6)**.
 
+Available as a **Claude Code `/solve` skill** (recommended) or as a standalone **Python library** with CLI.
+
 ## Architecture
 
 Alethic implements a **Generate → Verify → Revise** loop with **decoupled verification** — the core insight from DeepMind's design where the Verifier evaluates solutions independently, without access to the Generator's intermediate reasoning traces.
@@ -24,38 +26,75 @@ Alethic implements a **Generate → Verify → Revise** loop with **decoupled ve
 
 1. **Decoupled verification** — The Verifier sees only the final output, never the Generator's thinking traces. This prevents confidence inflation on erroneous solutions.
 2. **Strategic failure admission** — The agent can declare "unsolved" rather than hallucinating an incorrect answer.
-3. **Balanced prompting** — The Generator explores counterexamples before committing to a proof strategy (anti-confirmation-bias technique).
-4. **Tool integration** — Sandboxed Python code execution for computational verification.
-5. **Configurable compute budget** — `max_iterations` and `max_revisions_per_cycle` control the reasoning loop depth.
+3. **False-premise detection** — The Verifier can identify when a problem's premise is false (e.g., asking to prove something that contradicts a known theorem) and halt early.
+4. **Balanced prompting** — The Generator explores counterexamples before committing to a proof strategy (anti-confirmation-bias technique from DeepMind).
+5. **Confidence threshold** — Solutions require both a `CORRECT` verdict and ≥90% confidence to be accepted. Correct-but-uncertain solutions are sent back for revision.
+6. **Configurable compute budget** — `max_iterations`, `max_revisions_per_cycle`, and total sub-agent budget control the reasoning loop depth.
 
-## Installation
+## Claude Code Skill (Recommended)
+
+The `/solve` command runs Alethic natively inside Claude Code, using Task sub-agents for true architectural decoupling — each Verifier gets a fresh context window and literally cannot see Generator reasoning.
+
+### Install
 
 ```bash
-pip install alethic
-```
-
-Or install from source:
-
-```bash
+# Clone the repo
 git clone https://github.com/hyperion-git/alethic.git
-cd alethic
-pip install -e ".[dev]"
+
+# Copy the skill into your Claude Code skills directory
+mkdir -p ~/.claude/skills/solve
+cp alethic/skill/skills/solve/SKILL.md ~/.claude/skills/solve/SKILL.md
 ```
 
-## Quick Start
+Restart Claude Code. The `/solve` command is now available.
 
-### Python API
+### Usage
+
+```
+/solve "Prove that sqrt(2) is irrational"
+
+/solve -i 3 "Prove the AM-GM inequality for n variables"
+
+/solve -i 5 -r 4 -b 80 "Prove the Fundamental Theorem of Algebra"
+```
+
+**Flags:**
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-i` | 5 | Max generate-verify-revise iterations |
+| `-r` | 3 | Max revisions per iteration |
+| `-b` | 50 | Total sub-agent call budget |
+
+### How It Works
+
+1. **Generator** (Opus Task agent) — reads `problem.md`, uses Bash/WebSearch, writes `solution.md`
+2. **Verifier** (Opus Task agent, fresh context) — reads ONLY `problem.md` + `solution.md`, writes `verification.md`
+3. **Reviser** (Opus Task agent) — reads solution + critique, writes `revision_{N}.md`
+4. **Beautifier** (Opus Task agent) — formats the accepted solution into clean LaTeX/markdown
+
+All state lives in `/tmp/alethic-{timestamp}/` — the orchestrator tracks only verdicts and confidence scores in its own context, preventing context window exhaustion across iterations.
+
+## Python Library
+
+For programmatic use or batch benchmarking. Requires an `ANTHROPIC_API_KEY`.
+
+### Install
+
+```bash
+pip install -e ".[dev]"  # from source
+```
+
+### Quick Start
 
 ```python
 from alethic import MathAgent, AgentConfig
 
-# Uses ANTHROPIC_API_KEY env var
-agent = MathAgent()
+agent = MathAgent()  # uses ANTHROPIC_API_KEY env var
 result = agent.solve("Prove that the square root of 2 is irrational.")
 
-print(result)         # Full formatted output
-print(result.solved)  # True/False
-print(result.confidence)  # 0.0–1.0
+print(result)            # Full formatted output
+print(result.solved)     # True/False
+print(result.confidence) # 0.0-1.0
 ```
 
 ### CLI
@@ -73,8 +112,8 @@ alethic --json "Solve x^2 - 5x + 6 = 0"
 # Control iterations
 alethic --iterations 3 "Prove the AM-GM inequality"
 
-# Use a different model
-alethic --model claude-sonnet-4-5-20250929 "What is 17 * 23?"
+# Extended thinking (deeper reasoning, more tokens)
+alethic --thinking --thinking-budget 20000 "Prove the Basel problem"
 
 # Disable code execution
 alethic --no-code "Prove Euler's identity"
@@ -83,8 +122,6 @@ alethic --no-code "Prove Euler's identity"
 ### Configuration
 
 ```python
-from alethic import MathAgent, AgentConfig
-
 config = AgentConfig(
     model="claude-opus-4-6",           # Model ID
     max_iterations=5,                   # Max generate-verify-revise cycles
@@ -94,15 +131,15 @@ config = AgentConfig(
     temperature_verifier=0.2,           # Verifier temperature (lower = stricter)
     temperature_reviser=0.7,            # Reviser temperature
     max_tokens=16384,                   # Max tokens per API call
+    extended_thinking=False,            # Enable extended thinking
+    thinking_budget=10000,              # Token budget for extended thinking
     verbose=True,                       # Print progress
 )
 
 agent = MathAgent(config=config)
 ```
 
-## How It Works
-
-### Three-Subagent Architecture
+## Three-Subagent Architecture
 
 | Subagent | Role | Temperature | Key Feature |
 |----------|------|-------------|-------------|
@@ -114,32 +151,53 @@ agent = MathAgent(config=config)
 
 | Verdict | Meaning | Action |
 |---------|---------|--------|
-| `CORRECT` | Solution verified as rigorous | Return solution |
+| `CORRECT` (≥90% confidence) | Solution verified as rigorous | Accept and return |
+| `CORRECT` (<90% confidence) | Likely correct but uncertain | Send to Reviser |
 | `MINOR_ISSUES` | Core is sound, needs small fixes | Send to Reviser |
 | `MAJOR_FLAW` | Critical logical error | Revise or restart from Generator |
+| `UNSOLVED` (with reason) | Problem premise is false | Return with explanation |
 | `UNSOLVED` | Cannot solve reliably | Admit failure |
 
-### The Loop
+### Verifier Output Format
 
-1. **Generator** produces a candidate solution with extended reasoning
-2. **Verifier** evaluates it independently (no access to thinking traces)
-3. If `CORRECT` → return the solution
-4. If `MINOR_ISSUES` or `MAJOR_FLAW` → **Reviser** improves the solution
-5. Re-verify the revision; repeat up to `max_revisions_per_cycle`
-6. If still flawed, restart from the Generator (next iteration)
-7. After `max_iterations` — admit failure with the best solution seen
+```
+VERDICT: correct | minor_issues | major_flaw | unsolved
+CONFIDENCE: 0.0 to 1.0
 
-## Examples
+CRITIQUE:
+[Step-by-step evaluation]
 
-```bash
-# List available examples
-python -m alethic.examples --list
+REASON: [Why the premise is false, or "N/A"]
 
-# Run a specific example
-python -m alethic.examples --pick 1
+ISSUES:
+- [Issue 1]
+- [Issue 2]
+```
 
-# Run all examples
-python -m alethic.examples
+## Project Structure
+
+```
+alethic/
+├── skill/                          # Claude Code skill plugin
+│   ├── .claude-plugin/
+│   │   └── plugin.json             # Plugin metadata (v0.2.0)
+│   └── skills/solve/
+│       └── SKILL.md                # /solve command orchestrator
+├── src/alethic/                    # Python library
+│   ├── agent.py                    # MathAgent orchestrator
+│   ├── subagents.py                # generate(), verify(), revise()
+│   ├── models.py                   # Data models + Verdict enum
+│   ├── prompts.py                  # System/user prompt templates
+│   ├── tools.py                    # Python sandbox + tool-use loop
+│   ├── cli.py                      # CLI entry point
+│   └── examples.py                 # Bundled example problems
+├── docs/prompts/                   # Standalone prompt references
+│   ├── generator.md
+│   ├── verifier.md
+│   ├── reviser.md
+│   └── beautifier.md
+└── tests/
+    └── test_alethic.py             # 34 tests (mocked API)
 ```
 
 ## Testing
@@ -151,8 +209,11 @@ pytest
 # With coverage
 pytest --cov=alethic
 
-# Only live tests (requires ANTHROPIC_API_KEY)
-pytest -m live
+# Lint
+ruff check src tests
+
+# Format
+ruff format src tests
 ```
 
 ## Background: DeepMind's Aletheia

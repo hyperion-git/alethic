@@ -23,15 +23,15 @@ Usage:
     print(result)
 """
 
+from alethic.agent import MathAgent
 from alethic.models import (
     AgentConfig,
     AgentResult,
     Revision,
     Solution,
-    VerificationResult,
     Verdict,
+    VerificationResult,
 )
-from alethic.agent import MathAgent
 
 __all__ = [
     "MathAgent",
@@ -43,4 +43,4 @@ __all__ = [
     "Verdict",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

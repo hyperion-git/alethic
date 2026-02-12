@@ -81,6 +81,9 @@ CONFIDENCE: [0.0 to 1.0]
 CRITIQUE:
 [Your detailed evaluation of the solution, step by step]
 
+REASON: [If verdict is "unsolved" because the problem's premise is false or \
+the problem is ill-posed, explain why here. Otherwise write "N/A".]
+
 ISSUES:
 - [Issue 1, if any]
 - [Issue 2, if any]

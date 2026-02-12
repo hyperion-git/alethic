@@ -41,6 +41,8 @@ class AgentConfig:
     temperature_verifier: float = 0.2
     temperature_reviser: float = 0.7
     max_tokens: int = 16384
+    extended_thinking: bool = False
+    thinking_budget: int = 10000
     verbose: bool = True
 
 
@@ -65,14 +67,17 @@ class VerificationResult:
     critique: str
     confidence: float  # 0.0 to 1.0
     issues: list[str] = field(default_factory=list)
+    reason: str = ""  # For false-premise detection (REASON field from verifier)
 
     @property
     def is_acceptable(self) -> bool:
-        return self.verdict == Verdict.CORRECT
+        return self.verdict == Verdict.CORRECT and self.confidence >= 0.90
 
     @property
     def needs_revision(self) -> bool:
-        return self.verdict in (Verdict.MINOR_ISSUES, Verdict.MAJOR_FLAW)
+        return self.verdict in (Verdict.MINOR_ISSUES, Verdict.MAJOR_FLAW) or (
+            self.verdict == Verdict.CORRECT and self.confidence < 0.90
+        )
 
     def __str__(self) -> str:
         lines = [

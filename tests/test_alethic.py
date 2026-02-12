@@ -6,14 +6,11 @@ requiring actual Anthropic API access during CI.
 
 from __future__ import annotations
 
-import json
-import pytest
 from unittest.mock import MagicMock, patch
 
 from alethic.models import (
     AgentConfig,
     AgentResult,
-    Revision,
     Solution,
     Verdict,
     VerificationResult,
@@ -21,12 +18,11 @@ from alethic.models import (
 from alethic.prompts import (
     BALANCED_GENERATOR_ADDENDUM,
     GENERATOR_SYSTEM,
-    VERIFIER_SYSTEM,
     REVISER_SYSTEM,
+    VERIFIER_SYSTEM,
 )
+from alethic.subagents import _parse_revision, _parse_verification
 from alethic.tools import execute_python, extract_code_blocks
-from alethic.subagents import _parse_verification, _parse_revision
-
 
 # ── Data model tests ──────────────────────────────────────────────────
 
@@ -74,6 +70,22 @@ class TestModels:
         )
         assert not unsolved.is_acceptable
         assert not unsolved.needs_revision
+
+    def test_correct_but_low_confidence_needs_revision(self):
+        """CORRECT with confidence < 0.90 should trigger revision, not acceptance."""
+        low_conf = VerificationResult(
+            verdict=Verdict.CORRECT, critique="Looks right but unsure", confidence=0.75
+        )
+        assert not low_conf.is_acceptable
+        assert low_conf.needs_revision
+
+    def test_correct_at_threshold_is_acceptable(self):
+        """CORRECT with confidence exactly 0.90 should be acceptable."""
+        at_threshold = VerificationResult(
+            verdict=Verdict.CORRECT, critique="Verified", confidence=0.90
+        )
+        assert at_threshold.is_acceptable
+        assert not at_threshold.needs_revision
 
     def test_agent_result_solved(self):
         result = AgentResult(
@@ -222,6 +234,61 @@ ISSUES:
         assert result.verdict == Verdict.MINOR_ISSUES
         assert result.confidence == 0.8
         assert len(result.issues) == 1
+
+    def test_parse_unsolved_with_reason(self):
+        text = """\
+VERDICT: unsolved
+CONFIDENCE: 0.1
+
+CRITIQUE:
+The problem asks to prove that every continuous function on [0,1] to [0,1]
+has no fixed points. However, by Brouwer's fixed point theorem, every such
+function must have at least one fixed point. The premise is false.
+
+REASON: The premise is false. Brouwer's fixed point theorem guarantees that every continuous function f: [0,1] -> [0,1] has at least one fixed point.
+
+ISSUES:
+- Problem premise is false (contradicts Brouwer's fixed point theorem)
+"""
+        result = _parse_verification(text)
+        assert result.verdict == Verdict.UNSOLVED
+        assert result.confidence == 0.1
+        assert "premise is false" in result.reason.lower()
+        assert "Brouwer" in result.reason
+        assert len(result.issues) == 1
+        assert "premise" in result.issues[0].lower()
+
+    def test_parse_correct_with_reason_na(self):
+        """REASON: N/A should result in empty/N/A reason for correct verdicts."""
+        text = """\
+VERDICT: correct
+CONFIDENCE: 0.95
+
+CRITIQUE:
+All steps verified.
+
+REASON: N/A
+
+ISSUES:
+None
+"""
+        result = _parse_verification(text)
+        assert result.verdict == Verdict.CORRECT
+        assert result.confidence == 0.95
+        assert result.reason == "N/A"
+        assert len(result.issues) == 0
+
+    def test_confidence_clamping(self):
+        """Confidence values above 1.0 should be clamped to 1.0."""
+        text = "VERDICT: correct\nCONFIDENCE: 1.5\n\nCRITIQUE:\nOK\n\nISSUES:\nNone"
+        result = _parse_verification(text)
+        assert result.confidence == 1.0
+
+    def test_confidence_missing_defaults(self):
+        """Missing confidence should default to 0.5."""
+        text = "VERDICT: correct\n\nCRITIQUE:\nOK\n\nISSUES:\nNone"
+        result = _parse_verification(text)
+        assert result.confidence == 0.5
 
     def test_parse_revision(self):
         text = """\

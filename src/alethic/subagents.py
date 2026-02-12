@@ -48,10 +48,18 @@ def _call_model(
     kwargs = {
         "model": config.model,
         "max_tokens": config.max_tokens,
-        "temperature": temperature,
         "system": system,
         "messages": messages,
     }
+    if config.extended_thinking:
+        # Extended thinking requires temperature=1 and uses a budget_tokens param
+        kwargs["thinking"] = {
+            "type": "enabled",
+            "budget_tokens": config.thinking_budget,
+        }
+        kwargs["temperature"] = 1  # Required by the API when thinking is enabled
+    else:
+        kwargs["temperature"] = temperature
     if tools:
         kwargs["tools"] = tools
 
@@ -65,7 +73,10 @@ def _call_model(
 
         if not tool_results:
             # No tool calls — extract final text
-            text_parts = [b.text for b in response.content if hasattr(b, "text")]
+            text_parts = [
+                b.text for b in response.content
+                if hasattr(b, "text") and getattr(b, "type", None) == "text"
+            ]
             return "\n".join(text_parts)
 
         # Build tool result messages and continue the loop
@@ -84,7 +95,10 @@ def _call_model(
         kwargs["messages"] = messages
 
     # Exhausted tool rounds — return whatever text we have
-    text_parts = [b.text for b in response.content if hasattr(b, "text")]
+    text_parts = [
+        b.text for b in response.content
+        if hasattr(b, "text") and getattr(b, "type", None) == "text"
+    ]
     return "\n".join(text_parts) if text_parts else "[No response generated]"
 
 
@@ -165,15 +179,24 @@ def _parse_verification(text: str) -> VerificationResult:
     # Extract confidence
     conf_match = re.search(r"CONFIDENCE:\s*([\d.]+)", text)
     confidence = float(conf_match.group(1)) if conf_match else 0.5
+    confidence = max(0.0, min(1.0, confidence))
 
-    # Extract critique
+    # Extract critique (stops at REASON: or ISSUES: whichever comes first)
     critique_match = re.search(
-        r"CRITIQUE:\s*\n(.*?)(?=\nISSUES:|\Z)", text, re.DOTALL
+        r"CRITIQUE:\s*\n(.*?)(?=\nREASON:|\nISSUES:|\Z)", text, re.DOTALL
     )
     critique = critique_match.group(1).strip() if critique_match else text
 
-    # Extract issues
-    issues_match = re.search(r"ISSUES:\s*\n(.*)", text, re.DOTALL)
+    # Extract reason (for false-premise detection)
+    reason_match = re.search(
+        r"REASON:\s*(.*?)(?=\nISSUES:|\Z)", text, re.DOTALL
+    )
+    reason = reason_match.group(1).strip() if reason_match else ""
+
+    # Extract issues (stops at REASON: if it appears after, or end of text)
+    issues_match = re.search(
+        r"ISSUES:\s*\n(.*?)(?=\nREASON:|\Z)", text, re.DOTALL
+    )
     issues = []
     if issues_match:
         issues_text = issues_match.group(1).strip()
@@ -188,6 +211,7 @@ def _parse_verification(text: str) -> VerificationResult:
         critique=critique,
         confidence=confidence,
         issues=issues,
+        reason=reason,
     )
 
 

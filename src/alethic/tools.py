@@ -6,10 +6,10 @@ Alethic's use of computational verification alongside natural-language reasoning
 
 from __future__ import annotations
 
-import io
 import contextlib
-import traceback
+import io
 import re
+import traceback
 
 # Anthropic tool schema for Python code execution
 PYTHON_TOOL = {

@@ -90,6 +90,17 @@ Examples:
         default=16384,
         help="Max tokens per API call (default: 16384)",
     )
+    parser.add_argument(
+        "--thinking",
+        action="store_true",
+        help="Enable extended thinking for deeper reasoning (uses more tokens)",
+    )
+    parser.add_argument(
+        "--thinking-budget",
+        type=int,
+        default=10000,
+        help="Token budget for extended thinking (default: 10000)",
+    )
 
     return parser
 
@@ -119,6 +130,8 @@ def main(argv: list[str] | None = None) -> int:
         max_revisions_per_cycle=args.revisions,
         enable_code_execution=not args.no_code,
         max_tokens=args.max_tokens,
+        extended_thinking=args.thinking,
+        thinking_budget=args.thinking_budget,
         verbose=not args.quiet,
     )
 

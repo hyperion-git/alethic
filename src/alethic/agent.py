@@ -90,7 +90,7 @@ class MathAgent:
         best_confidence = 0.0
 
         self._log(f"{'=' * 60}")
-        self._log(f"ALETHIC MATH AGENT")
+        self._log("ALETHIC MATH AGENT")
         self._log(f"Model: {self.config.model}")
         self._log(f"Max iterations: {self.config.max_iterations}")
         self._log(f"Code execution: {'enabled' if self.config.enable_code_execution else 'disabled'}")
@@ -162,6 +162,25 @@ class MathAgent:
                     elapsed_seconds=elapsed,
                 )
 
+            # ── CHECK: False premise? ──
+            _empty_reasons = {"n/a", "na", "none", "not applicable", ""}
+            if verification.verdict == Verdict.UNSOLVED and verification.reason and verification.reason.strip().lower() not in _empty_reasons:
+                self._log("")
+                self._log("[FALSE PREMISE] Verifier detected the problem's premise is false:")
+                self._log(f"  {verification.reason}")
+                elapsed = time.time() - start_time
+                return AgentResult(
+                    problem=problem,
+                    solution=verification.reason,
+                    verdict=Verdict.UNSOLVED,
+                    confidence=verification.confidence,
+                    iterations_used=iteration,
+                    total_revisions=total_revisions,
+                    admitted_failure=False,
+                    history=history,
+                    elapsed_seconds=elapsed,
+                )
+
             # ── REVISE (if fixable) ──
             if verification.needs_revision:
                 current_solution = solution
@@ -223,6 +242,27 @@ class MathAgent:
                     # If major flaw after revision, break to restart from generator
                     if verification.verdict == Verdict.MAJOR_FLAW:
                         self._log("[REVISE] Major flaw persists — restarting from generator")
+                        break
+
+                    # If unsolved after revision, check false premise then restart
+                    if verification.verdict == Verdict.UNSOLVED:
+                        _empty_reasons = {"n/a", "na", "none", "not applicable", ""}
+                        if verification.reason and verification.reason.strip().lower() not in _empty_reasons:
+                            self._log("[FALSE PREMISE] Verifier detected the problem's premise is false:")
+                            self._log(f"  {verification.reason}")
+                            elapsed = time.time() - start_time
+                            return AgentResult(
+                                problem=problem,
+                                solution=verification.reason,
+                                verdict=Verdict.UNSOLVED,
+                                confidence=verification.confidence,
+                                iterations_used=iteration,
+                                total_revisions=total_revisions,
+                                admitted_failure=False,
+                                history=history,
+                                elapsed_seconds=elapsed,
+                            )
+                        self._log("[REVISE] Solution unsolvable — restarting from generator")
                         break
 
                 self._log(f"[REVISE] Exhausted revision attempts for iteration {iteration}")

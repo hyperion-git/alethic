@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "alethic"
-version = "0.1.0"
+version = "0.2.0"
 description = "A mathematical reasoning agent inspired by Google DeepMind's Aletheia, built on Claude (Opus 4.6)"
 readme = "README.md"
 license = "MIT"

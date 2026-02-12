@@ -1,0 +1,6 @@
+{
+  "name": "alethic",
+  "version": "0.2.0",
+  "description": "Mathematical reasoning agent with Generate-Verify-Revise loop (inspired by DeepMind's Aletheia)",
+  "commands": ["./skills/solve/SKILL.md"]
+}
