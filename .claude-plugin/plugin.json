@@ -5,6 +5,8 @@
   "author": {
     "name": "Alexander Friedrich"
   },
+  "homepage": "https://github.com/hyperion-git/alethic",
   "repository": "https://github.com/hyperion-git/alethic",
-  "license": "MIT"
+  "license": "MIT",
+  "keywords": ["math", "reasoning", "verification", "theorem-proving", "aletheia"]
 }

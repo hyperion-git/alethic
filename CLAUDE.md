@@ -40,11 +40,18 @@ python -m alethic.examples --pick 1
 
 ## Skill Installation
 
+### Via marketplace (recommended)
+
 ```bash
-# Install into Claude Code's plugin cache
+claude plugins add hyperion-git/alethic
+```
+
+### Manual installation (development)
+
+```bash
 DEST=~/.claude/plugins/cache/local/alethic/0.2.0
 mkdir -p "$DEST"
-cp -r skill/.claude-plugin skill/skills "$DEST/"
+cp -r .claude-plugin skills "$DEST/"
 
 # Register in installed_plugins.json (if not already present)
 # Then restart Claude Code: /solve "Prove sqrt(2) is irrational"
@@ -81,9 +88,10 @@ cp -r skill/.claude-plugin skill/skills "$DEST/"
 
 | Skill file | Purpose |
 |------------|---------|
-| `skill/skills/solve/SKILL.md` | `/solve` command orchestrator — spawns Opus Task sub-agents with file-based state |
-| `skill/.claude-plugin/plugin.json` | Plugin metadata |
-| `docs/prompts/*.md` | Standalone prompt references (generator, verifier, reviser, beautifier) |
+| `skills/solve/SKILL.md` | `/solve` command orchestrator — spawns Opus Task sub-agents with file-based state |
+| `.claude-plugin/plugin.json` | Plugin metadata |
+| `.claude-plugin/marketplace.json` | Marketplace manifest for `hyperion-git/alethic` |
+| `skills/solve/references/*.md` | Standalone prompt references (generator, verifier, reviser, beautifier) |
 
 ## Key Design Decisions
 

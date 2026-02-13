@@ -37,14 +37,19 @@ The `/solve` command runs Alethic natively inside Claude Code, using Task sub-ag
 
 ### Install
 
-```bash
-# Clone the repo
-git clone https://github.com/hyperion-git/alethic.git
+#### Via marketplace (recommended)
 
-# Install into Claude Code's plugin cache
+```bash
+claude plugins add hyperion-git/alethic
+```
+
+#### Manual installation
+
+```bash
+git clone https://github.com/hyperion-git/alethic.git
 DEST=~/.claude/plugins/cache/local/alethic/0.2.0
 mkdir -p "$DEST"
-cp -r alethic/skill/.claude-plugin alethic/skill/skills "$DEST/"
+cp -r alethic/.claude-plugin alethic/skills "$DEST/"
 ```
 
 Restart Claude Code. The `/solve` command is now available.
@@ -179,11 +184,17 @@ ISSUES:
 
 ```
 alethic/
-├── skill/                          # Claude Code skill plugin
-│   ├── .claude-plugin/
-│   │   └── plugin.json             # Plugin metadata (v0.2.0)
-│   └── skills/solve/
-│       └── SKILL.md                # /solve command orchestrator
+├── .claude-plugin/                 # Claude Code marketplace plugin
+│   ├── plugin.json                 # Plugin metadata (v0.2.0)
+│   └── marketplace.json            # Marketplace manifest
+├── skills/                         # Claude Code skills
+│   └── solve/
+│       ├── SKILL.md                # /solve command orchestrator
+│       └── references/             # Standalone prompt references
+│           ├── generator.md
+│           ├── verifier.md
+│           ├── reviser.md
+│           └── beautifier.md
 ├── src/alethic/                    # Python library
 │   ├── agent.py                    # MathAgent orchestrator
 │   ├── subagents.py                # generate(), verify(), revise()
@@ -192,11 +203,6 @@ alethic/
 │   ├── tools.py                    # Python sandbox + tool-use loop
 │   ├── cli.py                      # CLI entry point
 │   └── examples.py                 # Bundled example problems
-├── docs/prompts/                   # Standalone prompt references
-│   ├── generator.md
-│   ├── verifier.md
-│   ├── reviser.md
-│   └── beautifier.md
 └── tests/
     └── test_alethic.py             # 34 tests (mocked API)
 ```
