@@ -31,6 +31,8 @@ mypy src/alethic
 
 # Run CLI (requires ANTHROPIC_API_KEY)
 alethic "Prove that sqrt(2) is irrational"
+alethic --preset quick "Is 17 prime?"
+alethic --preset thorough "Prove the Cayley-Hamilton theorem"
 alethic --thinking "Prove the Basel problem"
 
 # Run examples
@@ -74,16 +76,29 @@ cp -r .claude-plugin skills "$DEST/"
 └─────────────────────────────────────────────────────────┘
 ```
 
+## Presets
+
+Both the CLI (`--preset`) and the Python API (`AgentConfig.from_preset()`) support named presets. Explicit flags/kwargs override preset values.
+
+| Preset | Iters | Revs | Threshold | Thinking | Think budget | Max tokens |
+|--------|-------|------|-----------|----------|-------------|------------|
+| `quick` | 2 | 1 | 0.85 | off | — | 16,384 |
+| `default` | 5 | 3 | 0.90 | off | — | 16,384 |
+| `thorough` | 8 | 5 | 0.95 | on | 15,000 | 32,768 |
+| `extreme` | 12 | 5 | 0.97 | on | 40,000 | 65,536 |
+
+The `/solve` skill supports the same presets via `-p`/`--preset`, controlling iterations, revisions, budget, and confidence threshold. Temperature and extended thinking are API-only (Task sub-agent limitation).
+
 ## Module Map
 
 | Module | Purpose |
 |--------|---------|
 | `agent.py` | `MathAgent` orchestrator — runs the Generate → Verify → Revise loop with false-premise detection |
 | `subagents.py` | `generate()`, `verify()`, `revise()` — each wraps a Claude API call with role-specific prompts; supports extended thinking |
-| `models.py` | Dataclasses: `AgentConfig`, `Solution`, `VerificationResult`, `Revision`, `AgentResult`, `Verdict` enum |
+| `models.py` | Dataclasses: `AgentConfig` (with `PRESETS` and `from_preset()`), `Solution`, `VerificationResult`, `Revision`, `AgentResult`, `Verdict` enum |
 | `prompts.py` | System/user prompt templates for all three subagents + balanced prompting addendum |
 | `tools.py` | `execute_python()` sandbox, `PYTHON_TOOL` schema, `process_tool_calls()` for tool-use loop |
-| `cli.py` | `argparse`-based CLI (`alethic` entry point) with `--thinking` support |
+| `cli.py` | `argparse`-based CLI (`alethic` entry point) with `--preset` and `--thinking` support |
 | `examples.py` | Bundled example problems (`python -m alethic.examples`) |
 
 | Skill file | Purpose |
@@ -96,7 +111,7 @@ cp -r .claude-plugin skills "$DEST/"
 ## Key Design Decisions
 
 1. **Decoupled verification**: The Verifier receives ONLY the final solution text, never the Generator's thinking traces. In the skill, this is enforced by architecture — Task sub-agents get fresh context windows.
-2. **Confidence threshold**: Solutions require `CORRECT` verdict AND ≥90% confidence. Correct-but-uncertain solutions are treated as minor issues and sent for revision.
+2. **Configurable confidence threshold**: Solutions require `CORRECT` verdict AND confidence ≥ `confidence_threshold` (default 0.90). Correct-but-uncertain solutions are treated as minor issues and sent for revision.
 3. **False-premise detection**: The Verifier's `REASON:` field enables early exit when a problem's premise is false (e.g., contradicts Brouwer's fixed point theorem).
 4. **Structured output parsing**: Verifier output is parsed via regex (`_parse_verification`) for `VERDICT:`, `CONFIDENCE:`, `CRITIQUE:`, `REASON:`, `ISSUES:` fields with independent extraction per field.
 5. **Sandboxed code execution**: `execute_python()` uses restricted `__builtins__` and an allowlist of importable modules. Timeout via `signal.SIGALRM`.
