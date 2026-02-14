@@ -69,12 +69,20 @@ Five changes, ordered by dependency. Each is self-contained and testable indepen
 - `--temperature-generator` (float, default 1.0)
 - `--temperature-verifier` (float, default 0.2)
 - `--temperature-reviser` (float, default 0.7)
-- `--preset {quick,default,thorough}` — sets a bundle of defaults that individual flags can override
+- `--preset {quick,default,thorough,extreme}` — sets a bundle of defaults that individual flags can override
+
+**Token budget design:** The Anthropic API constraint is that `budget_tokens` (thinking) must be strictly less than `max_tokens`, and both share the same ceiling. On Opus 4.6, the hard cap is 128K output tokens. The "response headroom" (max_tokens minus thinking_budget) determines how much space remains for the actual solution text after thinking.
 
 **Preset definitions:**
-- `quick`: iterations=2, revisions=1, confidence_threshold=0.85, max_tokens=8192
-- `default`: current defaults (no-op)
-- `thorough`: iterations=8, revisions=5, confidence_threshold=0.95, extended_thinking=True, thinking_budget=15000, max_tokens=32768
+
+| Preset | Iters | Revs | Threshold | Thinking | Think budget | Max tokens | Response headroom |
+|--------|-------|------|-----------|----------|-------------|------------|-------------------|
+| `quick` | 2 | 1 | 0.85 | off | — | 8,192 | 8,192 |
+| `default` | 5 | 3 | 0.90 | off | — | 16,384 | 16,384 |
+| `thorough` | 8 | 5 | 0.95 | on | 15,000 | 32,768 | 17,768 |
+| `extreme` | 12 | 5 | 0.97 | on | 40,000 | 65,536 | 25,536 |
+
+`extreme` is for hard competition/research problems: deep thinking budget (40K), generous response space (~25K for detailed proofs), near-certain acceptance bar (97%), and many retry opportunities (12 iterations). Stays at 64K total rather than 128K to keep per-call cost manageable across 12 iterations.
 
 **Precedence:** Preset sets the base, then explicit flags override. Implementation: apply preset values first, then overwrite with any explicitly-provided CLI args (using argparse defaults detection).
 
