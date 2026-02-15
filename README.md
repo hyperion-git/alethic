@@ -31,13 +31,13 @@ Alethic's reasoning loop proceeds through three distinct phases that repeat unti
 │        ▲                                          │    │
 │        └──────────────────────────────────────────┘    │
 │                                                         │
-│   Terminates when: CORRECT verdict (≥90%) OR max iters  │
+│   Terminates when: CORRECT (≥ threshold) OR max iters   │
 └─────────────────────────────────────────────────────────┘
 ```
 
 The **Generator** produces a candidate solution at high temperature (T=1.0) to encourage creative exploration of proof strategies. The **Verifier** then evaluates that solution at low temperature (T=0.2) for strict, deterministic assessment. Critically, the Verifier receives only the problem statement and the final written solution — never the Generator's thinking traces, tool outputs, or intermediate reasoning. If the Verifier identifies issues, the **Reviser** receives both the solution and the Verifier's structured critique, producing an improved version at moderate temperature (T=0.7) that balances faithfulness to the original with the flexibility to restructure flawed arguments.
 
-The loop terminates under one of three conditions: the Verifier issues a `CORRECT` verdict with confidence at or above 90%, the maximum number of iterations is reached (strategic failure admission), or the Verifier detects that the problem's premise is false and halts early with an explanation.
+The loop terminates under one of three conditions: the Verifier issues a `CORRECT` verdict with confidence at or above the configured threshold (default 90%), the maximum number of iterations is reached (strategic failure admission), or the Verifier detects that the problem's premise is false and halts early with an explanation.
 
 ### Information Flow and Decoupling
 
@@ -60,7 +60,7 @@ sequenceDiagram
     Note right of V: Independent evaluation<br/>(no Generator context)
     V->>O: verdict + confidence + critique
 
-    alt CORRECT with confidence >= 90%
+    alt CORRECT with confidence >= threshold
         O->>O: Accept solution
     else Needs revision
         O->>R: solution + critique
@@ -77,7 +77,7 @@ Each subagent is instantiated as an independent Claude API call with role-specif
 
 **Generator.** The Generator's task is to produce a complete, self-contained mathematical solution. Its system prompt instructs it to restate the problem, select a proof strategy explicitly, justify every inference, and use precise mathematical notation. When balanced prompting is enabled (the default), an addendum directs the Generator to first explore whether the statement might be false by testing small cases, boundary conditions, and degenerate inputs before committing to a proof strategy. This anti-confirmation-bias technique, drawn directly from the Aletheia design, prevents the model from anchoring prematurely on a flawed approach. The Generator has access to a sandboxed Python environment for computational verification of intermediate results.
 
-**Verifier.** The Verifier is the architectural cornerstone of the system. Its system prompt establishes strict independence: it must evaluate the solution purely on its written merits, checking every logical step, re-deriving computations independently, and flagging common mathematical errors including sign mistakes, off-by-one errors, vacuous truth claims, circular reasoning, non-exhaustive case analysis, and incorrect theorem application. The Verifier produces a structured output containing a verdict (`correct`, `minor_issues`, `major_flaw`, or `unsolved`), a numerical confidence score calibrated against explicit benchmarks (0.95-1.0 for fully verified solutions, below 0.50 for likely errors), a step-by-step critique, a reason field for false-premise detection, and a list of specific issues. The confidence threshold of 90% means that even a `correct` verdict at lower confidence is treated as requiring revision — the Verifier must be genuinely certain.
+**Verifier.** The Verifier is the architectural cornerstone of the system. Its system prompt establishes strict independence: it must evaluate the solution purely on its written merits, checking every logical step, re-deriving computations independently, and flagging common mathematical errors including sign mistakes, off-by-one errors, vacuous truth claims, circular reasoning, non-exhaustive case analysis, and incorrect theorem application. The Verifier produces a structured output containing a verdict (`correct`, `minor_issues`, `major_flaw`, or `unsolved`), a numerical confidence score calibrated against explicit benchmarks (0.95-1.0 for fully verified solutions, below 0.50 for likely errors), a step-by-step critique, a reason field for false-premise detection, and a list of specific issues. The confidence threshold (default 90%, configurable via `confidence_threshold`) means that even a `correct` verdict at lower confidence is treated as requiring revision — the Verifier must be genuinely certain.
 
 **Reviser.** When the Verifier identifies issues, the Reviser receives the original solution alongside the full structured critique. Its prompt instructs it to distinguish between minor issues (which can be patched in place) and major flaws (which require a fundamentally different proof strategy). The Reviser preserves parts of the solution that the Verifier confirmed as sound and provides explicit justification for each change. If it believes the critique itself is incorrect, it may argue back with evidence — but the subsequent re-verification by a fresh Verifier instance has the final word.
 
@@ -85,8 +85,8 @@ Each subagent is instantiated as an independent Claude API call with role-specif
 
 | Verdict | Condition | Action |
 |---------|-----------|--------|
-| `CORRECT` | Confidence ≥ 90% | Accept the solution and return it to the user |
-| `CORRECT` | Confidence < 90% | Treat as uncertain — send to Reviser for strengthening |
+| `CORRECT` | Confidence ≥ threshold | Accept the solution and return it to the user |
+| `CORRECT` | Confidence < threshold | Treat as uncertain — send to Reviser for strengthening |
 | `MINOR_ISSUES` | — | Send to Reviser with the critique |
 | `MAJOR_FLAW` | — | Revise if attempts remain, otherwise restart from Generator |
 | `UNSOLVED` | Reason field populated | Problem premise is false — halt and explain |
@@ -102,8 +102,8 @@ flowchart TD
     Gen --> Ver["Verify (T=0.2)"]
     Ver --> D{Verdict?}
 
-    D -->|"CORRECT ≥ 90%"| Accept[Accept solution]
-    D -->|"CORRECT < 90%"| Rev["Revise (T=0.7)"]
+    D -->|"CORRECT ≥ threshold"| Accept[Accept solution]
+    D -->|"CORRECT < threshold"| Rev["Revise (T=0.7)"]
     D -->|MINOR_ISSUES| Rev
     D -->|MAJOR_FLAW| MF{Revisions left?}
     D -->|"UNSOLVED + reason"| FP[Premise is false]
@@ -115,8 +115,8 @@ flowchart TD
     Rev --> ReVer["Re-verify (T=0.2)"]
     ReVer --> RD{Verdict?}
 
-    RD -->|"CORRECT ≥ 90%"| Accept
-    RD -->|"CORRECT < 90%"| MoreRev{Revisions left?}
+    RD -->|"CORRECT ≥ threshold"| Accept
+    RD -->|"CORRECT < threshold"| MoreRev{Revisions left?}
     RD -->|MINOR_ISSUES| MoreRev
     RD -->|MAJOR_FLAW| Iter
     RD -->|"UNSOLVED + reason"| FP
@@ -167,6 +167,21 @@ ISSUES:
 
 **File-based state (skill only).** In the Claude Code skill, all solutions, verifications, and revisions are written to files in a session directory (`/tmp/alethic-{timestamp}/`). The orchestrator tracks only summary metrics — verdict strings, confidence floats, and file paths — in its own context. This prevents the exponential context growth that would occur if full solution texts accumulated across iterations, enabling the system to run for many iterations without approaching context limits.
 
+## Presets
+
+Alethic provides four named presets that control the speed-vs-rigor tradeoff. Each preset configures the iteration budget, revision limit, confidence threshold, and whether extended thinking is enabled. Use `quick` for simple problems where speed matters, `default` for general use, `thorough` for competition-level problems requiring deep verification, and `extreme` for research-grade proofs demanding the highest confidence.
+
+| Preset | Iterations | Revisions | Threshold | Thinking | Think budget | Max tokens |
+|--------|-----------|-----------|-----------|----------|-------------|------------|
+| `quick` | 2 | 1 | 0.85 | off | — | 16,384 |
+| `default` | 5 | 3 | 0.90 | off | — | 16,384 |
+| `thorough` | 8 | 5 | 0.95 | on | 15,000 | 32,768 |
+| `extreme` | 12 | 5 | 0.97 | on | 40,000 | 65,536 |
+
+Explicit flags (CLI) or keyword arguments (Python API) override preset values, so `--preset quick --iterations 4` uses the `quick` preset but with 4 iterations instead of 2.
+
+> **Skill note:** The `/solve` skill supports presets via `-p`/`--preset` for iterations, revisions, budget, and confidence threshold. Temperature and extended thinking are not controllable through the skill (Task sub-agent limitation).
+
 ## Claude Code Skill (Recommended)
 
 The `/solve` command runs Alethic natively inside Claude Code, using Task sub-agents for true architectural decoupling. Each Verifier launches as an independent Task with a fresh context window, providing the strongest possible guarantee that it cannot observe the Generator's reasoning process. The skill also includes a Beautifier stage that formats accepted solutions into clean LaTeX/Markdown for presentation.
@@ -195,16 +210,22 @@ Restart Claude Code. The `/solve` command is now available.
 ```
 /solve "Prove that sqrt(2) is irrational"
 
-/solve -i 3 "Prove the AM-GM inequality for n variables"
+/solve -p thorough "Prove the Fundamental Theorem of Algebra"
 
-/solve -i 5 -r 4 -b 80 "Prove the Fundamental Theorem of Algebra"
+/solve -p quick -i 4 "Is 17 prime?"
+
+/solve -t 0.95 "Prove the AM-GM inequality for n variables"
+
+/solve -i 5 -r 4 -b 80 "Prove the Basel problem"
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `-i` | 5 | Maximum generate-verify-revise iterations |
-| `-r` | 3 | Maximum revision attempts per iteration |
-| `-b` | 50 | Total sub-agent call budget |
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--preset` | `-p` | `default` | Named preset (`quick`, `default`, `thorough`, `extreme`) |
+| `--threshold` | `-t` | 0.90 | Confidence threshold for accepting a solution |
+| `--iterations` | `-i` | 5 | Maximum generate-verify-revise iterations |
+| `--revisions` | `-r` | 3 | Maximum revision attempts per iteration |
+| `--budget` | `-b` | 50 | Total sub-agent call budget |
 
 ### Skill Execution Flow
 
@@ -236,6 +257,16 @@ print(result.confidence) # 0.0-1.0
 ### CLI
 
 ```bash
+# Use a preset
+alethic --preset quick "Is 17 prime?"
+alethic --preset thorough "Prove the Cayley-Hamilton theorem"
+
+# Override a preset value
+alethic --preset quick --iterations 4 "Prove the AM-GM inequality"
+
+# Set confidence threshold
+alethic --confidence-threshold 0.95 "Prove the Basel problem"
+
 # Inline problem
 alethic "Prove that there are infinitely many primes"
 
@@ -257,13 +288,28 @@ alethic --no-code "Prove Euler's identity"
 
 ### Configuration
 
-The `AgentConfig` dataclass exposes all tunable parameters. Temperature settings follow the Aletheia design: high for creative generation, low for strict verification, moderate for targeted revision.
+The `AgentConfig` dataclass exposes all tunable parameters. The easiest way to get started is with a named preset:
+
+```python
+from alethic import MathAgent, AgentConfig
+
+# Quick preset for simple problems
+config = AgentConfig.from_preset("quick")
+
+# Thorough preset with a custom iteration limit
+config = AgentConfig.from_preset("thorough", max_iterations=10)
+
+agent = MathAgent(config=config)
+```
+
+For full control, construct `AgentConfig` directly. Temperature settings follow the Aletheia design: high for creative generation, low for strict verification, moderate for targeted revision.
 
 ```python
 config = AgentConfig(
     model="claude-opus-4-6",           # Anthropic model ID
     max_iterations=5,                   # Max generate-verify-revise cycles
     max_revisions_per_cycle=3,          # Max revisions before restarting
+    confidence_threshold=0.90,           # Minimum confidence to accept
     enable_code_execution=True,         # Python sandbox for computation
     temperature_generator=1.0,          # Creative exploration
     temperature_verifier=0.2,           # Strict, deterministic evaluation
@@ -304,10 +350,10 @@ The Python library is organized into six modules, each with a single clear respo
 |--------|---------|
 | `agent.py` | `MathAgent` orchestrator — runs the full Generate-Verify-Revise loop with false-premise detection and strategic failure admission |
 | `subagents.py` | `generate()`, `verify()`, `revise()` — each wraps a Claude API call with role-specific prompts, temperature, and tool configuration; includes the tool-use loop (up to 5 rounds) and structured output parsing |
-| `models.py` | Dataclasses: `AgentConfig`, `Solution`, `VerificationResult`, `Revision`, `AgentResult`, and the `Verdict` enum |
+| `models.py` | Dataclasses: `AgentConfig` (with `PRESETS` and `from_preset()`), `Solution`, `VerificationResult`, `Revision`, `AgentResult`, and the `Verdict` enum |
 | `prompts.py` | System and user prompt templates for all three subagents, plus the balanced prompting addendum |
 | `tools.py` | `execute_python()` sandbox with restricted builtins and module allowlist, `PYTHON_TOOL` schema for the Anthropic API, and `process_tool_calls()` for the tool-use loop |
-| `cli.py` | `argparse`-based CLI entry point (`alethic`) with `--thinking`, `--json`, and `--file` support |
+| `cli.py` | `argparse`-based CLI entry point (`alethic`) with `--preset`, `--confidence-threshold`, `--thinking`, `--json`, and `--file` support |
 | `examples.py` | Six bundled example problems (`python -m alethic.examples`) |
 
 | Skill file | Purpose |
@@ -341,15 +387,15 @@ alethic/
 │   ├── cli.py                      # CLI entry point
 │   └── examples.py                 # Bundled example problems
 └── tests/
-    └── test_alethic.py             # 34 tests (mocked API)
+    └── test_alethic.py             # 43 tests (mocked API)
 ```
 
 ## Testing
 
-All tests use mocked API responses and require no API key. The test suite covers data models, prompt content validation, sandbox execution (including timeout enforcement and import restrictions), structured output parsing for all verdict types, CLI argument parsing, and end-to-end integration flows for solved, revised, and failed problems.
+All tests use mocked API responses and require no API key. The test suite covers data models, prompt content validation, sandbox execution (including timeout enforcement and import restrictions), structured output parsing for all verdict types, preset creation and overrides, configurable confidence thresholds, CLI argument parsing (including `--preset` and `--confidence-threshold`), and end-to-end integration flows for solved, revised, and failed problems.
 
 ```bash
-# Run all 34 tests
+# Run all 43 tests
 pytest
 
 # With coverage report
