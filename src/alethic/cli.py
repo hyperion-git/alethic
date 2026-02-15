@@ -3,6 +3,7 @@
 Usage:
     python -m alethic "Prove that sqrt(2) is irrational"
     python -m alethic --file problem.txt
+    python -m alethic --preset thorough "Prove the Cayley-Hamilton theorem"
     python -m alethic --iterations 3 --no-code "Find all primes below 100"
 """
 
@@ -26,10 +27,13 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="""\
 Examples:
   %(prog)s "Prove that there are infinitely many primes"
+  %(prog)s --preset quick "Is 17 prime?"
+  %(prog)s --preset thorough "Prove the Cayley-Hamilton theorem"
   %(prog)s --file problem.txt --iterations 3
   %(prog)s --model claude-sonnet-4-5-20250929 "What is 17 * 23?"
   %(prog)s --no-code "Prove the AM-GM inequality"
   %(prog)s --json "Solve x^2 - 5x + 6 = 0"
+  %(prog)s --thinking "Prove the Basel problem"
 """,
     )
 
@@ -43,21 +47,50 @@ Examples:
         help="Read problem from a text file",
     )
     parser.add_argument(
+        "--preset", "-p",
+        choices=list(AgentConfig.PRESETS),
+        help="Use a named preset (quick, default, thorough, extreme)",
+    )
+    parser.add_argument(
         "--model", "-m",
-        default="claude-opus-4-6",
+        default=None,
         help="Anthropic model ID (default: claude-opus-4-6)",
     )
     parser.add_argument(
         "--iterations", "-n",
         type=int,
-        default=5,
+        default=None,
         help="Max generate-verify-revise iterations (default: 5)",
     )
     parser.add_argument(
         "--revisions",
         type=int,
-        default=3,
+        default=None,
         help="Max revisions per cycle (default: 3)",
+    )
+    parser.add_argument(
+        "--confidence-threshold",
+        type=float,
+        default=None,
+        help="Confidence threshold for acceptance (default: 0.90)",
+    )
+    parser.add_argument(
+        "--temperature-generator",
+        type=float,
+        default=None,
+        help="Sampling temperature for the generator (default: 1.0)",
+    )
+    parser.add_argument(
+        "--temperature-verifier",
+        type=float,
+        default=None,
+        help="Sampling temperature for the verifier (default: 0.2)",
+    )
+    parser.add_argument(
+        "--temperature-reviser",
+        type=float,
+        default=None,
+        help="Sampling temperature for the reviser (default: 0.7)",
     )
     parser.add_argument(
         "--no-code",
@@ -87,7 +120,7 @@ Examples:
     parser.add_argument(
         "--max-tokens",
         type=int,
-        default=16384,
+        default=None,
         help="Max tokens per API call (default: 16384)",
     )
     parser.add_argument(
@@ -98,11 +131,44 @@ Examples:
     parser.add_argument(
         "--thinking-budget",
         type=int,
-        default=10000,
+        default=None,
         help="Token budget for extended thinking (default: 10000)",
     )
 
     return parser
+
+
+def _build_config(args: argparse.Namespace) -> AgentConfig:
+    """Build AgentConfig from parsed CLI args with preset → explicit flag precedence."""
+    # Start from preset or dataclass defaults
+    config = AgentConfig.from_preset(args.preset) if args.preset else AgentConfig()
+
+    # Apply explicit overrides (only non-None values)
+    field_map: dict[str, str] = {
+        "model": "model",
+        "iterations": "max_iterations",
+        "revisions": "max_revisions_per_cycle",
+        "confidence_threshold": "confidence_threshold",
+        "temperature_generator": "temperature_generator",
+        "temperature_verifier": "temperature_verifier",
+        "temperature_reviser": "temperature_reviser",
+        "max_tokens": "max_tokens",
+        "thinking_budget": "thinking_budget",
+    }
+    for arg_name, field_name in field_map.items():
+        value = getattr(args, arg_name, None)
+        if value is not None:
+            object.__setattr__(config, field_name, value)
+
+    # Boolean flags: --thinking enables extended thinking (override preset)
+    if args.thinking:
+        config.extended_thinking = True
+
+    # Non-preset flags
+    config.enable_code_execution = not args.no_code
+    config.verbose = not args.quiet
+
+    return config
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -124,16 +190,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     # Build config
-    config = AgentConfig(
-        model=args.model,
-        max_iterations=args.iterations,
-        max_revisions_per_cycle=args.revisions,
-        enable_code_execution=not args.no_code,
-        max_tokens=args.max_tokens,
-        extended_thinking=args.thinking,
-        thinking_budget=args.thinking_budget,
-        verbose=not args.quiet,
-    )
+    config = _build_config(args)
 
     # Import here to avoid slow import on --help
     from alethic.agent import MathAgent

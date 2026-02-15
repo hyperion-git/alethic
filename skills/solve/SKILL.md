@@ -25,19 +25,36 @@ Parse the user's input above for optional flags and the problem statement.
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
+| `--preset` | `-p` | — | Named preset (quick, default, thorough, extreme) |
 | `--iterations` | `-i` | 5 | Maximum generate-verify-revise iterations |
 | `--revisions` | `-r` | 3 | Maximum revision attempts per iteration |
 | `--budget` | `-b` | 50 | Maximum total Task sub-agent calls |
+| `--threshold` | `-t` | 0.90 | Confidence threshold for acceptance |
+
+### Presets
+
+If `--preset` is given, apply these values first, then let explicit flags override:
+
+| Preset | Iters | Revs | Threshold | Budget |
+|--------|-------|------|-----------|--------|
+| `quick` | 2 | 1 | 0.85 | 20 |
+| `default` | 5 | 3 | 0.90 | 50 |
+| `thorough` | 8 | 5 | 0.95 | 80 |
+| `extreme` | 12 | 5 | 0.97 | 120 |
 
 Examples:
 - `/solve "Prove sqrt(2) is irrational"` — defaults (5 iter, 3 rev, 50 budget)
+- `/solve -p quick "Is 17 prime?"` — quick preset (2 iter, 1 rev, threshold 0.85)
+- `/solve -p thorough "Prove the Cayley-Hamilton theorem"` — thorough preset
+- `/solve -p quick -i 4 "Solve x^2=2"` — quick preset with iteration override
 - `/solve -i 2 "Quick check: is 17 prime?"` — 2 iterations
 - `/solve -i 8 -r 5 "Prove the Cayley-Hamilton theorem"` — extended
 - `/solve -i 1 -r 0 "What is 2+2?"` — single shot, no revisions
+- `/solve -t 0.95 "Prove Fermat's little theorem"` — stricter threshold
 
-Extract `max_iterations`, `max_revisions`, and `max_budget` from flags (or defaults). The remaining text is the problem statement.
+Extract `max_iterations`, `max_revisions`, `max_budget`, and `confidence_threshold` from flags (or defaults/preset). The remaining text is the problem statement.
 
-**Validation:** If `max_iterations` < 1, set to 1 and warn the user. If `max_revisions` < 0, set to 0. If `max_budget` < 3, set to 3. If no problem statement is found, ask the user to provide one.
+**Validation:** If `max_iterations` < 1, set to 1 and warn the user. If `max_revisions` < 0, set to 0. If `max_budget` < 3, set to 3. If `confidence_threshold` is outside (0, 1], clamp to [0.50, 1.0]. If no problem statement is found, ask the user to provide one.
 
 ---
 
@@ -326,6 +343,7 @@ Write the formatted document to the file path specified in your task.
      "max_iterations": {max_iterations},
      "max_revisions": {max_revisions},
      "max_budget": {max_budget},
+     "confidence_threshold": {confidence_threshold},
      "task_calls": 0,
      "best_confidence": 0.0,
      "best_solution_path": null,
@@ -341,7 +359,7 @@ Write the formatted document to the file path specified in your task.
    Alethic Mathematical Reasoning Agent
    Session: {session_dir}
    Problem: {first 200 chars of problem}...
-   Config: {max_iterations} iterations, {max_revisions} revisions/iter, budget {max_budget} calls
+   Config: {max_iterations} iterations, {max_revisions} revisions/iter, threshold {confidence_threshold}, budget {max_budget} calls
    Worst-case API calls: {estimate} (budget cap: {max_budget})
    ```
 
@@ -414,13 +432,13 @@ Loop for iterations 1 through `max_iterations`. For each iteration N:
 
 **Then branch on verdict:**
 
-- **If verdict is "correct" AND confidence >= 0.90**:
+- **If verdict is "correct" AND confidence >= {confidence_threshold}**:
   - Update `state.json`: `"status": "solved"`, `"verdict": "correct"`, current iteration, confidence.
   - Go to **Step 4: Beautify**, then **Step 5: Present Results**.
   - **STOP the loop.**
 
-- **If verdict is "correct" but confidence < 0.90**:
-  - Treat as "minor_issues" — the verifier is not confident enough. Before proceeding to revision, append to the verification file: `"\n\nNOTE: Verdict was 'correct' but confidence ({confidence}) is below the 0.90 threshold. The Reviser should strengthen justifications, add intermediate steps, or provide computational verification for any steps the Verifier could not fully confirm."` This ensures the Reviser has actionable feedback. Proceed to revision.
+- **If verdict is "correct" but confidence < {confidence_threshold}**:
+  - Treat as "minor_issues" — the verifier is not confident enough. Before proceeding to revision, append to the verification file: `"\n\nNOTE: Verdict was 'correct' but confidence ({confidence}) is below the {confidence_threshold} threshold. The Reviser should strengthen justifications, add intermediate steps, or provide computational verification for any steps the Verifier could not fully confirm."` This ensures the Reviser has actionable feedback. Proceed to revision.
 
 - **If verdict is "minor_issues" or "major_flaw"**:
   - If `max_revisions` > 0, proceed to Step 2d (Revise).
@@ -475,8 +493,8 @@ For revision M = 1 to `max_revisions`:
 8. **Unconditionally update best_confidence** — same logic as Step 2c: if confidence > best_confidence, update and copy revision to best_solution.md.
 
 9. **Branch on verdict:**
-   - **If "correct" AND confidence >= 0.90**: Update state.json, go to Step 4 then Step 5, **STOP**.
-   - **If "correct" but confidence < 0.90**: Treat as "minor_issues", continue to next revision.
+   - **If "correct" AND confidence >= {confidence_threshold}**: Update state.json, go to Step 4 then Step 5, **STOP**.
+   - **If "correct" but confidence < {confidence_threshold}**: Treat as "minor_issues", continue to next revision.
    - **If "minor_issues"**: Continue to next revision (M+1).
    - **If "major_flaw"**: Break out of revision loop, continue to next iteration.
    - **If "unsolved"**: Check for false premise (same as Step 2c). If not false premise, break out of revision loop.
@@ -537,7 +555,7 @@ If no solution exists (all iterations produced nothing), skip this step.
 
 Read `{session_dir}/solution_formatted.md` (the beautified version) for the solution content. Fall back to `best_solution.md` if the beautifier failed or was skipped.
 
-### For solved problems (verdict = "correct", confidence >= 0.90):
+### For solved problems (verdict = "correct", confidence >= {confidence_threshold}):
 
 ```
 ## Result: SOLVED
@@ -598,6 +616,7 @@ The raw solution is always at `{session_dir}/best_solution.md` and the formatted
 
 ## Known Limitations
 
+- **Preset scope**: The `/solve` skill supports `--preset` for iterations, revisions, budget, and confidence threshold. Temperature and extended thinking are API-only (Task sub-agent limitation).
 - **No temperature control**: Task sub-agents run at default temperature. The Python library uses T=1.0 (Generator), T=0.2 (Verifier), T=0.7 (Reviser) for deliberate diversity/precision tradeoffs. The skill relies on prompt instructions to approximate these behaviors.
 - **Extended thinking**: Claude Code Task sub-agents use the model's default reasoning depth. The Aletheia paper attributes major gains to Gemini Deep Think's inference-time compute scaling. The Python library supports `--thinking` to enable Claude's extended thinking API, which partially closes this gap. The skill variant does not currently have a mechanism to enable extended thinking on sub-agent Task calls.
 - **No best-of-N sampling**: Each iteration generates one candidate. The Python library could be extended with parallel generation; the skill architecture does not currently support this.

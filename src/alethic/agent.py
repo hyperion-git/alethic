@@ -88,11 +88,13 @@ class MathAgent:
         total_revisions = 0
         best_solution = None
         best_confidence = 0.0
+        threshold = self.config.confidence_threshold
 
         self._log(f"{'=' * 60}")
         self._log("ALETHIC MATH AGENT")
         self._log(f"Model: {self.config.model}")
         self._log(f"Max iterations: {self.config.max_iterations}")
+        self._log(f"Confidence threshold: {threshold:.0%}")
         self._log(f"Code execution: {'enabled' if self.config.enable_code_execution else 'disabled'}")
         self._log(f"{'=' * 60}")
         self._log(f"Problem: {problem[:200]}{'...' if len(problem) > 200 else ''}")
@@ -146,7 +148,7 @@ class MathAgent:
                 best_solution = solution
 
             # ── CHECK: Is it correct? ──
-            if verification.is_acceptable:
+            if verification.is_acceptable(threshold):
                 self._log("")
                 self._log("[SOLVED] Verifier approved the solution!")
                 elapsed = time.time() - start_time
@@ -182,7 +184,7 @@ class MathAgent:
                 )
 
             # ── REVISE (if fixable) ──
-            if verification.needs_revision:
+            if verification.needs_revision(threshold):
                 current_solution = solution
                 for rev_num in range(1, self.config.max_revisions_per_cycle + 1):
                     self._log(f"[REVISE] Revision {rev_num}/{self.config.max_revisions_per_cycle}...")
@@ -223,7 +225,7 @@ class MathAgent:
                         best_confidence = verification.confidence
                         best_solution = current_solution
 
-                    if verification.is_acceptable:
+                    if verification.is_acceptable(threshold):
                         self._log("")
                         self._log("[SOLVED] Verifier approved the revised solution!")
                         elapsed = time.time() - start_time

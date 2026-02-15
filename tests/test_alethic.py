@@ -46,46 +46,46 @@ class TestModels:
         sol = Solution(problem="test", solution_text="answer", iteration=1)
         assert str(sol) == "answer"
 
-    def test_verification_result_properties(self):
+    def test_verification_result_methods(self):
         correct = VerificationResult(
             verdict=Verdict.CORRECT, critique="Good", confidence=0.95
         )
-        assert correct.is_acceptable
-        assert not correct.needs_revision
+        assert correct.is_acceptable()
+        assert not correct.needs_revision()
 
         minor = VerificationResult(
             verdict=Verdict.MINOR_ISSUES, critique="Almost", confidence=0.7
         )
-        assert not minor.is_acceptable
-        assert minor.needs_revision
+        assert not minor.is_acceptable()
+        assert minor.needs_revision()
 
         major = VerificationResult(
             verdict=Verdict.MAJOR_FLAW, critique="Bad", confidence=0.2
         )
-        assert not major.is_acceptable
-        assert major.needs_revision
+        assert not major.is_acceptable()
+        assert major.needs_revision()
 
         unsolved = VerificationResult(
             verdict=Verdict.UNSOLVED, critique="N/A", confidence=0.0
         )
-        assert not unsolved.is_acceptable
-        assert not unsolved.needs_revision
+        assert not unsolved.is_acceptable()
+        assert not unsolved.needs_revision()
 
     def test_correct_but_low_confidence_needs_revision(self):
         """CORRECT with confidence < 0.90 should trigger revision, not acceptance."""
         low_conf = VerificationResult(
             verdict=Verdict.CORRECT, critique="Looks right but unsure", confidence=0.75
         )
-        assert not low_conf.is_acceptable
-        assert low_conf.needs_revision
+        assert not low_conf.is_acceptable()
+        assert low_conf.needs_revision()
 
     def test_correct_at_threshold_is_acceptable(self):
         """CORRECT with confidence exactly 0.90 should be acceptable."""
         at_threshold = VerificationResult(
             verdict=Verdict.CORRECT, critique="Verified", confidence=0.90
         )
-        assert at_threshold.is_acceptable
-        assert not at_threshold.needs_revision
+        assert at_threshold.is_acceptable()
+        assert not at_threshold.needs_revision()
 
     def test_agent_result_solved(self):
         result = AgentResult(
@@ -111,6 +111,86 @@ class TestModels:
         )
         assert not result.solved
         assert "UNSOLVED" in str(result)
+
+
+# ── Preset and threshold tests ────────────────────────────────────────
+
+
+class TestPresets:
+    def test_preset_from_preset_quick(self):
+        config = AgentConfig.from_preset("quick")
+        assert config.max_iterations == 2
+        assert config.max_revisions_per_cycle == 1
+        assert config.confidence_threshold == 0.85
+        assert config.extended_thinking is False
+
+    def test_preset_from_preset_thorough(self):
+        config = AgentConfig.from_preset("thorough")
+        assert config.max_iterations == 8
+        assert config.max_revisions_per_cycle == 5
+        assert config.confidence_threshold == 0.95
+        assert config.extended_thinking is True
+        assert config.thinking_budget == 15000
+        assert config.max_tokens == 32768
+
+    def test_preset_from_preset_with_overrides(self):
+        config = AgentConfig.from_preset("quick", max_iterations=10)
+        assert config.max_iterations == 10
+        assert config.confidence_threshold == 0.85  # from preset
+
+    def test_preset_unknown_raises(self):
+        import pytest
+        with pytest.raises(ValueError, match="Unknown preset 'nonexistent'"):
+            AgentConfig.from_preset("nonexistent")
+
+    def test_config_confidence_threshold_field(self):
+        config = AgentConfig()
+        assert config.confidence_threshold == 0.90
+
+        config2 = AgentConfig(confidence_threshold=0.80)
+        assert config2.confidence_threshold == 0.80
+
+    def test_custom_confidence_threshold(self):
+        """is_acceptable and needs_revision respect custom threshold."""
+        vr = VerificationResult(
+            verdict=Verdict.CORRECT, critique="OK", confidence=0.88
+        )
+        # Default threshold (0.90): not acceptable
+        assert not vr.is_acceptable()
+        assert vr.needs_revision()
+        # Custom threshold (0.85): acceptable
+        assert vr.is_acceptable(0.85)
+        assert not vr.needs_revision(0.85)
+
+    def test_cli_preset_flag(self):
+        from alethic.cli import _build_config, build_parser
+        parser = build_parser()
+        args = parser.parse_args(["--preset", "quick", "test problem"])
+        config = _build_config(args)
+        assert config.max_iterations == 2
+        assert config.confidence_threshold == 0.85
+
+    def test_cli_preset_with_override(self):
+        from alethic.cli import _build_config, build_parser
+        parser = build_parser()
+        args = parser.parse_args(["--preset", "quick", "--iterations", "7", "test"])
+        config = _build_config(args)
+        assert config.max_iterations == 7  # explicit override
+        assert config.confidence_threshold == 0.85  # from preset
+
+    def test_cli_temperature_flags(self):
+        from alethic.cli import _build_config, build_parser
+        parser = build_parser()
+        args = parser.parse_args([
+            "--temperature-generator", "0.5",
+            "--temperature-verifier", "0.1",
+            "--temperature-reviser", "0.3",
+            "test",
+        ])
+        config = _build_config(args)
+        assert config.temperature_generator == 0.5
+        assert config.temperature_verifier == 0.1
+        assert config.temperature_reviser == 0.3
 
 
 # ── Prompt scaffolding tests ──────────────────────────────────────────

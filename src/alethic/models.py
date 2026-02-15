@@ -5,6 +5,7 @@ from __future__ import annotations
 import enum
 import time
 from dataclasses import dataclass, field
+from typing import Any, ClassVar
 
 
 class Verdict(enum.Enum):
@@ -43,7 +44,64 @@ class AgentConfig:
     max_tokens: int = 16384
     extended_thinking: bool = False
     thinking_budget: int = 10000
+    confidence_threshold: float = 0.90
     verbose: bool = True
+
+    PRESETS: ClassVar[dict[str, dict[str, Any]]] = {
+        "quick": {
+            "max_iterations": 2,
+            "max_revisions_per_cycle": 1,
+            "confidence_threshold": 0.85,
+            "extended_thinking": False,
+            "max_tokens": 16384,
+        },
+        "default": {
+            "max_iterations": 5,
+            "max_revisions_per_cycle": 3,
+            "confidence_threshold": 0.90,
+            "extended_thinking": False,
+            "max_tokens": 16384,
+        },
+        "thorough": {
+            "max_iterations": 8,
+            "max_revisions_per_cycle": 5,
+            "confidence_threshold": 0.95,
+            "extended_thinking": True,
+            "thinking_budget": 15000,
+            "max_tokens": 32768,
+        },
+        "extreme": {
+            "max_iterations": 12,
+            "max_revisions_per_cycle": 5,
+            "confidence_threshold": 0.97,
+            "extended_thinking": True,
+            "thinking_budget": 40000,
+            "max_tokens": 65536,
+        },
+    }
+
+    @classmethod
+    def from_preset(cls, name: str, **overrides: Any) -> AgentConfig:
+        """Create an AgentConfig from a named preset with optional overrides.
+
+        Args:
+            name: Preset name (quick, default, thorough, extreme).
+            **overrides: Field values that override the preset.
+
+        Returns:
+            AgentConfig with preset values, overridden by any explicit kwargs.
+
+        Raises:
+            ValueError: If the preset name is unknown.
+        """
+        if name not in cls.PRESETS:
+            raise ValueError(
+                f"Unknown preset '{name}'. "
+                f"Available presets: {', '.join(cls.PRESETS)}"
+            )
+        params = dict(cls.PRESETS[name])
+        params.update(overrides)
+        return cls(**params)
 
 
 @dataclass
@@ -69,14 +127,12 @@ class VerificationResult:
     issues: list[str] = field(default_factory=list)
     reason: str = ""  # For false-premise detection (REASON field from verifier)
 
-    @property
-    def is_acceptable(self) -> bool:
-        return self.verdict == Verdict.CORRECT and self.confidence >= 0.90
+    def is_acceptable(self, threshold: float = 0.90) -> bool:
+        return self.verdict == Verdict.CORRECT and self.confidence >= threshold
 
-    @property
-    def needs_revision(self) -> bool:
+    def needs_revision(self, threshold: float = 0.90) -> bool:
         return self.verdict in (Verdict.MINOR_ISSUES, Verdict.MAJOR_FLAW) or (
-            self.verdict == Verdict.CORRECT and self.confidence < 0.90
+            self.verdict == Verdict.CORRECT and self.confidence < threshold
         )
 
     def __str__(self) -> str:
