@@ -204,7 +204,7 @@ claude plugins add hyperion-git/alethic
 
 ```bash
 git clone https://github.com/hyperion-git/alethic.git
-DEST=~/.claude/plugins/cache/local/alethic/0.2.0
+DEST=~/.claude/plugins/cache/local/alethic/1.0.0
 mkdir -p "$DEST"
 cp -r alethic/.claude-plugin alethic/skills "$DEST/"
 ```
@@ -426,7 +426,7 @@ The Python library is organized into the following modules, each with a single c
 ```
 alethic/
 ├── .claude-plugin/                 # Claude Code marketplace plugin
-│   ├── plugin.json                 # Plugin metadata (v0.2.0)
+│   ├── plugin.json                 # Plugin metadata (v1.0.0)
 │   └── marketplace.json            # Marketplace manifest
 ├── skills/                         # Claude Code skills
 │   ├── alethic-solve/
