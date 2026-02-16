@@ -4,7 +4,7 @@
 
 **Alethic** is a reasoning agent for mathematics and physics inspired by [Google DeepMind's Aletheia](https://arxiv.org/abs/2602.10177), built on Claude (Opus 4.6). It implements a Generate → Verify → Revise loop with decoupled verification — the Verifier evaluates solutions independently, without access to the Generator's intermediate reasoning traces. The orchestrator logic is domain-neutral; only the prompt templates differ between math (`MathAgent`, `/solve`) and physics (`PhysicsAgent`, `/derive`).
 
-Available as Claude Code skills (`/solve` for math, `/derive` for physics) or as a standalone **Python library** with CLI.
+Available as Claude Code skills (`/solve` for math, `/derive` for physics, `/scientific-figure` for scientific figures) or as a standalone **Python library** with CLI.
 
 ## Dev Commands
 
@@ -112,6 +112,10 @@ Both `/solve` and `/derive` support presets via `-p`/`--preset`, controlling ite
 |------------|---------|
 | `skills/solve/SKILL.md` | `/solve` command orchestrator — spawns Opus Task sub-agents with file-based state |
 | `skills/derive/SKILL.md` | `/derive` command orchestrator — physics derivations with physics-specific prompts |
+| `skills/scientific-figure/SKILL.md` | `/scientific-figure` command — publication-quality scientific figures with AFP color palette and Tufte principles |
+| `skills/scientific-figure/references/*.md` | Color palette reference, presentation/poster overrides |
+| `skills/scientific-figure/scripts/register_colormaps.py` | Registers 56 CIELAB-linearized AFP colormaps with matplotlib |
+| `skills/scientific-figure/evals.json` | Evaluation scenarios for the `/scientific-figure` skill |
 | `.claude-plugin/plugin.json` | Plugin metadata |
 | `.claude-plugin/marketplace.json` | Marketplace manifest for `hyperion-git/alethic` |
 | `skills/solve/references/*.md` | Standalone math prompt references (generator, verifier, reviser, beautifier) |

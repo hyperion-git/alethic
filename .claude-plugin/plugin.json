@@ -1,6 +1,6 @@
 {
   "name": "alethic",
-  "description": "Mathematical reasoning agent with Generate-Verify-Revise loop (inspired by DeepMind's Aletheia)",
+  "description": "Reasoning agent for mathematics and physics with Generate-Verify-Revise loop (inspired by DeepMind's Aletheia), plus publication-quality scientific figure generation",
   "version": "0.2.0",
   "author": {
     "name": "Alexander Friedrich"
@@ -8,5 +8,5 @@
   "homepage": "https://github.com/hyperion-git/alethic",
   "repository": "https://github.com/hyperion-git/alethic",
   "license": "MIT",
-  "keywords": ["math", "reasoning", "verification", "theorem-proving", "aletheia"]
+  "keywords": ["math", "physics", "reasoning", "verification", "theorem-proving", "aletheia", "figures", "plotting"]
 }

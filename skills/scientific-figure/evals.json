@@ -1,0 +1,54 @@
+{
+  "skill_name": "scientific-figure",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Plot the Allan deviation of a clock with white frequency noise floor at 1e-13 / sqrt(tau) from 1s to 1e5 s, and a flicker floor at 3e-15. Save as a publication figure for a Nature-format paper.",
+      "expected_output": "A matplotlib script producing a log-log Allan deviation plot with correct rcParams, AFP color cycle, Nature single-column width (3.3 in), 7 pt fonts, inward ticks with minors visible, direct curve labeling, and a caption suggestion.",
+      "files": [],
+      "assertions": [
+        "Output contains plt.rcParams.update or equivalent style configuration",
+        "figure.figsize is set to approximately (3.3, 2.5) for Nature single-column",
+        "Font size is 7 pt for body text elements",
+        "Log-log axes are used (loglog, set_xscale/set_yscale, or similar)",
+        "Minor ticks are enabled (xtick.minor.visible and ytick.minor.visible are True)",
+        "Tick direction is 'in'",
+        "The AFP color cycle hex values are present (e.g. #2e2cb8, #db002b)",
+        "savefig.dpi is at least 300",
+        "A caption or caption suggestion is provided in the response",
+        "No legend box is used OR direct annotation is applied to curves",
+        "axes.grid is False or grid is not enabled by default"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I have vibration spectra from 6 different sensor prototypes measured at the same test site. Each is an ASD from 0.01 to 100 Hz. Plot them so I can compare performance. This is for an internal presentation to the team.",
+      "expected_output": "The skill should recognize >4 overlapping series and either ask whether to use small multiples or proactively choose an appropriate strategy. It should apply the presentation override (larger fonts, thicker lines). If small multiples are used, axes must be shared.",
+      "files": [],
+      "assertions": [
+        "Response addresses the >4 series problem (mentions small multiples, highlight-by-exception, or asks user for strategy)",
+        "Presentation-appropriate font sizes are used (>=14 pt) or presentation override is referenced",
+        "Line widths are increased for presentation (>=1.5 pt)",
+        "If small multiples are used, sharex=True and sharey=True are set",
+        "Log-log or semilog axes are used (appropriate for ASD spectra)",
+        "Figure size is larger than default journal size",
+        "The AFP color cycle or a qualitative palette is used for the 6 sensors"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Make a heatmap of a 2D gravitational tidal acceleration field (gradient of g) over a 100m x 100m area. Use a diverging colormap that's colorblind-safe. The data ranges from -5e-7 to +5e-7 m/s^2 with zero at the center.",
+      "expected_output": "A matplotlib script using pcolormesh or imshow with a CVD-safe AFP diverging colormap (afp_KbOr recommended), proper colorbar with units, symmetric normalization around zero, and the AFP colormaps registered.",
+      "files": [],
+      "assertions": [
+        "A diverging colormap is used (not sequential)",
+        "The colormap is CVD-safe (afp_KbOr, afp_RdBu, afp_BgRo, afp_PuOr, or coolwarm — NOT afp_RdGn or afp_GnOr)",
+        "AFP colormap registration code is present (register_colormaps.register_all or equivalent)",
+        "Symmetric normalization is applied (vmin=-X, vmax=+X, or TwoSlopeNorm, or similar)",
+        "A colorbar is included with units labeled",
+        "Axes are labeled with physical units (meters or similar)",
+        "The rcParams base style configuration is applied"
+      ]
+    }
+  ]
+}
