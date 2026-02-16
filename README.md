@@ -167,7 +167,7 @@ ISSUES:
 
 **Sandboxed code execution.** Both the Generator and Verifier have access to a Python sandbox for computational verification. The sandbox restricts available builtins to a safe subset, limits importable modules to mathematical and scientific libraries (math, sympy, numpy, scipy, mpmath, and related packages), and enforces execution timeouts via `SIGALRM`. This allows the subagents to test conjectures numerically, verify algebraic manipulations symbolically, evaluate special functions, and check edge cases computationally — all without the security risks of unrestricted code execution.
 
-**File-based state (skill only).** In the Claude Code skill, all solutions, verifications, and revisions are written to files in a session directory (`/tmp/alethic-{timestamp}/`). The orchestrator tracks only summary metrics — verdict strings, confidence floats, and file paths — in its own context. This prevents the exponential context growth that would occur if full solution texts accumulated across iterations, enabling the system to run for many iterations without approaching context limits.
+**File-based state (skill only).** In the Claude Code skill, all solutions, verifications, and revisions are written to files in a session directory (`.alethic/{slug}-{date}-{hex}/` in the project directory, falling back to `/tmp/alethic-*` outside git repos). The orchestrator tracks only summary metrics — verdict strings, confidence floats, and file paths — in its own context. This prevents the exponential context growth that would occur if full solution texts accumulated across iterations, enabling the system to run for many iterations without approaching context limits. Each session contains `session.json` (metadata), `problem.md`, `output.md` (final deliverable), and a `worklog/` subdirectory for intermediate files. An append-only `sessions.jsonl` index at the `.alethic/` root enables querying across sessions.
 
 ## Presets
 
@@ -251,7 +251,7 @@ Both skills share the same orchestrator logic (iteration loop, verdict parsing, 
 
 ### Skill Execution Flow
 
-Both skills follow the same four-stage flow. First, the **Generator** (an Opus Task sub-agent) reads the problem file, uses Bash for Python computation and WebSearch for theorem/identity lookup, and writes a complete solution to disk. Second, the **Verifier** (a separate Opus Task sub-agent with a fresh context) reads only the problem file and the solution file, performs its independent evaluation, and writes a structured verification report. If issues are found, the **Reviser** (another Opus Task sub-agent) reads the solution and the critique, writes a revised solution, and the cycle repeats with a fresh Verifier. Finally, the **Beautifier** formats the accepted solution into clean LaTeX/Markdown with proper typesetting. All intermediate state lives in `/tmp/alethic-{timestamp}/`, and the orchestrator tracks only verdicts and confidence scores in its own context window.
+Both skills follow the same four-stage flow. First, the **Generator** (an Opus Task sub-agent) reads the problem file, uses Bash for Python computation and WebSearch for theorem/identity lookup, and writes a complete solution to disk. Second, the **Verifier** (a separate Opus Task sub-agent with a fresh context) reads only the problem file and the solution file, performs its independent evaluation, and writes a structured verification report. If issues are found, the **Reviser** (another Opus Task sub-agent) reads the solution and the critique, writes a revised solution, and the cycle repeats with a fresh Verifier. Finally, the **Beautifier** formats the accepted solution into clean LaTeX/Markdown with proper typesetting. All intermediate state lives in `.alethic/{session}/worklog/` (or `/tmp/alethic-*/` outside git repos), and the orchestrator tracks only verdicts and confidence scores in its own context window.
 
 ## Python Library
 
@@ -495,9 +495,9 @@ ruff format src tests
 
 **Context accumulation in skill mode.** Without `context:fork`, all Task call/response pairs accumulate in the main conversation. The file-based state design mitigates this by keeping solution text out of the orchestrator's context, but very long runs (8+ iterations) may approach context limits.
 
-**Beautifier runs post-verification.** The Beautifier formats the accepted solution after the final verification pass. While it is constrained to formatting-only changes (converting text math to LaTeX, adding section headers), there is no re-verification of the beautified output. The raw verified solution is preserved at `best_solution.md` as a fallback.
+**Beautifier runs post-verification.** The Beautifier formats the accepted solution after the final verification pass. While it is constrained to formatting-only changes (converting text math to LaTeX, adding section headers), there is no re-verification of the beautified output. The raw verified solution is preserved at `worklog/best_solution.md` as a fallback.
 
-**Session cleanup.** Session directories in `/tmp/alethic-*` persist until the system clears `/tmp/`, typically on reboot. For manual cleanup: `rm -rf /tmp/alethic-*`.
+**Session storage.** Sessions are stored in `.alethic/` in the project directory (falls back to `/tmp/alethic-*` outside git repos). Intermediate files live in `worklog/` subdirectories and can be pruned with `rm -rf .alethic/*/worklog/`. Add `.alethic/` to your `.gitignore`.
 
 ## License
 

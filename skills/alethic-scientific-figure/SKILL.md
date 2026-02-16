@@ -387,3 +387,56 @@ plt.rcParams.update({
     "image.cmap": "viridis",
 })
 ```
+
+---
+
+## Session Tracking
+
+After generating a figure, persist the session for reproducibility.
+
+1. **Project detection**: Same as `/alethic-solve` — check for `.git` in cwd or parents. Use Bash:
+   ```bash
+   git rev-parse --show-toplevel 2>/dev/null || echo ""
+   ```
+   If found, use cwd as `{project_root}` and proceed. If not found, skip session tracking entirely (figures are delivered inline).
+
+2. **Create session directory**: Generate a slug from the figure description (lowercase, strip non-alphanumeric to hyphens, collapse runs, truncate to 40 chars), then:
+   ```bash
+   HEX=$(head -c2 /dev/urandom | xxd -p)
+   SESSION_ID="${SLUG}-$(date +%Y%m%d)-${HEX}"
+   SESSION_DIR="{project_root}/.alethic/${SESSION_ID}"
+   mkdir -p "${SESSION_DIR}"
+   ```
+
+3. **Save files**:
+   - Copy the plotting script to `{session_dir}/output.py`
+   - Copy the figure file to `{session_dir}/output.{ext}` (pdf, png, or svg)
+   - Write `{session_dir}/session.json`:
+   ```json
+   {
+     "schema_version": 1,
+     "session_id": "{session_id}",
+     "problem": "{figure description}",
+     "domain": "figure",
+     "skill": "alethic-scientific-figure",
+     "status": "completed",
+     "output_file": "output.{ext}",
+     "created_at": "{ISO 8601 timestamp}",
+     "completed_at": "{ISO 8601 timestamp}"
+   }
+   ```
+
+4. **Append to** `.alethic/sessions.jsonl`:
+   ```json
+   {"session_id":"{session_id}","problem":"{figure description}","domain":"figure","status":"completed","created_at":"{created_at}","completed_at":"{completed_at}"}
+   ```
+   Use Bash to append: `echo '{json_line}' >> {project_root}/.alethic/sessions.jsonl`
+
+5. **Print breadcrumb**:
+   ```
+   **Session:**  `.alethic/{session_id}/`
+   **Script:**   `.alethic/{session_id}/output.py`
+   **Figure:**   `.alethic/{session_id}/output.{ext}`
+   ```
+
+Note: Session tracking is best-effort. If directory creation fails (permissions, non-project context), deliver the figure normally without persisting session state.

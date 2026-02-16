@@ -131,4 +131,8 @@ Both `/alethic-solve` and `/alethic-derive` support presets via `-p`/`--preset`,
 6. **Sandboxed code execution**: `execute_python()` uses restricted `__builtins__` and an allowlist of importable modules (math, sympy, numpy, scipy, mpmath). Timeout via `signal.SIGALRM`.
 7. **Tool-use loop**: `_call_model()` in `subagents.py` handles multi-round tool calls (up to 5 rounds) before extracting the final text response.
 8. **Strategic failure admission**: After exhausting `max_iterations`, the agent returns `Verdict.UNSOLVED` with the best solution seen, rather than hallucinating confidence.
-9. **File-based state** (skill only): Session directories in `/tmp/alethic-*/` prevent context window exhaustion — the orchestrator tracks only verdicts and confidence, full text lives in files.
+9. **File-based state** (skill only): Session directories in `.alethic/` (project-local) prevent context window exhaustion — the orchestrator tracks only verdicts and confidence, full text lives in files. Falls back to `/tmp/alethic-*/` outside git repositories.
+
+### Session Directory Layout (skills only)
+
+Skills persist sessions in `.alethic/` within the project directory (detected via `.git`). Each session gets a `{slug}-{YYYYMMDD}-{4hex}/` directory containing `session.json` (metadata), `problem.md`, `output.md` (final deliverable), and a `worklog/` subdirectory for intermediate files. An append-only `sessions.jsonl` index at the `.alethic/` root enables querying across sessions. Falls back to `/tmp/alethic-*` outside git repositories. The Python library (`MathAgent`, `PhysicsAgent`) is unaffected — it uses in-memory `AgentResult` objects.

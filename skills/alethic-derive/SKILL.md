@@ -327,39 +327,68 @@ Write the formatted document to the file path specified in your task.
 
 ## Step 1: Setup
 
-1. Create the session directory using Bash: `DIR=$(mktemp -d /tmp/alethic-XXXXXXXXXX) && echo $DIR`
-   Capture the echoed path as `{session_dir}`.
+1. **Project detection**: Use Bash to check if `.git` exists in the current working directory or any parent (up to 5 levels):
+   ```bash
+   git rev-parse --show-toplevel 2>/dev/null || echo ""
+   ```
+   If a git root is found, set `{project_root}` to the current working directory (cwd, NOT the git root — sessions live where the user invoked the skill). If no git repo is found, fall back to legacy behavior: `DIR=$(mktemp -d /tmp/alethic-XXXXXXXXXX) && echo $DIR` and skip to sub-step 4.
 
-2. Write the problem statement to `{session_dir}/problem.md`, wrapped in tags:
+2. **Slug generation**: From the problem text — lowercase, strip non-alphanumeric characters to hyphens, collapse runs of hyphens, trim leading/trailing hyphens, truncate to 40 chars. Use Bash:
+   ```bash
+   SLUG=$(echo "{problem text}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g; s/--*/-/g; s/^-//; s/-$//' | cut -c1-40)
+   ```
+
+3. **Session directory**: Generate a 4-hex random suffix and create the directory:
+   ```bash
+   HEX=$(head -c2 /dev/urandom | xxd -p)
+   SESSION_ID="${SLUG}-$(date +%Y%m%d)-${HEX}"
+   SESSION_DIR="{project_root}/.alethic/${SESSION_ID}"
+   mkdir -p "${SESSION_DIR}/worklog"
+   echo "${SESSION_DIR}"
+   ```
+   Capture the echoed path as `{session_dir}` and the session ID as `{session_id}`.
+
+4. Write the problem statement to `{session_dir}/problem.md`, wrapped in tags:
    ```
    <problem_statement>
    {problem text}
    </problem_statement>
    ```
 
-3. Write initial state to `{session_dir}/state.json`:
+5. Write initial metadata to `{session_dir}/session.json`:
    ```json
    {
+     "schema_version": 1,
+     "session_id": "{session_id}",
+     "problem": "{problem text}",
+     "domain": "physics",
+     "skill": "alethic-derive",
+     "preset": "{preset name or 'default'}",
+     "config": {
+       "max_iterations": {max_iterations},
+       "max_revisions": {max_revisions},
+       "max_budget": {max_budget},
+       "confidence_threshold": {confidence_threshold}
+     },
      "status": "running",
      "current_iteration": 0,
-     "max_iterations": {max_iterations},
-     "max_revisions": {max_revisions},
-     "max_budget": {max_budget},
-     "confidence_threshold": {confidence_threshold},
      "task_calls": 0,
      "best_confidence": 0.0,
      "best_solution_path": null,
      "best_verification_path": null,
-     "verdict": null
+     "verdict": null,
+     "output_file": null,
+     "created_at": "{ISO 8601 timestamp}",
+     "completed_at": null
    }
    ```
 
-4. Initialize a counter variable: `task_calls = 0`.
+6. Initialize a counter variable: `task_calls = 0`.
 
-5. **Resource estimate**: Calculate the worst-case Task calls: `max_iterations * (2 + max_revisions * 2) + 1`. Print to the user:
+7. **Resource estimate**: Calculate the worst-case Task calls: `max_iterations * (2 + max_revisions * 2) + 1`. Print to the user:
    ```
    Alethic Physics Derivation Agent
-   Session: {session_dir}
+   Session: .alethic/{session_id}/
    Problem: {first 200 chars of problem}...
    Config: {max_iterations} iterations, {max_revisions} revisions/iter, threshold {confidence_threshold}, budget {max_budget} calls
    Worst-case API calls: {estimate} (budget cap: {max_budget})
@@ -375,7 +404,7 @@ Loop for iterations 1 through `max_iterations`. For each iteration N:
 
 ### Step 2a: Generate
 
-1. Use Bash: `mkdir -p {session_dir}/iter{N}/`
+1. Use Bash: `mkdir -p {session_dir}/worklog/iter{N}/`
 
 2. Increment `task_calls`. Spawn a Task sub-agent:
    ```
@@ -389,7 +418,7 @@ Loop for iterations 1 through `max_iterations`. For each iteration N:
 
    Task-specific instructions after the template:
    - "Read the problem from `{session_dir}/problem.md`."
-   - "Write your complete derivation to `{session_dir}/iter{N}/solution.md`."
+   - "Write your complete derivation to `{session_dir}/worklog/iter{N}/solution.md`."
    - If iteration 2+: include the strategy history — "Previous attempts used the following strategies and were not fully verified: {list of strategy summaries from prior iterations}. Try a DIFFERENT derivation approach."
    - "After writing the derivation file, return a ONE-LINE summary of your derivation strategy and approach (e.g., 'Lagrangian mechanics with small-angle approximation')."
 
@@ -415,13 +444,13 @@ Loop for iterations 1 through `max_iterations`. For each iteration N:
 
    Task-specific instructions after the template:
    - "Read the problem from `{session_dir}/problem.md`."
-   - "Read the proposed derivation from `{session_dir}/iter{N}/solution.md`."
-   - "Write your full verification to `{session_dir}/iter{N}/verification.md`."
+   - "Read the proposed derivation from `{session_dir}/worklog/iter{N}/solution.md`."
+   - "Write your full verification to `{session_dir}/worklog/iter{N}/verification.md`."
    - "After writing the verification file, return ONLY: VERDICT: {verdict} | CONFIDENCE: {confidence}"
 
 2. **Extract verdict** using the Error Handling Protocol:
    - Try parsing the Task return value by searching for VERDICT and CONFIDENCE independently (as described in the Error Handling Protocol).
-   - If that fails, Read `{session_dir}/iter{N}/verification.md` and extract the same fields from the file.
+   - If that fails, Read `{session_dir}/worklog/iter{N}/verification.md` and extract the same fields from the file.
    - If both fail, use `verdict = "unsolved"`, `confidence = 0.0`.
    - Clamp confidence to [0.0, 1.0].
 
@@ -430,12 +459,12 @@ Loop for iterations 1 through `max_iterations`. For each iteration N:
 ### Step 2c: Check Verdict and Update Best
 
 **First, unconditionally update best_confidence tracking** — regardless of verdict:
-- If this confidence > best_confidence, update `best_confidence = confidence` and copy the solution file to `{session_dir}/best_solution.md`. Also record the path to the corresponding verification file.
+- If this confidence > best_confidence, update `best_confidence = confidence` and copy the solution file to `{session_dir}/worklog/best_solution.md`. Also record the path to the corresponding verification file.
 
 **Then branch on verdict:**
 
 - **If verdict is "correct" AND confidence >= {confidence_threshold}**:
-  - Update `state.json`: `"status": "solved"`, `"verdict": "correct"`, current iteration, confidence.
+  - Update `session.json`: `"status": "solved"`, `"verdict": "correct"`, current iteration, confidence.
   - Go to **Step 4: Beautify**, then **Step 5: Present Results**.
   - **STOP the loop.**
 
@@ -457,8 +486,8 @@ For revision M = 1 to `max_revisions`:
 **Budget check**: If `task_calls >= max_budget`, break out of revision loop.
 
 1. Determine input files:
-   - If M == 1: solution = `iter{N}/solution.md`, verification = `iter{N}/verification.md`
-   - If M > 1: solution = `iter{N}/revision_{M-1}.md`, verification = `iter{N}/verification_rev{M-1}.md`
+   - If M == 1: solution = `worklog/iter{N}/solution.md`, verification = `worklog/iter{N}/verification.md`
+   - If M > 1: solution = `worklog/iter{N}/revision_{M-1}.md`, verification = `worklog/iter{N}/verification_rev{M-1}.md`
 
 2. Increment `task_calls`. Spawn a Task sub-agent:
    ```
@@ -474,8 +503,8 @@ For revision M = 1 to `max_revisions`:
    - "Read the problem from `{session_dir}/problem.md`."
    - "Read the derivation from `{solution_path}`."
    - "Read the verification critique from `{verification_path}`."
-   - "Write the changelog to `{session_dir}/iter{N}/changelog_rev{M}.md`."
-   - "Write your complete revised derivation to `{session_dir}/iter{N}/revision_{M}.md`."
+   - "Write the changelog to `{session_dir}/worklog/iter{N}/changelog_rev{M}.md`."
+   - "Write your complete revised derivation to `{session_dir}/worklog/iter{N}/revision_{M}.md`."
    - "After writing both files, return a ONE-LINE summary of changes made."
 
 3. If the Task fails, log `[Iter {N}] Reviser (rev {M}) FAILED` and break out of revision loop.
@@ -484,18 +513,18 @@ For revision M = 1 to `max_revisions`:
 
 5. **Re-verify the revision** — increment `task_calls`, spawn a fresh Verifier Task with `model: "opus"`:
    - Problem file: `{session_dir}/problem.md`
-   - Solution file: `{session_dir}/iter{N}/revision_{M}.md` (the clean revision, NOT the changelog)
-   - Verification output: `{session_dir}/iter{N}/verification_rev{M}.md`
+   - Solution file: `{session_dir}/worklog/iter{N}/revision_{M}.md` (the clean revision, NOT the changelog)
+   - Verification output: `{session_dir}/worklog/iter{N}/verification_rev{M}.md`
    - Same decoupling rules and Verifier Prompt Template as Step 2b.
 
 6. Extract verdict using the Error Handling Protocol (same as Step 2b.2).
 
 7. Print: `[Iter {N}] Re-verification (rev {M}): VERDICT: {verdict} | CONFIDENCE: {confidence}`
 
-8. **Unconditionally update best_confidence** — same logic as Step 2c: if confidence > best_confidence, update and copy revision to best_solution.md.
+8. **Unconditionally update best_confidence** — same logic as Step 2c: if confidence > best_confidence, update and copy revision to `worklog/best_solution.md`.
 
 9. **Branch on verdict:**
-   - **If "correct" AND confidence >= {confidence_threshold}**: Update state.json, go to Step 4 then Step 5, **STOP**.
+   - **If "correct" AND confidence >= {confidence_threshold}**: Update session.json, go to Step 4 then Step 5, **STOP**.
    - **If "correct" but confidence < {confidence_threshold}**: Treat as "minor_issues", continue to next revision.
    - **If "minor_issues"**: Continue to next revision (M+1).
    - **If "major_flaw"**: Break out of revision loop, continue to next iteration.
@@ -503,7 +532,7 @@ For revision M = 1 to `max_revisions`:
 
 ### Step 2e: Update State
 
-After each iteration (whether solved or not), update `{session_dir}/state.json` with:
+After each iteration (whether solved or not), update `{session_dir}/session.json` with:
 - `"current_iteration": {N}`
 - `"task_calls": {task_calls}`
 - `"best_confidence": {best_confidence}`
@@ -517,18 +546,18 @@ After each iteration (whether solved or not), update `{session_dir}/state.json` 
 
 If all iterations are exhausted or budget is hit without an accepted solution:
 
-1. Read `{session_dir}/best_solution.md` (if it exists).
+1. Read `{session_dir}/worklog/best_solution.md` (if it exists).
 2. Read the corresponding verification file for the best solution to extract outstanding issues.
-3. Update `state.json` with `"status": "unsolved"`, final `task_calls`, and `best_confidence`.
+3. Update `session.json` with `"status": "unsolved"`, final `task_calls`, and `best_confidence`.
 4. Go to **Step 4: Beautify**, then **Step 5: Present Results** with `solved = false`.
 
 ---
 
 ## Step 4: Beautify
 
-After the loop terminates — whether solved or unsolved — and **if a solution exists** (`best_solution.md` was written), run a beautifier pass.
+After the loop terminates — whether solved or unsolved — and **if a solution exists** (`worklog/best_solution.md` was written), run a beautifier pass.
 
-**Budget check**: If `task_calls >= max_budget`, skip beautification and present `best_solution.md` directly.
+**Budget check**: If `task_calls >= max_budget`, skip beautification and present `worklog/best_solution.md` directly.
 
 1. Increment `task_calls`. Spawn a Task sub-agent:
    ```
@@ -541,11 +570,11 @@ After the loop terminates — whether solved or unsolved — and **if a solution
    ```
 
    Task-specific instructions after the template:
-   - "Read the raw derivation from `{session_dir}/best_solution.md`."
-   - "Write the formatted document to `{session_dir}/solution_formatted.md`."
+   - "Read the raw derivation from `{session_dir}/worklog/best_solution.md`."
+   - "Write the formatted document to `{session_dir}/output.md`."
    - "Return a ONE-LINE summary: 'Formatted: {number} sections, {number} equations'."
 
-2. If the Task fails, fall back to presenting `best_solution.md` unformatted.
+2. If the Task fails, fall back to presenting `worklog/best_solution.md` unformatted.
 
 3. Print: `[Beautify] {summary}`
 
@@ -555,7 +584,7 @@ If no solution exists (all iterations produced nothing), skip this step.
 
 ## Step 5: Present Results
 
-Read `{session_dir}/solution_formatted.md` (the beautified version) for the solution content. Fall back to `best_solution.md` if the beautifier failed or was skipped.
+Read `{session_dir}/output.md` (the beautified version) for the derivation content. Fall back to `worklog/best_solution.md` if the beautifier failed or was skipped.
 
 ### For solved problems (verdict = "correct", confidence >= {confidence_threshold}):
 
@@ -566,11 +595,13 @@ Read `{session_dir}/solution_formatted.md` (the beautified version) for the solu
 **Iterations:** {N} of {max_iterations}
 **Revisions:** {total revision count across all iterations}
 **API calls:** {task_calls}
-**Session:** `{session_dir}/`
+**Session:**  `.alethic/{session_id}/`
+**Output:**   `.alethic/{session_id}/output.md`
+**Worklog:**  `.alethic/{session_id}/worklog/`
 
 ---
 
-{content of solution_formatted.md}
+{content of output.md}
 ```
 
 ### For unsolved problems (iterations/budget exhausted):
@@ -582,14 +613,16 @@ Read `{session_dir}/solution_formatted.md` (the beautified version) for the solu
 **Iterations:** {iterations_used} of {max_iterations}
 **Revisions:** {total revision count}
 **API calls:** {task_calls}
-**Session:** `{session_dir}/`
+**Session:**  `.alethic/{session_id}/`
+**Output:**   `.alethic/{session_id}/output.md`
+**Worklog:**  `.alethic/{session_id}/worklog/`
 
 > **Note:** This derivation was not approved by the independent verifier.
 > The highest confidence reached was {best_confidence}. Review carefully.
 
 ---
 
-{content of solution_formatted.md, or "No derivation was produced." if none}
+{content of output.md, or "No derivation was produced." if none}
 ```
 
 If the best solution had issues flagged by the verifier, append:
@@ -602,7 +635,21 @@ If the best solution had issues flagged by the verifier, append:
 {ISSUES from the best solution's verification file}
 ```
 
-The raw derivation is always at `{session_dir}/best_solution.md` and the formatted version at `{session_dir}/solution_formatted.md`.
+The raw derivation is always at `{session_dir}/worklog/best_solution.md` and the formatted version at `{session_dir}/output.md`.
+
+---
+
+## Step 6: Session Finalization
+
+After presenting results, finalize the session state for future reference.
+
+1. **Update `session.json`**: Set `status` to `"solved"` or `"unsolved"`, set `completed_at` to the current ISO 8601 timestamp, and set `output_file` to `"output.md"` (or `null` if no output was produced).
+
+2. **Append to session index**: If the session directory is inside `.alethic/` (not a `/tmp/` fallback), append one JSON line to `.alethic/sessions.jsonl`:
+   ```json
+   {"session_id":"{session_id}","problem":"{problem text}","domain":"physics","status":"{solved|unsolved}","confidence":{best_confidence},"created_at":"{created_at}","completed_at":"{completed_at}"}
+   ```
+   Use Bash to append: `echo '{json_line}' >> {project_root}/.alethic/sessions.jsonl`
 
 ---
 
@@ -625,4 +672,4 @@ The raw derivation is always at `{session_dir}/best_solution.md` and the formatt
 - **Context accumulation**: Without `context:fork`, all Task call/response pairs accumulate in the main conversation. The context management rules above mitigate this, but very long runs (8+ iterations) may approach context limits.
 - **Beautifier post-verification**: The Beautifier runs after the final verification. While constrained to formatting-only changes, there is no re-verification of the beautified output. The raw verified derivation is preserved at `best_solution.md`.
 - **Single-model verification**: Both Generator and Verifier use the same underlying model (Claude Opus). Decoupling helps but cannot eliminate shared model blind spots.
-- **Session cleanup**: Session directories in `/tmp/alethic-*` are not automatically cleaned up. They persist until the system clears `/tmp/` (typically on reboot). For manual cleanup: `rm -rf /tmp/alethic-*`.
+- **Session storage**: Sessions are stored in `.alethic/` in the project directory (falls back to `/tmp/alethic-*` outside git repos). Intermediate files live in `worklog/` subdirectories and can be pruned with `rm -rf .alethic/*/worklog/`. Add `.alethic/` to your `.gitignore`.
