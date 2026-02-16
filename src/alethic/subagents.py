@@ -181,7 +181,11 @@ def _parse_verification(text: str) -> VerificationResult:
         text,
         re.IGNORECASE,
     )
-    verdict_str = verdict_match.group(1).lower() if verdict_match else "major_flaw"
+    if verdict_match:
+        verdict_str = verdict_match.group(1).lower()
+    else:
+        logger.warning("Verdict regex failed to match — defaulting to major_flaw")
+        verdict_str = "major_flaw"
 
     verdict_map = {
         "correct": Verdict.CORRECT,
@@ -197,6 +201,7 @@ def _parse_verification(text: str) -> VerificationResult:
         try:
             raw = float(conf_match.group(1))
         except ValueError:
+            logger.warning("Confidence value %r is malformed — defaulting to 0.5", conf_match.group(1))
             raw = 0.5
         # Normalize percentage values (e.g., 95 → 0.95); small overshoots
         # like 1.5 are just clamped rather than treated as percentages.
@@ -204,6 +209,7 @@ def _parse_verification(text: str) -> VerificationResult:
             raw /= 100.0
         confidence = max(0.0, min(1.0, raw))
     else:
+        logger.warning("Confidence regex failed to match — defaulting to 0.5")
         confidence = 0.5
 
     # Extract critique (stops at REASON: or ISSUES: whichever comes first)

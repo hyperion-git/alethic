@@ -150,21 +150,24 @@ def _build_config(args: argparse.Namespace) -> AgentConfig:
     config = AgentConfig.from_preset(args.preset) if args.preset else AgentConfig()
 
     # Apply explicit overrides (only non-None values)
-    field_map: dict[str, str] = {
-        "model": "model",
-        "iterations": "max_iterations",
-        "revisions": "max_revisions_per_cycle",
-        "confidence_threshold": "confidence_threshold",
-        "temperature_generator": "temperature_generator",
-        "temperature_verifier": "temperature_verifier",
-        "temperature_reviser": "temperature_reviser",
-        "max_tokens": "max_tokens",
-        "thinking_budget": "thinking_budget",
-    }
-    for arg_name, field_name in field_map.items():
-        value = getattr(args, arg_name, None)
-        if value is not None:
-            object.__setattr__(config, field_name, value)
+    if args.model is not None:
+        config.model = args.model
+    if args.iterations is not None:
+        config.max_iterations = args.iterations
+    if args.revisions is not None:
+        config.max_revisions_per_cycle = args.revisions
+    if args.confidence_threshold is not None:
+        config.confidence_threshold = args.confidence_threshold
+    if args.temperature_generator is not None:
+        config.temperature_generator = args.temperature_generator
+    if args.temperature_verifier is not None:
+        config.temperature_verifier = args.temperature_verifier
+    if args.temperature_reviser is not None:
+        config.temperature_reviser = args.temperature_reviser
+    if args.max_tokens is not None:
+        config.max_tokens = args.max_tokens
+    if args.thinking_budget is not None:
+        config.thinking_budget = args.thinking_budget
 
     # Boolean flags: --thinking enables extended thinking (override preset)
     if args.thinking:

@@ -29,7 +29,7 @@ import time
 
 import anthropic
 
-from alethic.models import AgentConfig, AgentResult, Verdict
+from alethic.models import AgentConfig, AgentResult, Solution, Verdict, VerificationResult
 from alethic.subagents import generate, revise, verify
 
 logger = logging.getLogger("alethic")
@@ -83,6 +83,135 @@ class MathAgent:
 
     def _log_header(self) -> str:
         return "ALETHIC MATH AGENT"
+
+    def _check_false_premise(
+        self,
+        verification: VerificationResult,
+        problem: str,
+        iteration: int,
+        total_revisions: int,
+        history: list[dict],
+        start_time: float,
+    ) -> AgentResult | None:
+        """Return AgentResult if verifier detected a false premise, else None."""
+        if (
+            verification.verdict == Verdict.UNSOLVED
+            and verification.reason
+            and verification.reason.strip().lower() not in _EMPTY_REASONS
+        ):
+            self._log("")
+            self._log("[FALSE PREMISE] Verifier detected the problem's premise is false:")
+            self._log(f"  {verification.reason}")
+            elapsed = time.time() - start_time
+            return AgentResult(
+                problem=problem,
+                solution=verification.reason,
+                verdict=Verdict.UNSOLVED,
+                confidence=verification.confidence,
+                iterations_used=iteration,
+                total_revisions=total_revisions,
+                admitted_failure=False,
+                history=history,
+                elapsed_seconds=elapsed,
+            )
+        return None
+
+    def _run_revision_loop(
+        self,
+        *,
+        problem: str,
+        solution: Solution,
+        verification: VerificationResult,
+        prompts: dict[str, str],
+        iteration: int,
+        total_revisions: int,
+        history: list[dict],
+        start_time: float,
+        threshold: float,
+        best_solution: Solution | None,
+        best_confidence: float,
+    ) -> AgentResult | tuple[int, Solution | None, float]:
+        """Run revision sub-loop. Returns AgentResult if solved, else updated state tuple."""
+        current_solution = solution
+
+        for rev_num in range(1, self.config.max_revisions_per_cycle + 1):
+            self._log(f"[REVISE] Revision {rev_num}/{self.config.max_revisions_per_cycle}...")
+            current_solution = revise(
+                self.client,
+                problem=problem,
+                solution=current_solution,
+                verification=verification,
+                config=self.config,
+                revision_number=rev_num,
+                system_prompt=prompts.get("reviser_system"),
+                user_template=prompts.get("reviser_user"),
+            )
+            total_revisions += 1
+            history.append({
+                "phase": "revise",
+                "iteration": iteration,
+                "revision": rev_num,
+            })
+
+            # Re-verify the revision
+            self._log(f"[VERIFY] Re-verifying revision {rev_num}...")
+            verification = verify(
+                self.client,
+                problem=problem,
+                solution=current_solution,
+                config=self.config,
+                system_prompt=prompts.get("verifier_system"),
+                user_template=prompts.get("verifier_user"),
+            )
+            history.append({
+                "phase": "verify",
+                "iteration": iteration,
+                "revision": rev_num,
+                "verdict": verification.verdict.value,
+                "confidence": verification.confidence,
+            })
+            self._log(f"[VERIFY] Verdict: {verification.verdict.value} "
+                       f"(confidence: {verification.confidence:.0%})")
+
+            if verification.confidence > best_confidence:
+                best_confidence = verification.confidence
+                best_solution = current_solution
+
+            if verification.is_acceptable(threshold):
+                self._log("")
+                self._log("[SOLVED] Verifier approved the revised solution!")
+                elapsed = time.time() - start_time
+                return AgentResult(
+                    problem=problem,
+                    solution=current_solution.solution_text,
+                    verdict=Verdict.CORRECT,
+                    confidence=verification.confidence,
+                    iterations_used=iteration,
+                    total_revisions=total_revisions,
+                    admitted_failure=False,
+                    history=history,
+                    elapsed_seconds=elapsed,
+                )
+
+            # If major flaw after revision, break to restart from generator
+            if verification.verdict == Verdict.MAJOR_FLAW:
+                self._log("[REVISE] Major flaw persists — restarting from generator")
+                break
+
+            # If unsolved after revision, check false premise then restart
+            if verification.verdict == Verdict.UNSOLVED:
+                fp = self._check_false_premise(
+                    verification, problem, iteration,
+                    total_revisions, history, start_time,
+                )
+                if fp:
+                    return fp
+                self._log("[REVISE] Solution unsolvable — restarting from generator")
+                break
+        else:
+            self._log(f"[REVISE] Exhausted revision attempts for iteration {iteration}")
+
+        return total_revisions, best_solution, best_confidence
 
     def solve(
         self,
@@ -187,115 +316,31 @@ class MathAgent:
                     )
 
                 # ── CHECK: False premise? ──
-                if verification.verdict == Verdict.UNSOLVED and verification.reason and verification.reason.strip().lower() not in _EMPTY_REASONS:
-                    self._log("")
-                    self._log("[FALSE PREMISE] Verifier detected the problem's premise is false:")
-                    self._log(f"  {verification.reason}")
-                    elapsed = time.time() - start_time
-                    return AgentResult(
-                        problem=problem,
-                        solution=verification.reason,
-                        verdict=Verdict.UNSOLVED,
-                        confidence=verification.confidence,
-                        iterations_used=iteration,
-                        total_revisions=total_revisions,
-                        admitted_failure=False,
-                        history=history,
-                        elapsed_seconds=elapsed,
-                    )
+                fp = self._check_false_premise(
+                    verification, problem, iteration,
+                    total_revisions, history, start_time,
+                )
+                if fp:
+                    return fp
 
                 # ── REVISE (if fixable) ──
                 if verification.needs_revision(threshold):
-                    current_solution = solution
-                    revision_exhausted = True
-                    for rev_num in range(1, self.config.max_revisions_per_cycle + 1):
-                        self._log(f"[REVISE] Revision {rev_num}/{self.config.max_revisions_per_cycle}...")
-                        current_solution = revise(
-                            self.client,
-                            problem=problem,
-                            solution=current_solution,
-                            verification=verification,
-                            config=self.config,
-                            revision_number=rev_num,
-                            system_prompt=prompts.get("reviser_system"),
-                            user_template=prompts.get("reviser_user"),
-                        )
-                        total_revisions += 1
-                        history.append({
-                            "phase": "revise",
-                            "iteration": iteration,
-                            "revision": rev_num,
-                        })
-
-                        # Re-verify the revision
-                        self._log(f"[VERIFY] Re-verifying revision {rev_num}...")
-                        verification = verify(
-                            self.client,
-                            problem=problem,
-                            solution=current_solution,
-                            config=self.config,
-                            system_prompt=prompts.get("verifier_system"),
-                            user_template=prompts.get("verifier_user"),
-                        )
-                        history.append({
-                            "phase": "verify",
-                            "iteration": iteration,
-                            "revision": rev_num,
-                            "verdict": verification.verdict.value,
-                            "confidence": verification.confidence,
-                        })
-                        self._log(f"[VERIFY] Verdict: {verification.verdict.value} "
-                                   f"(confidence: {verification.confidence:.0%})")
-
-                        if verification.confidence > best_confidence:
-                            best_confidence = verification.confidence
-                            best_solution = current_solution
-
-                        if verification.is_acceptable(threshold):
-                            self._log("")
-                            self._log("[SOLVED] Verifier approved the revised solution!")
-                            elapsed = time.time() - start_time
-                            return AgentResult(
-                                problem=problem,
-                                solution=current_solution.solution_text,
-                                verdict=Verdict.CORRECT,
-                                confidence=verification.confidence,
-                                iterations_used=iteration,
-                                total_revisions=total_revisions,
-                                admitted_failure=False,
-                                history=history,
-                                elapsed_seconds=elapsed,
-                            )
-
-                        # If major flaw after revision, break to restart from generator
-                        if verification.verdict == Verdict.MAJOR_FLAW:
-                            self._log("[REVISE] Major flaw persists — restarting from generator")
-                            revision_exhausted = False
-                            break
-
-                        # If unsolved after revision, check false premise then restart
-                        if verification.verdict == Verdict.UNSOLVED:
-                            if verification.reason and verification.reason.strip().lower() not in _EMPTY_REASONS:
-                                self._log("[FALSE PREMISE] Verifier detected the problem's premise is false:")
-                                self._log(f"  {verification.reason}")
-                                elapsed = time.time() - start_time
-                                return AgentResult(
-                                    problem=problem,
-                                    solution=verification.reason,
-                                    verdict=Verdict.UNSOLVED,
-                                    confidence=verification.confidence,
-                                    iterations_used=iteration,
-                                    total_revisions=total_revisions,
-                                    admitted_failure=False,
-                                    history=history,
-                                    elapsed_seconds=elapsed,
-                                )
-                            self._log("[REVISE] Solution unsolvable — restarting from generator")
-                            revision_exhausted = False
-                            break
-
-                    if revision_exhausted:
-                        self._log(f"[REVISE] Exhausted revision attempts for iteration {iteration}")
+                    result = self._run_revision_loop(
+                        problem=problem,
+                        solution=solution,
+                        verification=verification,
+                        prompts=prompts,
+                        iteration=iteration,
+                        total_revisions=total_revisions,
+                        history=history,
+                        start_time=start_time,
+                        threshold=threshold,
+                        best_solution=best_solution,
+                        best_confidence=best_confidence,
+                    )
+                    if isinstance(result, AgentResult):
+                        return result
+                    total_revisions, best_solution, best_confidence = result
                 else:
                     self._log("[GENERATE] Solution unsolvable in this attempt — will retry from scratch")
 
