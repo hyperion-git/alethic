@@ -17,7 +17,7 @@ class Verdict(enum.Enum):
     UNSOLVED = "unsolved"  # strategic failure admission
 
 
-@dataclass
+@dataclass(frozen=True)
 class AgentConfig:
     """Configuration for the Alethic agent.
 

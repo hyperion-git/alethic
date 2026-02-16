@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import logging
 import re
+import time
+
+import anthropic
 
 from alethic.models import (
     AgentConfig,
@@ -38,6 +41,29 @@ def _extract_text(response) -> str:
         if hasattr(b, "text") and getattr(b, "type", None) == "text"
     ]
     return "\n".join(parts) if parts else "[No response generated]"
+
+
+_MAX_RETRIES = 3
+
+
+def _create_with_retry(client, kwargs: dict):
+    """Call client.messages.create with exponential backoff on rate limits."""
+    for attempt in range(_MAX_RETRIES + 1):
+        try:
+            return client.messages.create(**kwargs)
+        except anthropic.RateLimitError:
+            if attempt < _MAX_RETRIES:
+                delay = 2**attempt  # 1s, 2s, 4s
+                logger.warning(
+                    "Rate limited (attempt %d/%d) — retrying in %ds",
+                    attempt + 1, _MAX_RETRIES, delay,
+                )
+                time.sleep(delay)
+            else:
+                logger.error("Rate limited — exhausted %d retries", _MAX_RETRIES)
+                raise
+    # Unreachable, but keeps the type checker happy
+    raise RuntimeError("Unreachable")
 
 
 def _call_model(
@@ -80,7 +106,7 @@ def _call_model(
     # Tool-use loop: keep calling until we get a final text response
     max_tool_rounds = 5
     for _ in range(max_tool_rounds):
-        response = client.messages.create(**kwargs)
+        response = _create_with_retry(client, kwargs)
 
         # Check for tool use
         tool_results = process_tool_calls(response) if tools else []
@@ -174,6 +200,14 @@ def generate(
 # ---------------------------------------------------------------------------
 
 
+_VERDICT_MAP: dict[str, Verdict] = {
+    "correct": Verdict.CORRECT,
+    "minor_issues": Verdict.MINOR_ISSUES,
+    "major_flaw": Verdict.MAJOR_FLAW,
+    "unsolved": Verdict.UNSOLVED,
+}
+
+
 def _parse_verification(text: str) -> VerificationResult:
     """Parse structured verifier output into a VerificationResult."""
     # Extract verdict
@@ -188,16 +222,10 @@ def _parse_verification(text: str) -> VerificationResult:
         logger.warning("Verdict regex failed to match — defaulting to major_flaw")
         verdict_str = "major_flaw"
 
-    verdict_map = {
-        "correct": Verdict.CORRECT,
-        "minor_issues": Verdict.MINOR_ISSUES,
-        "major_flaw": Verdict.MAJOR_FLAW,
-        "unsolved": Verdict.UNSOLVED,
-    }
-    verdict = verdict_map.get(verdict_str, Verdict.MAJOR_FLAW)
+    verdict = _VERDICT_MAP.get(verdict_str, Verdict.MAJOR_FLAW)
 
     # Extract confidence
-    conf_match = re.search(r"CONFIDENCE:\s*([\d.]+)", text)
+    conf_match = re.search(r"CONFIDENCE:\s*([\d.]+)", text, re.IGNORECASE)
     if conf_match:
         try:
             raw = float(conf_match.group(1))
@@ -215,28 +243,36 @@ def _parse_verification(text: str) -> VerificationResult:
 
     # Extract critique (stops at REASON: or ISSUES: whichever comes first)
     critique_match = re.search(
-        r"CRITIQUE:\s*\n(.*?)(?=\nREASON:|\nISSUES:|\Z)", text, re.DOTALL
+        r"CRITIQUE:\s*\n(.*?)(?=\nREASON:|\nISSUES:|\Z)", text, re.DOTALL | re.IGNORECASE
     )
     critique = critique_match.group(1).strip() if critique_match else text
 
     # Extract reason (for false-premise detection)
     reason_match = re.search(
-        r"REASON:\s*(.*?)(?=\nISSUES:|\Z)", text, re.DOTALL
+        r"REASON:\s*(.*?)(?=\nISSUES:|\Z)", text, re.DOTALL | re.IGNORECASE
     )
     reason = reason_match.group(1).strip() if reason_match else ""
 
     # Extract issues (stops at REASON: if it appears after, or end of text)
     issues_match = re.search(
-        r"ISSUES:\s*\n(.*?)(?=\nREASON:|\Z)", text, re.DOTALL
+        r"ISSUES:\s*\n(.*?)(?=\nREASON:|\Z)", text, re.DOTALL | re.IGNORECASE
     )
-    issues = []
+    issues: list[str] = []
     if issues_match:
-        issues_text = issues_match.group(1).strip()
-        if issues_text.lower() != "none":
-            for line in issues_text.split("\n"):
-                line = line.strip().lstrip("- ").strip()
-                if line:
-                    issues.append(line)
+        raw_issues = issues_match.group(1).strip()
+        if raw_issues.lower() != "none":
+            issues = [
+                cleaned
+                for line in raw_issues.split("\n")
+                if (cleaned := line.strip().lstrip("- ").strip())
+            ]
+
+    if not verdict_match and not conf_match and not critique_match:
+        logger.warning(
+            "Verifier output contained no parseable fields — "
+            "all values are defaults. Raw output (first 200 chars): %s",
+            text[:200],
+        )
 
     return VerificationResult(
         verdict=verdict,

@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from typing import Any
 
 from alethic.models import AgentConfig
 
@@ -152,47 +153,47 @@ Examples:
 
 
 def _build_config(args: argparse.Namespace) -> AgentConfig:
-    """Build AgentConfig from parsed CLI args with preset → explicit flag precedence."""
-    # Start from preset or dataclass defaults
-    config = AgentConfig.from_preset(args.preset) if args.preset else AgentConfig()
+    """Build AgentConfig from parsed CLI args with preset -> explicit flag precedence."""
+    # Collect overrides from explicit CLI flags (non-None values only)
+    overrides: dict[str, Any] = {}
 
-    # Apply explicit overrides (only non-None values)
-    if args.model is not None:
-        config.model = args.model
-    if args.iterations is not None:
-        config.max_iterations = args.iterations
-    if args.revisions is not None:
-        config.max_revisions_per_cycle = args.revisions
-    if args.confidence_threshold is not None:
-        config.confidence_threshold = args.confidence_threshold
-    if args.temperature_generator is not None:
-        config.temperature_generator = args.temperature_generator
-    if args.temperature_verifier is not None:
-        config.temperature_verifier = args.temperature_verifier
-    if args.temperature_reviser is not None:
-        config.temperature_reviser = args.temperature_reviser
-    if args.max_tokens is not None:
-        config.max_tokens = args.max_tokens
-    if args.thinking_budget is not None:
-        config.thinking_budget = args.thinking_budget
-    if args.best_of_n is not None:
-        config.best_of_n = args.best_of_n
+    _flag_map = {
+        "model": "model",
+        "iterations": "max_iterations",
+        "revisions": "max_revisions_per_cycle",
+        "confidence_threshold": "confidence_threshold",
+        "temperature_generator": "temperature_generator",
+        "temperature_verifier": "temperature_verifier",
+        "temperature_reviser": "temperature_reviser",
+        "max_tokens": "max_tokens",
+        "thinking_budget": "thinking_budget",
+        "best_of_n": "best_of_n",
+    }
+    for arg_name, config_name in _flag_map.items():
+        val = getattr(args, arg_name, None)
+        if val is not None:
+            overrides[config_name] = val
 
-    # Boolean flags: --thinking enables extended thinking (override preset)
     if args.thinking:
-        config.extended_thinking = True
+        overrides["extended_thinking"] = True
 
-    # Auto-bump max_tokens for thinking if not explicitly overridden
-    if config.extended_thinking and getattr(args, "max_tokens", None) is None:
-        min_tokens = config.thinking_budget + 8192
-        if config.max_tokens < min_tokens:
-            config.max_tokens = min_tokens
+    overrides["enable_code_execution"] = not args.no_code
+    overrides["verbose"] = not args.quiet
 
-    # Non-preset flags
-    config.enable_code_execution = not args.no_code
-    config.verbose = not args.quiet
+    # Auto-bump max_tokens for extended thinking when not explicitly set.
+    # Resolve thinking state and budget *before* constructing the config so we
+    # only build it once (AgentConfig is frozen).
+    if "max_tokens" not in overrides and overrides.get("extended_thinking", False):
+        preset_vals = AgentConfig.PRESETS.get(args.preset, {}) if args.preset else {}
+        budget = overrides.get("thinking_budget", preset_vals.get("thinking_budget", 10000))
+        preset_tokens = preset_vals.get("max_tokens", 16384)
+        min_tokens = budget + 8192
+        if preset_tokens < min_tokens:
+            overrides["max_tokens"] = min_tokens
 
-    return config
+    if args.preset:
+        return AgentConfig.from_preset(args.preset, **overrides)
+    return AgentConfig(**overrides)
 
 
 def _detect_subcommand(argv: list[str]) -> tuple[str | None, list[str]]:

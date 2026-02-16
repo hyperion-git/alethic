@@ -361,6 +361,15 @@ class MathAgent:
                     history.append({"phase": "error", "iteration": iteration, "error": "all candidates failed"})
                     continue
 
+                if len(candidates) < n:
+                    failures = n - len(candidates)
+                    logger.info(
+                        "Generated %d/%d candidates (%d failed)",
+                        len(candidates), n, failures,
+                    )
+                    self._log(f"[GENERATE] Warning: {len(candidates)}/{n} candidates "
+                               f"succeeded ({failures} failed)")
+
                 for idx, (sol, gen_t) in enumerate(candidates, 1):
                     history.append({
                         "phase": "generate",

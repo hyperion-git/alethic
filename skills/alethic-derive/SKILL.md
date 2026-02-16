@@ -599,6 +599,11 @@ FIDELITY: {verdict}
    Config: {max_iterations} iterations, {max_revisions} revisions/iter, threshold {confidence_threshold}, budget {max_budget} calls, best-of-{best_of_n}
    Worst-case API calls: {estimate} (budget cap: {max_budget})
    ```
+   When `--textbook` is set, also print:
+   ```
+   Textbook pipeline: +{budget_supplement} budget ({supplement_detail})
+   ```
+   Where `{budget_supplement}` is the textbook budget supplement applied (quick → +5, default → +7, thorough → +10, extreme → +12, or +7 if no preset), and `{supplement_detail}` describes the pipeline stages (e.g., "planner + up to N writers + fidelity verifier").
 
 ---
 
