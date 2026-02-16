@@ -117,12 +117,13 @@ class TestMathAgentNoExtraKwargs:
 
         mock_generate.assert_called_once()
         call_kwargs = mock_generate.call_args
-        # The call should NOT contain system_prompt or user_template
-        assert "system_prompt" not in call_kwargs.kwargs, (
-            "MathAgent must NOT pass system_prompt to generate()"
+        # MathAgent passes prompt overrides from _prompt_set() — for the base
+        # class these are all None, ensuring generate() uses its defaults.
+        assert call_kwargs.kwargs.get("system_prompt") is None, (
+            "MathAgent must NOT inject a custom system_prompt into generate()"
         )
-        assert "user_template" not in call_kwargs.kwargs, (
-            "MathAgent must NOT pass user_template to generate()"
+        assert call_kwargs.kwargs.get("user_template") is None, (
+            "MathAgent must NOT inject a custom user_template into generate()"
         )
 
 

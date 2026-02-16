@@ -1,4 +1,4 @@
-"""Adversarial tests validating /derive skill files against /solve skill files.
+"""Adversarial tests validating /alethic-derive skill files against /alethic-solve skill files.
 
 Checks structural consistency between the two skill variants: YAML frontmatter,
 step structure, prompt templates, physics-specific content, preset tables,
@@ -15,10 +15,10 @@ import pytest
 # ── Paths ──────────────────────────────────────────────────────────────
 
 BASE = os.path.join(os.path.dirname(__file__), os.pardir, "skills")
-SOLVE_SKILL = os.path.join(BASE, "solve", "SKILL.md")
-DERIVE_SKILL = os.path.join(BASE, "derive", "SKILL.md")
-SOLVE_REFS = os.path.join(BASE, "solve", "references")
-DERIVE_REFS = os.path.join(BASE, "derive", "references")
+SOLVE_SKILL = os.path.join(BASE, "alethic-solve", "SKILL.md")
+DERIVE_SKILL = os.path.join(BASE, "alethic-derive", "SKILL.md")
+SOLVE_REFS = os.path.join(BASE, "alethic-solve", "references")
+DERIVE_REFS = os.path.join(BASE, "alethic-derive", "references")
 
 REF_FILES = ["generator.md", "verifier.md", "reviser.md", "beautifier.md"]
 
@@ -129,10 +129,10 @@ def derive_frontmatter(derive_skill: str) -> dict:
 
 
 class TestFrontmatter:
-    """Verify derive/SKILL.md has valid YAML frontmatter matching solve's tools."""
+    """Verify alethic-derive/SKILL.md has valid YAML frontmatter matching alethic-solve's tools."""
 
     def test_derive_name(self, derive_frontmatter: dict):
-        assert derive_frontmatter["name"] == "derive"
+        assert derive_frontmatter["name"] == "alethic-derive"
 
     def test_derive_has_description(self, derive_frontmatter: dict):
         assert "description" in derive_frontmatter
@@ -186,7 +186,7 @@ class TestStepStructure:
 
 
 class TestPromptTemplates:
-    """derive/SKILL.md should have all 4 prompt template tags."""
+    """alethic-derive/SKILL.md should have all 4 prompt template tags."""
 
     TAGS = [
         "generator_prompt",
@@ -233,7 +233,7 @@ class TestPhysicsSpecificity:
 
 
 class TestBeautifierPhysicsSymbols:
-    """derive's beautifier should include physics-specific LaTeX symbols."""
+    """alethic-derive's beautifier should include physics-specific LaTeX symbols."""
 
     PHYSICS_SYMBOLS = [
         r"\hbar",
@@ -266,7 +266,7 @@ class TestBeautifierPhysicsSymbols:
 
 
 class TestSolveUnchanged:
-    """Verify solve/SKILL.md still says 'mathematical' (not physics)."""
+    """Verify alethic-solve/SKILL.md still says 'mathematical' (not physics)."""
 
     def test_solve_says_mathematical(self, solve_skill: str):
         assert "mathematical" in solve_skill.lower(), (
@@ -285,7 +285,7 @@ class TestSolveUnchanged:
 
 
 class TestReferenceFilesExist:
-    """All 4 reference files exist in skills/derive/references/."""
+    """All 4 reference files exist in skills/alethic-derive/references/."""
 
     @pytest.mark.parametrize("ref_file", REF_FILES)
     def test_derive_reference_exists(self, ref_file: str):
@@ -297,17 +297,17 @@ class TestReferenceFilesExist:
 
 
 class TestReferenceAuthorityNote:
-    """Each derive reference file should point to skills/derive/SKILL.md."""
+    """Each derive reference file should point to skills/alethic-derive/SKILL.md."""
 
     @pytest.mark.parametrize("ref_file", REF_FILES)
     def test_derive_reference_has_authority_note(self, ref_file: str):
         path = os.path.join(DERIVE_REFS, ref_file)
         content = _read(path)
-        # The note should appear near the top and reference derive/SKILL.md
+        # The note should appear near the top and reference alethic-derive/SKILL.md
         # Look in the first 300 characters for the authority note
         header = content[:400].lower()
-        assert "skills/derive/skill.md" in header, (
-            f"{ref_file} should reference skills/derive/SKILL.md as authoritative "
+        assert "skills/alethic-derive/skill.md" in header, (
+            f"{ref_file} should reference skills/alethic-derive/SKILL.md as authoritative "
             f"in its opening, but header is: {content[:200]!r}"
         )
 
@@ -316,7 +316,7 @@ class TestReferenceAuthorityNote:
 
 
 class TestVerifierPhysicsErrors:
-    """derive verifier should mention physics-specific error categories."""
+    """alethic-derive verifier should mention physics-specific error categories."""
 
     PHYSICS_ERRORS = [
         "dimensional inconsistency",
@@ -384,7 +384,7 @@ class TestPresetTableIdentical:
 
 
 class TestDeriveBeautifierStructure:
-    """derive beautifier should mention physics-specific document structure."""
+    """alethic-derive beautifier should mention physics-specific document structure."""
 
     STRUCTURE_ELEMENTS = [
         "Setup",
@@ -424,7 +424,7 @@ class TestDeriveBeautifierStructure:
 
 
 class TestSolveBeautifierStructure:
-    """solve beautifier should mention math-specific document structure."""
+    """alethic-solve beautifier should mention math-specific document structure."""
 
     def test_solve_beautifier_has_proof_strategy(self, solve_skill: str):
         beautifier = _extract_tag(solve_skill, "beautifier_prompt")

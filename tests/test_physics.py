@@ -154,6 +154,52 @@ class TestPhysicsAgent:
 
         assert PhysicsAgent is not None
 
+    def test_physics_agent_prompt_set(self):
+        """PhysicsAgent._prompt_set() should return all 7 physics prompt keys."""
+        from alethic.physics_agent import PhysicsAgent
+
+        agent = PhysicsAgent(api_key="test-key")
+        prompts = agent._prompt_set()
+        expected_keys = {
+            "generator_system",
+            "generator_user",
+            "balanced_addendum",
+            "verifier_system",
+            "verifier_user",
+            "reviser_system",
+            "reviser_user",
+        }
+        assert set(prompts.keys()) == expected_keys
+        # Verify prompts contain physics-specific content
+        assert "theoretical physics" in prompts["generator_system"].lower()
+        assert "physics derivation verifier" in prompts["verifier_system"].lower()
+
+    def test_physics_agent_inherits_solve(self):
+        """PhysicsAgent should not override solve() — it inherits MathAgent's."""
+        from alethic.agent import MathAgent
+        from alethic.physics_agent import PhysicsAgent
+
+        assert "solve" not in PhysicsAgent.__dict__
+        assert PhysicsAgent.solve is MathAgent.solve
+
+    def test_physics_agent_log_header(self):
+        from alethic.physics_agent import PhysicsAgent
+
+        agent = PhysicsAgent(api_key="test-key")
+        assert agent._log_header() == "ALETHIC PHYSICS DERIVATION AGENT"
+
+    def test_math_agent_log_header(self):
+        from alethic.agent import MathAgent
+
+        agent = MathAgent(api_key="test-key")
+        assert agent._log_header() == "ALETHIC MATH AGENT"
+
+    def test_math_agent_prompt_set_empty(self):
+        from alethic.agent import MathAgent
+
+        agent = MathAgent(api_key="test-key")
+        assert agent._prompt_set() == {}
+
 
 # ── PhysicsAgent integration test with mocked API ────────────────────
 

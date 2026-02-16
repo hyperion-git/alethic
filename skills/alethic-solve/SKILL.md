@@ -1,5 +1,5 @@
 ---
-name: solve
+name: alethic-solve
 description: "Solve a mathematical problem using Generate-Verify-Revise loop with decoupled verification"
 argument-hint: '[-i iterations] [-r revisions] [-b budget] "<problem>"'
 allowed-tools:
@@ -11,7 +11,7 @@ allowed-tools:
   - WebFetch
 ---
 
-# /solve — Alethic Mathematical Reasoning Agent
+# /alethic-solve — Alethic Mathematical Reasoning Agent
 
 You are the orchestrator for Alethic, a mathematical reasoning agent implementing DeepMind's Aletheia Generate-Verify-Revise architecture. Your job is to coordinate sub-agents (Generator, Verifier, Reviser, Beautifier) through a file-based loop to solve the given mathematical problem.
 
@@ -43,14 +43,14 @@ If `--preset` is given, apply these values first, then let explicit flags overri
 | `extreme` | 12 | 5 | 0.97 | 120 |
 
 Examples:
-- `/solve "Prove sqrt(2) is irrational"` — defaults (5 iter, 3 rev, 50 budget)
-- `/solve -p quick "Is 17 prime?"` — quick preset (2 iter, 1 rev, threshold 0.85)
-- `/solve -p thorough "Prove the Cayley-Hamilton theorem"` — thorough preset
-- `/solve -p quick -i 4 "Solve x^2=2"` — quick preset with iteration override
-- `/solve -i 2 "Quick check: is 17 prime?"` — 2 iterations
-- `/solve -i 8 -r 5 "Prove the Cayley-Hamilton theorem"` — extended
-- `/solve -i 1 -r 0 "What is 2+2?"` — single shot, no revisions
-- `/solve -t 0.95 "Prove Fermat's little theorem"` — stricter threshold
+- `/alethic-solve "Prove sqrt(2) is irrational"` — defaults (5 iter, 3 rev, 50 budget)
+- `/alethic-solve -p quick "Is 17 prime?"` — quick preset (2 iter, 1 rev, threshold 0.85)
+- `/alethic-solve -p thorough "Prove the Cayley-Hamilton theorem"` — thorough preset
+- `/alethic-solve -p quick -i 4 "Solve x^2=2"` — quick preset with iteration override
+- `/alethic-solve -i 2 "Quick check: is 17 prime?"` — 2 iterations
+- `/alethic-solve -i 8 -r 5 "Prove the Cayley-Hamilton theorem"` — extended
+- `/alethic-solve -i 1 -r 0 "What is 2+2?"` — single shot, no revisions
+- `/alethic-solve -t 0.95 "Prove Fermat's little theorem"` — stricter threshold
 
 Extract `max_iterations`, `max_revisions`, `max_budget`, and `confidence_threshold` from flags (or defaults/preset). The remaining text is the problem statement.
 
@@ -616,7 +616,7 @@ The raw solution is always at `{session_dir}/best_solution.md` and the formatted
 
 ## Known Limitations
 
-- **Preset scope**: The `/solve` skill supports `--preset` for iterations, revisions, budget, and confidence threshold. Temperature and extended thinking are API-only (Task sub-agent limitation).
+- **Preset scope**: The `/alethic-solve` skill supports `--preset` for iterations, revisions, budget, and confidence threshold. Temperature and extended thinking are API-only (Task sub-agent limitation).
 - **No temperature control**: Task sub-agents run at default temperature. The Python library uses T=1.0 (Generator), T=0.2 (Verifier), T=0.7 (Reviser) for deliberate diversity/precision tradeoffs. The skill relies on prompt instructions to approximate these behaviors.
 - **Extended thinking**: Claude Code Task sub-agents use the model's default reasoning depth. The Aletheia paper attributes major gains to Gemini Deep Think's inference-time compute scaling. The Python library supports `--thinking` to enable Claude's extended thinking API, which partially closes this gap. The skill variant does not currently have a mechanism to enable extended thinking on sub-agent Task calls.
 - **No best-of-N sampling**: Each iteration generates one candidate. The Python library could be extended with parallel generation; the skill architecture does not currently support this.

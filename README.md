@@ -2,7 +2,7 @@
 
 A reasoning agent for mathematics and physics inspired by [Google DeepMind's Aletheia](https://arxiv.org/abs/2602.10177), built on **Claude (Opus 4.6)**. Alethic implements a Generate-Verify-Revise loop with decoupled verification — a key architectural insight from DeepMind's design — to produce rigorous mathematical proofs and physics derivations with high confidence.
 
-Available as Claude Code skills (`/solve` for math, `/derive` for physics) or as a standalone **Python library** with CLI.
+Available as Claude Code skills (`/alethic-solve` for math, `/alethic-derive` for physics, `/alethic-scientific-figure` for scientific figures) or as a standalone **Python library** with CLI.
 
 ## Background and Motivation
 
@@ -10,7 +10,7 @@ In February 2026, Google DeepMind introduced Aletheia, a multi-agent system that
 
 When a verifier has access to the generator's internal reasoning, it tends to follow the same logical path and confirm flawed steps with unwarranted certainty. Decoupling forces the verifier to reconstruct and independently assess each argument from the final output alone.
 
-Alethic translates this decoupled verification approach to Claude's API. The project implements the same three-subagent loop — Generator, Verifier, and Reviser — with each role instantiated as an independent API call (in the Python library) or a separate Task sub-agent with a fresh context window (in the Claude Code skill). The orchestrator logic is domain-neutral; only the prompt templates differ between math (`MathAgent`, `/solve`) and physics (`PhysicsAgent`, `/derive`). The result is a system that can solve mathematical problems and derive physics results with verified confidence, or honestly admit failure when it cannot.
+Alethic translates this decoupled verification approach to Claude's API. The project implements the same three-subagent loop — Generator, Verifier, and Reviser — with each role instantiated as an independent API call (in the Python library) or a separate Task sub-agent with a fresh context window (in the Claude Code skill). The orchestrator logic is domain-neutral; only the prompt templates differ between math (`MathAgent`, `/alethic-solve`) and physics (`PhysicsAgent`, `/alethic-derive`). The result is a system that can solve mathematical problems and derive physics results with verified confidence, or honestly admit failure when it cannot.
 
 ### Key References
 
@@ -77,7 +77,7 @@ sequenceDiagram
 
 Each subagent is instantiated as an independent Claude API call with role-specific system prompts, temperature settings, and tool access. This separation ensures that no subagent can observe another's internal state.
 
-**Generator.** The Generator's task is to produce a complete, self-contained solution — a mathematical proof (in `/solve` / `MathAgent`) or a physics derivation (in `/derive` / `PhysicsAgent`). Its system prompt instructs it to restate the problem, select a strategy explicitly (proof techniques for math, derivation methods like Lagrangian mechanics or perturbation theory for physics), justify every inference, and use precise notation. When balanced prompting is enabled (the default), an addendum directs the Generator to first check whether the problem might be ill-posed: for math, this means testing small cases and boundary conditions; for physics, checking dimensional consistency and known limiting cases. This anti-confirmation-bias technique, adapted from the Aletheia design, reduces the risk of the model anchoring prematurely on a flawed approach. The Generator has access to a sandboxed Python environment for computational verification of intermediate results.
+**Generator.** The Generator's task is to produce a complete, self-contained solution — a mathematical proof (in `/alethic-solve` / `MathAgent`) or a physics derivation (in `/alethic-derive` / `PhysicsAgent`). Its system prompt instructs it to restate the problem, select a strategy explicitly (proof techniques for math, derivation methods like Lagrangian mechanics or perturbation theory for physics), justify every inference, and use precise notation. When balanced prompting is enabled (the default), an addendum directs the Generator to first check whether the problem might be ill-posed: for math, this means testing small cases and boundary conditions; for physics, checking dimensional consistency and known limiting cases. This anti-confirmation-bias technique, adapted from the Aletheia design, reduces the risk of the model anchoring prematurely on a flawed approach. The Generator has access to a sandboxed Python environment for computational verification of intermediate results.
 
 **Verifier.** The Verifier is the architectural cornerstone of the system. Its system prompt establishes strict independence: it must evaluate the solution purely on its written merits, checking every logical step, re-deriving computations independently, and flagging common mathematical errors including sign mistakes, off-by-one errors, vacuous truth claims, circular reasoning, non-exhaustive case analysis, and incorrect theorem application. The Verifier produces a structured output containing a verdict (`correct`, `minor_issues`, `major_flaw`, or `unsolved`), a numerical confidence score calibrated against explicit benchmarks (0.95-1.0 for fully verified solutions, below 0.50 for likely errors), a step-by-step critique, a reason field for false-premise detection, and a list of specific issues. The confidence threshold (default 90%, configurable via `confidence_threshold`) means that even a `correct` verdict at lower confidence is treated as requiring revision — the Verifier must be genuinely certain.
 
@@ -182,14 +182,15 @@ Alethic provides four named presets that control the speed-vs-rigor tradeoff. Ea
 
 Explicit flags (CLI) or keyword arguments (Python API) override preset values, so `--preset quick --iterations 4` uses the `quick` preset but with 4 iterations instead of 2.
 
-> **Skill note:** Both `/solve` and `/derive` support presets via `-p`/`--preset` for iterations, revisions, budget, and confidence threshold. Temperature and extended thinking are not controllable through the skills (Task sub-agent limitation).
+> **Skill note:** Both `/alethic-solve` and `/alethic-derive` support presets via `-p`/`--preset` for iterations, revisions, budget, and confidence threshold. Temperature and extended thinking are not controllable through the skills (Task sub-agent limitation).
 
 ## Claude Code Skills (Recommended)
 
 Alethic provides two Claude Code skills that run natively inside Claude Code, using Task sub-agents for true architectural decoupling. Each Verifier launches as an independent Task with a fresh context window, providing the strongest possible guarantee that it cannot observe the Generator's reasoning process. Both skills include a Beautifier stage that formats accepted outputs into clean LaTeX/Markdown.
 
-- **`/solve`** — Mathematical problem solving (proofs, computations, theorems)
-- **`/derive`** — Physics derivations (with physics-specific strategies, error checking, and notation)
+- **`/alethic-solve`** — Mathematical problem solving (proofs, computations, theorems)
+- **`/alethic-derive`** — Physics derivations (with physics-specific strategies, error checking, and notation)
+- **`/alethic-scientific-figure`** — Publication-quality scientific figures with AFP color palette and Tufte principles
 
 ### Install
 
@@ -208,22 +209,22 @@ mkdir -p "$DEST"
 cp -r alethic/.claude-plugin alethic/skills "$DEST/"
 ```
 
-Restart Claude Code. The `/solve` and `/derive` commands are now available.
+Restart Claude Code. The `/alethic-solve`, `/alethic-derive`, and `/alethic-scientific-figure` commands are now available.
 
 ### Usage
 
 ```
 # Math
-/solve "Prove that sqrt(2) is irrational"
-/solve -p thorough "Prove the Fundamental Theorem of Algebra"
-/solve -p quick -i 4 "Is 17 prime?"
-/solve -t 0.95 "Prove the AM-GM inequality for n variables"
+/alethic-solve "Prove that sqrt(2) is irrational"
+/alethic-solve -p thorough "Prove the Fundamental Theorem of Algebra"
+/alethic-solve -p quick -i 4 "Is 17 prime?"
+/alethic-solve -t 0.95 "Prove the AM-GM inequality for n variables"
 
 # Physics
-/derive "Derive the energy levels of the quantum harmonic oscillator"
-/derive -p thorough "Derive the hydrogen atom energy spectrum"
-/derive -i 8 -r 5 "Derive the Dirac equation from relativistic quantum mechanics"
-/derive "Show that the Euler-Lagrange equations follow from Hamilton's principle"
+/alethic-derive "Derive the energy levels of the quantum harmonic oscillator"
+/alethic-derive -p thorough "Derive the hydrogen atom energy spectrum"
+/alethic-derive -i 8 -r 5 "Derive the Dirac equation from relativistic quantum mechanics"
+/alethic-derive "Show that the Euler-Lagrange equations follow from Hamilton's principle"
 ```
 
 | Flag | Short | Default | Description |
@@ -234,11 +235,11 @@ Restart Claude Code. The `/solve` and `/derive` commands are now available.
 | `--revisions` | `-r` | 3 | Maximum revision attempts per iteration |
 | `--budget` | `-b` | 50 | Total sub-agent call budget |
 
-### How `/derive` Differs from `/solve`
+### How `/alethic-derive` Differs from `/alethic-solve`
 
 Both skills share the same orchestrator logic (iteration loop, verdict parsing, file-based state, budget tracking). The differences are entirely in the prompt templates:
 
-| Component | `/solve` | `/derive` |
+| Component | `/alethic-solve` | `/alethic-derive` |
 |-----------|----------|-----------|
 | Generator role | "mathematical problem solver" | "theoretical physics derivation solver" |
 | Strategy catalog | Proof strategies (induction, contradiction, pigeonhole, ...) | Derivation techniques (Lagrangian, perturbation theory, WKB, Feynman diagrams, ...) |
@@ -410,12 +411,15 @@ The Python library is organized into the following modules, each with a single c
 
 | Skill file | Purpose |
 |------------|---------|
-| `skills/solve/SKILL.md` | `/solve` command orchestrator — spawns Opus Task sub-agents with file-based state |
-| `skills/derive/SKILL.md` | `/derive` command orchestrator — physics derivations with physics-specific prompts |
+| `skills/alethic-solve/SKILL.md` | `/alethic-solve` command orchestrator — spawns Opus Task sub-agents with file-based state |
+| `skills/alethic-derive/SKILL.md` | `/alethic-derive` command orchestrator — physics derivations with physics-specific prompts |
+| `skills/alethic-scientific-figure/SKILL.md` | `/alethic-scientific-figure` — publication-quality scientific figures with AFP palette |
 | `.claude-plugin/plugin.json` | Plugin metadata for Claude Code |
 | `.claude-plugin/marketplace.json` | Marketplace manifest for `hyperion-git/alethic` |
-| `skills/solve/references/*.md` | Standalone math prompt references (generator, verifier, reviser, beautifier) |
-| `skills/derive/references/*.md` | Standalone physics prompt references (generator, verifier, reviser, beautifier) |
+| `skills/alethic-solve/references/*.md` | Standalone math prompt references (generator, verifier, reviser, beautifier) |
+| `skills/alethic-derive/references/*.md` | Standalone physics prompt references (generator, verifier, reviser, beautifier) |
+| `skills/alethic-scientific-figure/references/*.md` | Color palette guide and presentation override rcParams |
+| `skills/alethic-scientific-figure/scripts/*.py` | AFP colormap registration for matplotlib |
 
 ## Project Structure
 
@@ -425,20 +429,28 @@ alethic/
 │   ├── plugin.json                 # Plugin metadata (v0.2.0)
 │   └── marketplace.json            # Marketplace manifest
 ├── skills/                         # Claude Code skills
-│   ├── solve/
-│   │   ├── SKILL.md                # /solve command orchestrator
+│   ├── alethic-solve/
+│   │   ├── SKILL.md                # /alethic-solve command orchestrator
 │   │   └── references/             # Math prompt references
 │   │       ├── generator.md
 │   │       ├── verifier.md
 │   │       ├── reviser.md
 │   │       └── beautifier.md
-│   └── derive/
-│       ├── SKILL.md                # /derive command orchestrator
-│       └── references/             # Physics prompt references
-│           ├── generator.md
-│           ├── verifier.md
-│           ├── reviser.md
-│           └── beautifier.md
+│   ├── alethic-derive/
+│   │   ├── SKILL.md                # /alethic-derive command orchestrator
+│   │   └── references/             # Physics prompt references
+│   │       ├── generator.md
+│   │       ├── verifier.md
+│   │       ├── reviser.md
+│   │       └── beautifier.md
+│   └── alethic-scientific-figure/
+│       ├── SKILL.md                # /alethic-scientific-figure command
+│       ├── evals.json              # Evaluation scenarios
+│       ├── references/             # Color palette + presentation overrides
+│       │   ├── color-palette.md
+│       │   └── presentation-override.md
+│       └── scripts/
+│           └── register_colormaps.py  # AFP colormap registration
 ├── src/alethic/                    # Python library
 │   ├── agent.py                    # MathAgent orchestrator
 │   ├── physics_agent.py            # PhysicsAgent (subclass of MathAgent)
@@ -447,7 +459,7 @@ alethic/
 │   ├── prompts.py                  # Math prompt templates
 │   ├── physics_prompts.py          # Physics prompt templates
 │   ├── tools.py                    # Python sandbox + tool-use loop
-│   ├── cli.py                      # CLI entry point (solve/derive)
+│   ├── cli.py                      # CLI entry point (solve/derive subcommands)
 │   └── examples.py                 # Bundled example problems
 └── tests/
     ├── test_alethic.py             # Core tests (43)

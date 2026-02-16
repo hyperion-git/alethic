@@ -1,5 +1,5 @@
 ---
-name: derive
+name: alethic-derive
 description: "Derive a physics result using Generate-Verify-Revise loop with decoupled verification"
 argument-hint: '[-i iterations] [-r revisions] [-b budget] "<problem>"'
 allowed-tools:
@@ -11,7 +11,7 @@ allowed-tools:
   - WebFetch
 ---
 
-# /derive — Alethic Physics Derivation Agent
+# /alethic-derive — Alethic Physics Derivation Agent
 
 You are the orchestrator for Alethic, a physics derivation agent implementing DeepMind's Aletheia Generate-Verify-Revise architecture. Your job is to coordinate sub-agents (Generator, Verifier, Reviser, Beautifier) through a file-based loop to derive the given physics result.
 
@@ -43,14 +43,14 @@ If `--preset` is given, apply these values first, then let explicit flags overri
 | `extreme` | 12 | 5 | 0.97 | 120 |
 
 Examples:
-- `/derive "Derive the energy spectrum of the quantum harmonic oscillator"` — defaults (5 iter, 3 rev, 50 budget)
-- `/derive -p quick "Derive the classical period of a simple pendulum"` — quick preset
-- `/derive -p thorough "Derive the hydrogen atom energy spectrum from the Schrodinger equation"` — thorough preset
-- `/derive -p quick -i 4 "Show that F=ma follows from the Lagrangian"` — quick preset with iteration override
-- `/derive -i 2 "Derive the Euler-Lagrange equations"` — 2 iterations
-- `/derive -i 8 -r 5 "Derive the Dirac equation from relativistic quantum mechanics"` — extended
-- `/derive -i 1 -r 0 "What is the de Broglie wavelength of an electron at 1 eV?"` — single shot, no revisions
-- `/derive -t 0.95 "Derive Maxwell's equations from the electromagnetic action"` — stricter threshold
+- `/alethic-derive "Derive the energy spectrum of the quantum harmonic oscillator"` — defaults (5 iter, 3 rev, 50 budget)
+- `/alethic-derive -p quick "Derive the classical period of a simple pendulum"` — quick preset
+- `/alethic-derive -p thorough "Derive the hydrogen atom energy spectrum from the Schrodinger equation"` — thorough preset
+- `/alethic-derive -p quick -i 4 "Show that F=ma follows from the Lagrangian"` — quick preset with iteration override
+- `/alethic-derive -i 2 "Derive the Euler-Lagrange equations"` — 2 iterations
+- `/alethic-derive -i 8 -r 5 "Derive the Dirac equation from relativistic quantum mechanics"` — extended
+- `/alethic-derive -i 1 -r 0 "What is the de Broglie wavelength of an electron at 1 eV?"` — single shot, no revisions
+- `/alethic-derive -t 0.95 "Derive Maxwell's equations from the electromagnetic action"` — stricter threshold
 
 Extract `max_iterations`, `max_revisions`, `max_budget`, and `confidence_threshold` from flags (or defaults/preset). The remaining text is the problem statement.
 
@@ -618,7 +618,7 @@ The raw derivation is always at `{session_dir}/best_solution.md` and the formatt
 
 ## Known Limitations
 
-- **Preset scope**: The `/derive` skill supports `--preset` for iterations, revisions, budget, and confidence threshold. Temperature and extended thinking are API-only (Task sub-agent limitation).
+- **Preset scope**: The `/alethic-derive` skill supports `--preset` for iterations, revisions, budget, and confidence threshold. Temperature and extended thinking are API-only (Task sub-agent limitation).
 - **No temperature control**: Task sub-agents run at default temperature. The Python library uses T=1.0 (Generator), T=0.2 (Verifier), T=0.7 (Reviser) for deliberate diversity/precision tradeoffs. The skill relies on prompt instructions to approximate these behaviors.
 - **Extended thinking**: Claude Code Task sub-agents use the model's default reasoning depth. The Python library supports `--thinking` to enable Claude's extended thinking API. The skill variant does not currently have a mechanism to enable extended thinking on sub-agent Task calls.
 - **No best-of-N sampling**: Each iteration generates one candidate. The Python library could be extended with parallel generation; the skill architecture does not currently support this.

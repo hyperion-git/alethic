@@ -436,7 +436,7 @@ class TestPhysicsVerboseLanguage:
         agent.solve("Derive something")
 
         captured = capsys.readouterr().out
-        assert "verified derivation" in captured.lower()
+        assert "verified solution" in captured.lower()
 
 
 # ---------------------------------------------------------------------------

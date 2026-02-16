@@ -2,9 +2,9 @@
 
 ## Overview
 
-**Alethic** is a reasoning agent for mathematics and physics inspired by [Google DeepMind's Aletheia](https://arxiv.org/abs/2602.10177), built on Claude (Opus 4.6). It implements a Generate → Verify → Revise loop with decoupled verification — the Verifier evaluates solutions independently, without access to the Generator's intermediate reasoning traces. The orchestrator logic is domain-neutral; only the prompt templates differ between math (`MathAgent`, `/solve`) and physics (`PhysicsAgent`, `/derive`).
+**Alethic** is a reasoning agent for mathematics and physics inspired by [Google DeepMind's Aletheia](https://arxiv.org/abs/2602.10177), built on Claude (Opus 4.6). It implements a Generate → Verify → Revise loop with decoupled verification — the Verifier evaluates solutions independently, without access to the Generator's intermediate reasoning traces. The orchestrator logic is domain-neutral; only the prompt templates differ between math (`MathAgent`, `/alethic-solve`) and physics (`PhysicsAgent`, `/alethic-derive`).
 
-Available as Claude Code skills (`/solve` for math, `/derive` for physics, `/scientific-figure` for scientific figures) or as a standalone **Python library** with CLI.
+Available as Claude Code skills (`/alethic-solve` for math, `/alethic-derive` for physics, `/alethic-scientific-figure` for scientific figures) or as a standalone **Python library** with CLI.
 
 ## Dev Commands
 
@@ -60,8 +60,8 @@ cp -r .claude-plugin skills "$DEST/"
 
 # Register in installed_plugins.json (if not already present)
 # Then restart Claude Code:
-# /solve "Prove sqrt(2) is irrational"
-# /derive "Derive the energy levels of the quantum harmonic oscillator"
+# /alethic-solve "Prove sqrt(2) is irrational"
+# /alethic-derive "Derive the energy levels of the quantum harmonic oscillator"
 ```
 
 ## Architecture
@@ -92,7 +92,7 @@ Both the CLI (`--preset`) and the Python API (`AgentConfig.from_preset()`) suppo
 | `thorough` | 8 | 5 | 0.95 | on | 15,000 | 32,768 |
 | `extreme` | 12 | 5 | 0.97 | on | 40,000 | 65,536 |
 
-Both `/solve` and `/derive` support presets via `-p`/`--preset`, controlling iterations, revisions, budget, and confidence threshold. Temperature and extended thinking are API-only (Task sub-agent limitation).
+Both `/alethic-solve` and `/alethic-derive` support presets via `-p`/`--preset`, controlling iterations, revisions, budget, and confidence threshold. Temperature and extended thinking are API-only (Task sub-agent limitation).
 
 ## Module Map
 
@@ -110,16 +110,16 @@ Both `/solve` and `/derive` support presets via `-p`/`--preset`, controlling ite
 
 | Skill file | Purpose |
 |------------|---------|
-| `skills/solve/SKILL.md` | `/solve` command orchestrator — spawns Opus Task sub-agents with file-based state |
-| `skills/derive/SKILL.md` | `/derive` command orchestrator — physics derivations with physics-specific prompts |
-| `skills/scientific-figure/SKILL.md` | `/scientific-figure` command — publication-quality scientific figures with AFP color palette and Tufte principles |
-| `skills/scientific-figure/references/*.md` | Color palette reference, presentation/poster overrides |
-| `skills/scientific-figure/scripts/register_colormaps.py` | Registers 56 CIELAB-linearized AFP colormaps with matplotlib |
-| `skills/scientific-figure/evals.json` | Evaluation scenarios for the `/scientific-figure` skill |
+| `skills/alethic-solve/SKILL.md` | `/alethic-solve` command orchestrator — spawns Opus Task sub-agents with file-based state |
+| `skills/alethic-derive/SKILL.md` | `/alethic-derive` command orchestrator — physics derivations with physics-specific prompts |
+| `skills/alethic-scientific-figure/SKILL.md` | `/alethic-scientific-figure` command — publication-quality scientific figures with AFP color palette and Tufte principles |
+| `skills/alethic-scientific-figure/references/*.md` | Color palette reference, presentation/poster overrides |
+| `skills/alethic-scientific-figure/scripts/register_colormaps.py` | Registers 56 CIELAB-linearized AFP colormaps with matplotlib |
+| `skills/alethic-scientific-figure/evals.json` | Evaluation scenarios for the `/alethic-scientific-figure` skill |
 | `.claude-plugin/plugin.json` | Plugin metadata |
 | `.claude-plugin/marketplace.json` | Marketplace manifest for `hyperion-git/alethic` |
-| `skills/solve/references/*.md` | Standalone math prompt references (generator, verifier, reviser, beautifier) |
-| `skills/derive/references/*.md` | Standalone physics prompt references (generator, verifier, reviser, beautifier) |
+| `skills/alethic-solve/references/*.md` | Standalone math prompt references (generator, verifier, reviser, beautifier) |
+| `skills/alethic-derive/references/*.md` | Standalone physics prompt references (generator, verifier, reviser, beautifier) |
 
 ## Key Design Decisions
 

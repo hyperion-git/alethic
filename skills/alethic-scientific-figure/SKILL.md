@@ -1,5 +1,5 @@
 ---
-name: scientific-figure
+name: alethic-scientific-figure
 description: >
   Create publication-quality scientific figures, plots, and data visualizations.
   Trigger when the user asks to plot data, create a figure, generate a chart for
@@ -17,7 +17,7 @@ allowed-tools:
   - Grep
 ---
 
-# /scientific-figure — Scientific Figures
+# /alethic-scientific-figure — Scientific Figures
 
 A figure is not a data dump — it is a **graphical interface between people and
 data**. Treat every figure as a UI/UX design problem: you have a user (the
