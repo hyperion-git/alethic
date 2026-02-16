@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import anthropic
+
 from alethic.models import (
     AgentConfig,
     AgentResult,
@@ -21,8 +23,8 @@ from alethic.prompts import (
     REVISER_SYSTEM,
     VERIFIER_SYSTEM,
 )
-from alethic.subagents import _parse_revision, _parse_verification
-from alethic.tools import execute_python, extract_code_blocks
+from alethic.subagents import _extract_text, _parse_revision, _parse_verification
+from alethic.tools import execute_python, extract_code_blocks, process_tool_calls
 
 # ── Data model tests ──────────────────────────────────────────────────
 
@@ -550,3 +552,284 @@ class TestAgentIntegration:
         assert result.admitted_failure
         assert result.verdict == Verdict.UNSOLVED
         assert result.iterations_used == 2
+
+    @patch("alethic.subagents.process_tool_calls", return_value=[])
+    def test_solve_api_error_resilience(self, mock_tools):
+        """Agent should survive an API error on one iteration and continue."""
+        from alethic.agent import MathAgent
+
+        config = AgentConfig(
+            max_iterations=2,
+            enable_code_execution=False,
+            verbose=False,
+        )
+
+        # Iteration 1: API error during generate
+        # Iteration 2: succeeds normally
+        solution_response = self._mock_response("The answer.\n\nCONCLUSION: answer")
+        verification_response = self._mock_response(
+            "VERDICT: correct\nCONFIDENCE: 0.95\n\nCRITIQUE:\nGood.\n\nISSUES:\nNone"
+        )
+
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = [
+            anthropic.APIError(
+                message="rate limit",
+                request=MagicMock(),
+                body=None,
+            ),
+            solution_response,
+            verification_response,
+        ]
+
+        agent = MathAgent(config=config)
+        agent.client = mock_client
+
+        result = agent.solve("test problem")
+
+        assert result.solved
+        assert result.iterations_used == 2
+        # History should contain an error entry from iteration 1
+        error_entries = [h for h in result.history if h.get("phase") == "error"]
+        assert len(error_entries) == 1
+        assert error_entries[0]["iteration"] == 1
+
+
+# ── Confidence parsing edge-case tests ───────────────────────────────
+
+
+class TestConfidenceParsing:
+    def test_parse_verification_malformed_confidence(self):
+        """Malformed confidence like '1.2.3' should not crash, defaults to 0.5."""
+        text = "VERDICT: correct\nCONFIDENCE: 1.2.3\n\nCRITIQUE:\nOK\n\nISSUES:\nNone"
+        result = _parse_verification(text)
+        assert result.confidence == 0.5
+        assert result.verdict == Verdict.CORRECT
+
+    def test_parse_verification_percentage_confidence(self):
+        """Percentage value like '95' should be normalized to 0.95."""
+        text = "VERDICT: correct\nCONFIDENCE: 95\n\nCRITIQUE:\nOK\n\nISSUES:\nNone"
+        result = _parse_verification(text)
+        assert result.confidence == 0.95
+
+    def test_parse_verification_normal_confidence(self):
+        """Normal value like '0.92' should stay as-is."""
+        text = "VERDICT: correct\nCONFIDENCE: 0.92\n\nCRITIQUE:\nOK\n\nISSUES:\nNone"
+        result = _parse_verification(text)
+        assert result.confidence == 0.92
+
+    def test_parse_verification_percentage_100(self):
+        """Value '100' should normalize to 1.0."""
+        text = "VERDICT: correct\nCONFIDENCE: 100\n\nCRITIQUE:\nOK\n\nISSUES:\nNone"
+        result = _parse_verification(text)
+        assert result.confidence == 1.0
+
+    def test_parse_verification_zero_confidence(self):
+        """Value '0' should stay as 0.0."""
+        text = "VERDICT: major_flaw\nCONFIDENCE: 0\n\nCRITIQUE:\nBad\n\nISSUES:\n- Wrong"
+        result = _parse_verification(text)
+        assert result.confidence == 0.0
+
+
+# ── M1: _extract_text helper tests ──────────────────────────────────
+
+
+class TestExtractText:
+    def test_extract_single_text_block(self):
+        mock_block = MagicMock()
+        mock_block.type = "text"
+        mock_block.text = "Hello world"
+        mock_resp = MagicMock()
+        mock_resp.content = [mock_block]
+        assert _extract_text(mock_resp) == "Hello world"
+
+    def test_extract_multiple_text_blocks(self):
+        blocks = []
+        for text in ["Part 1", "Part 2"]:
+            b = MagicMock()
+            b.type = "text"
+            b.text = text
+            blocks.append(b)
+        mock_resp = MagicMock()
+        mock_resp.content = blocks
+        assert _extract_text(mock_resp) == "Part 1\nPart 2"
+
+    def test_extract_no_text_blocks(self):
+        """Empty response should return '[No response generated]'."""
+        tool_block = MagicMock()
+        tool_block.type = "tool_use"
+        tool_block.text = None  # no text attr in practice, but hasattr guard covers
+        del tool_block.text  # remove text attribute so hasattr returns False
+        mock_resp = MagicMock()
+        mock_resp.content = [tool_block]
+        assert _extract_text(mock_resp) == "[No response generated]"
+
+    def test_extract_empty_content(self):
+        """Response with empty content list should return fallback."""
+        mock_resp = MagicMock()
+        mock_resp.content = []
+        assert _extract_text(mock_resp) == "[No response generated]"
+
+    def test_extract_skips_thinking_blocks(self):
+        """Only 'text' type blocks should be extracted."""
+        thinking = MagicMock()
+        thinking.type = "thinking"
+        thinking.text = "internal reasoning"
+        text_block = MagicMock()
+        text_block.type = "text"
+        text_block.text = "Final answer"
+        mock_resp = MagicMock()
+        mock_resp.content = [thinking, text_block]
+        assert _extract_text(mock_resp) == "Final answer"
+
+
+# ── M2: Temperature override logging tests ──────────────────────────
+
+
+class TestTemperatureOverrideLogging:
+    @patch("alethic.subagents.process_tool_calls", return_value=[])
+    def test_logs_debug_when_temperature_overridden(self, mock_tools):
+        """Extended thinking should log debug when overriding non-1 temperature."""
+        from alethic.subagents import _call_model
+
+        config = AgentConfig(
+            extended_thinking=True,
+            thinking_budget=10000,
+            max_tokens=20000,
+            enable_code_execution=False,
+        )
+
+        mock_block = MagicMock()
+        mock_block.type = "text"
+        mock_block.text = "result"
+        mock_resp = MagicMock()
+        mock_resp.content = [mock_block]
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_resp
+
+        with patch("alethic.subagents.logger") as mock_logger:
+            _call_model(
+                mock_client,
+                system="test",
+                user_message="test",
+                config=config,
+                temperature=0.5,
+            )
+            mock_logger.debug.assert_called_once()
+            assert "temperature=0.5" in mock_logger.debug.call_args[0][0] % mock_logger.debug.call_args[0][1:]
+
+    @patch("alethic.subagents.process_tool_calls", return_value=[])
+    def test_no_log_when_temperature_is_one(self, mock_tools):
+        """Extended thinking with temperature=1 should not log override."""
+        from alethic.subagents import _call_model
+
+        config = AgentConfig(
+            extended_thinking=True,
+            thinking_budget=10000,
+            max_tokens=20000,
+            enable_code_execution=False,
+        )
+
+        mock_block = MagicMock()
+        mock_block.type = "text"
+        mock_block.text = "result"
+        mock_resp = MagicMock()
+        mock_resp.content = [mock_block]
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_resp
+
+        with patch("alethic.subagents.logger") as mock_logger:
+            _call_model(
+                mock_client,
+                system="test",
+                user_message="test",
+                config=config,
+                temperature=1,
+            )
+            mock_logger.debug.assert_not_called()
+
+
+# ── M5: Empty code tool call tests ──────────────────────────────────
+
+
+class TestEmptyCodeToolCall:
+    def test_empty_code_returns_error(self):
+        """Tool call with empty code should return error, not success."""
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.name = "execute_python"
+        mock_block.input = {"code": ""}
+        mock_block.id = "tool_123"
+        mock_resp = MagicMock()
+        mock_resp.content = [mock_block]
+
+        results = process_tool_calls(mock_resp)
+        assert len(results) == 1
+        assert "ERROR" in results[0]["result"]
+        assert "Empty code" in results[0]["result"]
+
+    def test_whitespace_code_returns_error(self):
+        """Tool call with whitespace-only code should return error."""
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.name = "execute_python"
+        mock_block.input = {"code": "   \n  "}
+        mock_block.id = "tool_456"
+        mock_resp = MagicMock()
+        mock_resp.content = [mock_block]
+
+        results = process_tool_calls(mock_resp)
+        assert len(results) == 1
+        assert "ERROR" in results[0]["result"]
+
+    def test_valid_code_still_works(self):
+        """Non-empty code should still execute normally."""
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.name = "execute_python"
+        mock_block.input = {"code": "print(42)"}
+        mock_block.id = "tool_789"
+        mock_resp = MagicMock()
+        mock_resp.content = [mock_block]
+
+        results = process_tool_calls(mock_resp)
+        assert len(results) == 1
+        assert "42" in results[0]["result"]
+
+
+# ── M6: Auto-bump max_tokens for thinking tests ────────────────────
+
+
+class TestThinkingTokenBump:
+    def test_quick_preset_with_thinking_bumps_tokens(self):
+        """--preset quick --thinking should auto-bump max_tokens."""
+        from alethic.cli import _build_config, build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["--preset", "quick", "--thinking", "test"])
+        config = _build_config(args)
+        assert config.extended_thinking is True
+        # quick preset has max_tokens=16384, thinking_budget=10000
+        # min_tokens = 10000 + 8192 = 18192
+        assert config.max_tokens >= config.thinking_budget + 8192
+
+    def test_explicit_max_tokens_not_overridden(self):
+        """Explicit --max-tokens should not be auto-bumped."""
+        from alethic.cli import _build_config, build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["--preset", "quick", "--thinking", "--max-tokens", "12000", "test"])
+        config = _build_config(args)
+        assert config.max_tokens == 12000  # user's explicit value preserved
+
+    def test_thorough_preset_already_adequate(self):
+        """--preset thorough already has enough tokens; no bump needed."""
+        from alethic.cli import _build_config, build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["--preset", "thorough", "test"])
+        config = _build_config(args)
+        # thorough: max_tokens=32768, thinking_budget=15000 → min=23192
+        assert config.max_tokens == 32768  # unchanged

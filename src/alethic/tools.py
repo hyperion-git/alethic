@@ -163,7 +163,10 @@ def process_tool_calls(response) -> list[dict]:
     for block in response.content:
         if block.type == "tool_use" and block.name == "execute_python":
             code = block.input.get("code", "")
-            output = execute_python(code)
+            if not code.strip():
+                output = "ERROR: Empty code provided to execute_python"
+            else:
+                output = execute_python(code)
             results.append({
                 "tool_use_id": block.id,
                 "name": block.name,

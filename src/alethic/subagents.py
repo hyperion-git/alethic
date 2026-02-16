@@ -31,6 +31,15 @@ from alethic.tools import PYTHON_TOOL, process_tool_calls
 logger = logging.getLogger("alethic")
 
 
+def _extract_text(response) -> str:
+    """Extract concatenated text blocks from an Anthropic response."""
+    parts = [
+        b.text for b in response.content
+        if hasattr(b, "text") and getattr(b, "type", None) == "text"
+    ]
+    return "\n".join(parts) if parts else "[No response generated]"
+
+
 def _call_model(
     client,
     *,
@@ -58,6 +67,11 @@ def _call_model(
             "budget_tokens": config.thinking_budget,
         }
         kwargs["temperature"] = 1  # Required by the API when thinking is enabled
+        if temperature != 1:
+            logger.debug(
+                "Extended thinking enabled; ignoring temperature=%.1f (API requires 1)",
+                temperature,
+            )
     else:
         kwargs["temperature"] = temperature
     if tools:
@@ -73,11 +87,7 @@ def _call_model(
 
         if not tool_results:
             # No tool calls — extract final text
-            text_parts = [
-                b.text for b in response.content
-                if hasattr(b, "text") and getattr(b, "type", None) == "text"
-            ]
-            return "\n".join(text_parts)
+            return _extract_text(response)
 
         # Build tool result messages and continue the loop
         # First, add the assistant's response (with tool_use blocks)
@@ -95,11 +105,7 @@ def _call_model(
         kwargs["messages"] = messages
 
     # Exhausted tool rounds — return whatever text we have
-    text_parts = [
-        b.text for b in response.content
-        if hasattr(b, "text") and getattr(b, "type", None) == "text"
-    ]
-    return "\n".join(text_parts) if text_parts else "[No response generated]"
+    return _extract_text(response)
 
 
 # ---------------------------------------------------------------------------
@@ -187,8 +193,18 @@ def _parse_verification(text: str) -> VerificationResult:
 
     # Extract confidence
     conf_match = re.search(r"CONFIDENCE:\s*([\d.]+)", text)
-    confidence = float(conf_match.group(1)) if conf_match else 0.5
-    confidence = max(0.0, min(1.0, confidence))
+    if conf_match:
+        try:
+            raw = float(conf_match.group(1))
+        except ValueError:
+            raw = 0.5
+        # Normalize percentage values (e.g., 95 → 0.95); small overshoots
+        # like 1.5 are just clamped rather than treated as percentages.
+        if raw >= 2.0:
+            raw /= 100.0
+        confidence = max(0.0, min(1.0, raw))
+    else:
+        confidence = 0.5
 
     # Extract critique (stops at REASON: or ISSUES: whichever comes first)
     critique_match = re.search(

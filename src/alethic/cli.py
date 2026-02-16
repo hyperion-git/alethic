@@ -170,6 +170,12 @@ def _build_config(args: argparse.Namespace) -> AgentConfig:
     if args.thinking:
         config.extended_thinking = True
 
+    # Auto-bump max_tokens for thinking if not explicitly overridden
+    if config.extended_thinking and getattr(args, "max_tokens", None) is None:
+        min_tokens = config.thinking_budget + 8192
+        if config.max_tokens < min_tokens:
+            config.max_tokens = min_tokens
+
     # Non-preset flags
     config.enable_code_execution = not args.no_code
     config.verbose = not args.quiet
@@ -207,17 +213,18 @@ def main(argv: list[str] | None = None) -> int:
 
     # Get problem text
     if args.file:
-        with open(args.file) as f:
-            problem = f.read().strip()
+        try:
+            with open(args.file) as f:
+                problem = f.read().strip()
+        except OSError as e:
+            parser.error(f"Cannot read file '{args.file}': {e}")
     elif args.problem:
         problem = args.problem
     else:
         parser.error("Provide a problem as an argument or via --file")
-        return 1
 
     if not problem:
         parser.error("Problem text is empty")
-        return 1
 
     # Build config
     config = _build_config(args)
