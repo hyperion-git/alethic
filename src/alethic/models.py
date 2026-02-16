@@ -45,7 +45,12 @@ class AgentConfig:
     extended_thinking: bool = False
     thinking_budget: int = 10000
     confidence_threshold: float = 0.90
+    best_of_n: int = 1
     verbose: bool = True
+
+    def __post_init__(self) -> None:
+        if self.best_of_n < 1:
+            raise ValueError(f"best_of_n must be >= 1, got {self.best_of_n}")
 
     PRESETS: ClassVar[dict[str, dict[str, Any]]] = {
         "quick": {
@@ -54,6 +59,7 @@ class AgentConfig:
             "confidence_threshold": 0.85,
             "extended_thinking": False,
             "max_tokens": 16384,
+            "best_of_n": 1,
         },
         "default": {
             "max_iterations": 5,
@@ -61,6 +67,7 @@ class AgentConfig:
             "confidence_threshold": 0.90,
             "extended_thinking": False,
             "max_tokens": 16384,
+            "best_of_n": 2,
         },
         "thorough": {
             "max_iterations": 8,
@@ -69,6 +76,7 @@ class AgentConfig:
             "extended_thinking": True,
             "thinking_budget": 15000,
             "max_tokens": 32768,
+            "best_of_n": 3,
         },
         "extreme": {
             "max_iterations": 12,
@@ -77,6 +85,7 @@ class AgentConfig:
             "extended_thinking": True,
             "thinking_budget": 40000,
             "max_tokens": 65536,
+            "best_of_n": 5,
         },
     }
 
@@ -171,6 +180,7 @@ class AgentResult:
     admitted_failure: bool
     history: list[dict] = field(default_factory=list)
     elapsed_seconds: float = 0.0
+    candidates_per_iteration: int = 1
 
     @property
     def solved(self) -> bool:
@@ -184,9 +194,13 @@ class AgentResult:
             f"Confidence: {self.confidence:.0%}",
             f"Iterations: {self.iterations_used}",
             f"Total revisions: {self.total_revisions}",
+        ]
+        if self.candidates_per_iteration > 1:
+            lines.append(f"Candidates per iteration: {self.candidates_per_iteration}")
+        lines.extend([
             f"Time: {self.elapsed_seconds:.1f}s",
             f"{'=' * 60}",
-        ]
+        ])
         if self.solution:
             lines.append("")
             lines.append(self.solution)

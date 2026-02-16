@@ -30,17 +30,18 @@ Parse the user's input above for optional flags and the problem statement.
 | `--revisions` | `-r` | 3 | Maximum revision attempts per iteration |
 | `--budget` | `-b` | 50 | Maximum total Task sub-agent calls |
 | `--threshold` | `-t` | 0.90 | Confidence threshold for acceptance |
+| `--best-of` | `-B` | 1 | Number of candidates to generate per iteration |
 
 ### Presets
 
 If `--preset` is given, apply these values first, then let explicit flags override:
 
-| Preset | Iters | Revs | Threshold | Budget |
-|--------|-------|------|-----------|--------|
-| `quick` | 2 | 1 | 0.85 | 20 |
-| `default` | 5 | 3 | 0.90 | 50 |
-| `thorough` | 8 | 5 | 0.95 | 80 |
-| `extreme` | 12 | 5 | 0.97 | 120 |
+| Preset | Iters | Revs | Threshold | Budget | Best-of |
+|--------|-------|------|-----------|--------|---------|
+| `quick` | 2 | 1 | 0.85 | 20 | 1 |
+| `default` | 5 | 3 | 0.90 | 50 | 2 |
+| `thorough` | 8 | 5 | 0.95 | 80 | 3 |
+| `extreme` | 12 | 5 | 0.97 | 120 | 5 |
 
 Examples:
 - `/alethic-solve "Prove sqrt(2) is irrational"` — defaults (5 iter, 3 rev, 50 budget)
@@ -51,10 +52,11 @@ Examples:
 - `/alethic-solve -i 8 -r 5 "Prove the Cayley-Hamilton theorem"` — extended
 - `/alethic-solve -i 1 -r 0 "What is 2+2?"` — single shot, no revisions
 - `/alethic-solve -t 0.95 "Prove Fermat's little theorem"` — stricter threshold
+- `/alethic-solve -B 3 "Prove the Cayley-Hamilton theorem"` — 3 candidates per iteration
 
-Extract `max_iterations`, `max_revisions`, `max_budget`, and `confidence_threshold` from flags (or defaults/preset). The remaining text is the problem statement.
+Extract `max_iterations`, `max_revisions`, `max_budget`, `confidence_threshold`, and `best_of_n` from flags (or defaults/preset). The remaining text is the problem statement.
 
-**Validation:** If `max_iterations` < 1, set to 1 and warn the user. If `max_revisions` < 0, set to 0. If `max_budget` < 3, set to 3. If `confidence_threshold` is outside (0, 1], clamp to [0.50, 1.0]. If no problem statement is found, ask the user to provide one.
+**Validation:** If `max_iterations` < 1, set to 1 and warn the user. If `max_revisions` < 0, set to 0. If `max_budget` < 3, set to 3. If `confidence_threshold` is outside (0, 1], clamp to [0.50, 1.0]. If `best_of_n` < 1, set to 1. If no problem statement is found, ask the user to provide one.
 
 ---
 
@@ -366,7 +368,8 @@ Write the formatted document to the file path specified in your task.
        "max_iterations": {max_iterations},
        "max_revisions": {max_revisions},
        "max_budget": {max_budget},
-       "confidence_threshold": {confidence_threshold}
+       "confidence_threshold": {confidence_threshold},
+       "best_of_n": {best_of_n}
      },
      "status": "running",
      "current_iteration": 0,
@@ -383,12 +386,12 @@ Write the formatted document to the file path specified in your task.
 
 6. Initialize a counter variable: `task_calls = 0`.
 
-7. **Resource estimate**: Calculate the worst-case Task calls: `max_iterations * (2 + max_revisions * 2) + 1`. Print to the user:
+7. **Resource estimate**: Calculate the worst-case Task calls: `max_iterations * (best_of_n * 2 + max_revisions * 2) + 1`. Print to the user:
    ```
    Alethic Mathematical Reasoning Agent
    Session: .alethic/{session_id}/
    Problem: {first 200 chars of problem}...
-   Config: {max_iterations} iterations, {max_revisions} revisions/iter, threshold {confidence_threshold}, budget {max_budget} calls
+   Config: {max_iterations} iterations, {max_revisions} revisions/iter, threshold {confidence_threshold}, budget {max_budget} calls, best-of-{best_of_n}
    Worst-case API calls: {estimate} (budget cap: {max_budget})
    ```
 
@@ -404,55 +407,92 @@ Loop for iterations 1 through `max_iterations`. For each iteration N:
 
 1. Use Bash: `mkdir -p {session_dir}/worklog/iter{N}/`
 
-2. Increment `task_calls`. Spawn a Task sub-agent:
+2. **Generate `best_of_n` candidates.** For each candidate C = 1 to `best_of_n`:
+
+   **Budget check**: If `task_calls >= max_budget`, stop generating more candidates and proceed with whatever candidates have been produced.
+
+   Increment `task_calls`. Spawn a Task sub-agent:
    ```
    Task(
      model: "opus",
      subagent_type: "general-purpose",
-     description: "Generate solution iter {N}",
+     description: "Generate solution iter {N} candidate {C}",
      prompt: [Generator Prompt Template] + task-specific instructions
    )
    ```
 
    Task-specific instructions after the template:
    - "Read the problem from `{session_dir}/problem.md`."
-   - "Write your complete solution to `{session_dir}/worklog/iter{N}/solution.md`."
+   - When `best_of_n == 1`: "Write your complete solution to `{session_dir}/worklog/iter{N}/solution.md`."
+   - When `best_of_n > 1`: "Write your complete solution to `{session_dir}/worklog/iter{N}/candidate_{C}.md`."
    - If iteration 2+: include the strategy history — "Previous attempts used the following strategies and were not fully verified: {list of strategy summaries from prior iterations}. Try a DIFFERENT proof strategy."
+   - When `best_of_n > 1` and C > 1: "Other candidates are being generated in parallel. Use a DIFFERENT strategy from your default approach to maximize diversity."
    - "After writing the solution file, return a ONE-LINE summary of your proof strategy and approach (e.g., 'Proof by contradiction using infinite descent')."
 
-3. If the Task fails (error or no output), log `[Iter {N}] Generator FAILED` and skip to the next iteration.
+3. If a Task fails (error or no output), log `[Iter {N}] Generator (candidate {C}) FAILED` and continue to next candidate. If ALL candidates fail, skip to the next iteration.
 
-4. **Track strategy**: Record the Generator's one-line return as the strategy summary for this iteration. Maintain a list of strategy summaries across iterations for use in subsequent Generator prompts.
+4. **Track strategy**: Record each Generator's one-line return as the strategy summary. Maintain a list of strategy summaries across iterations for use in subsequent Generator prompts.
 
-5. Print: `[Iter {N}] Generator: {summary}`
+5. Print: `[Iter {N}] Generator: {C} candidate(s) produced` (or `[Iter {N}] Generator: {summary}` when `best_of_n == 1`)
 
 ### Step 2b: Verify (DECOUPLED)
 
 **This is the critical decoupling point.** When constructing the Verifier prompt, do NOT reference any information from the Generator — no summaries, no strategies, no return values. Construct the prompt solely from the Verifier template and file paths.
+
+**Verify each candidate.** For each successfully generated candidate C:
+
+**Budget check**: If `task_calls >= max_budget`, stop verifying and proceed with whatever verified candidates exist.
 
 1. Increment `task_calls`. Spawn a Task sub-agent:
    ```
    Task(
      model: "opus",
      subagent_type: "general-purpose",
-     description: "Verify solution iter {N}",
+     description: "Verify solution iter {N} candidate {C}",
      prompt: [Verifier Prompt Template] + task-specific instructions
    )
    ```
 
    Task-specific instructions after the template:
    - "Read the problem from `{session_dir}/problem.md`."
-   - "Read the proposed solution from `{session_dir}/worklog/iter{N}/solution.md`."
-   - "Write your full verification to `{session_dir}/worklog/iter{N}/verification.md`."
+   - When `best_of_n == 1`: "Read the proposed solution from `{session_dir}/worklog/iter{N}/solution.md`." and "Write your full verification to `{session_dir}/worklog/iter{N}/verification.md`."
+   - When `best_of_n > 1`: "Read the proposed solution from `{session_dir}/worklog/iter{N}/candidate_{C}.md`." and "Write your full verification to `{session_dir}/worklog/iter{N}/verification_c{C}.md`."
    - "After writing the verification file, return ONLY: VERDICT: {verdict} | CONFIDENCE: {confidence}"
 
 2. **Extract verdict** using the Error Handling Protocol:
    - Try parsing the Task return value by searching for VERDICT and CONFIDENCE independently (as described in the Error Handling Protocol).
-   - If that fails, Read `{session_dir}/worklog/iter{N}/verification.md` and extract the same fields from the file.
+   - If that fails, Read the verification file and extract the same fields.
    - If both fail, use `verdict = "unsolved"`, `confidence = 0.0`.
    - Clamp confidence to [0.0, 1.0].
 
-3. Print: `[Iter {N}] Verifier: VERDICT: {verdict} | CONFIDENCE: {confidence}`
+3. After all candidates are verified, **select the best candidate** — the one with the highest confidence. Copy the best candidate's files to the standard locations:
+   - When `best_of_n > 1`: Copy `candidate_{best_C}.md` → `solution.md` and `verification_c{best_C}.md` → `verification.md` in the iteration directory.
+   - When `best_of_n == 1`: Files are already at `solution.md` / `verification.md`.
+
+4. **Print monitoring dashboard** (when `best_of_n > 1`):
+
+```markdown
+---
+**Alethic** | Iter {N}/{max_iterations} | Phase: Verified | Budget: {task_calls}/{max_budget}
+
+| # | Verdict        | Confidence | Selected |
+|---|----------------|------------|----------|
+| 1 | {verdict_1}    | {conf_1}   |          |
+| 2 | {verdict_2}    | {conf_2}   | <--      |
+| 3 | {verdict_3}    | {conf_3}   |          |
+---
+```
+
+When `best_of_n == 1`, print: `[Iter {N}] Verifier: VERDICT: {verdict} | CONFIDENCE: {confidence}`
+
+**Also print cumulative iteration history table** (accumulates across iterations):
+
+```markdown
+| Iter | Candidates | Best Verdict   | Confidence |
+|------|-----------|----------------|------------|
+| 1    | 3/3       | MINOR_ISSUES   | 0.87       |
+| 2    | 3/3       | CORRECT        | 0.94       |
+```
 
 ### Step 2c: Check Verdict and Update Best
 
@@ -666,7 +706,7 @@ After presenting results, finalize the session state for future reference.
 - **Preset scope**: The `/alethic-solve` skill supports `--preset` for iterations, revisions, budget, and confidence threshold. Temperature and extended thinking are API-only (Task sub-agent limitation).
 - **No temperature control**: Task sub-agents run at default temperature. The Python library uses T=1.0 (Generator), T=0.2 (Verifier), T=0.7 (Reviser) for deliberate diversity/precision tradeoffs. The skill relies on prompt instructions to approximate these behaviors.
 - **Extended thinking**: Claude Code Task sub-agents use the model's default reasoning depth. The Aletheia paper attributes major gains to Gemini Deep Think's inference-time compute scaling. The Python library supports `--thinking` to enable Claude's extended thinking API, which partially closes this gap. The skill variant does not currently have a mechanism to enable extended thinking on sub-agent Task calls.
-- **No best-of-N sampling**: Each iteration generates one candidate. The Python library could be extended with parallel generation; the skill architecture does not currently support this.
+- **Best-of-N sampling**: The `--best-of` / `-B` flag generates multiple candidates per iteration (sequential in skills, parallel in the Python library). Higher N improves solution quality at the cost of more API calls. Preset defaults: quick=1, default=2, thorough=3, extreme=5.
 - **Context accumulation**: Without `context:fork`, all Task call/response pairs accumulate in the main conversation. The context management rules above mitigate this, but very long runs (8+ iterations) may approach context limits.
 - **Beautifier post-verification**: The Beautifier runs after the final verification. While constrained to formatting-only changes, there is no re-verification of the beautified output. The raw verified solution is preserved at `best_solution.md`.
 - **Single-model verification**: Both Generator and Verifier use the same underlying model (Claude Opus). The Aletheia paper uses the same approach (Gemini for all roles). Decoupling helps but cannot eliminate shared model blind spots.

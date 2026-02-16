@@ -355,6 +355,7 @@ class TestAgentConfigPresetsUnchanged:
         assert c.confidence_threshold == 0.85
         assert c.extended_thinking is False
         assert c.max_tokens == 16384
+        assert c.best_of_n == 1
 
     def test_default_preset(self):
         c = AgentConfig.from_preset("default")
@@ -363,6 +364,7 @@ class TestAgentConfigPresetsUnchanged:
         assert c.confidence_threshold == 0.90
         assert c.extended_thinking is False
         assert c.max_tokens == 16384
+        assert c.best_of_n == 2
 
     def test_thorough_preset(self):
         c = AgentConfig.from_preset("thorough")
@@ -372,6 +374,7 @@ class TestAgentConfigPresetsUnchanged:
         assert c.extended_thinking is True
         assert c.thinking_budget == 15000
         assert c.max_tokens == 32768
+        assert c.best_of_n == 3
 
     def test_extreme_preset(self):
         c = AgentConfig.from_preset("extreme")
@@ -381,6 +384,7 @@ class TestAgentConfigPresetsUnchanged:
         assert c.extended_thinking is True
         assert c.thinking_budget == 40000
         assert c.max_tokens == 65536
+        assert c.best_of_n == 5
 
     def test_exactly_four_presets(self):
         assert set(AgentConfig.PRESETS.keys()) == {

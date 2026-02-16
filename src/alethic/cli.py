@@ -140,6 +140,13 @@ Examples:
         default=None,
         help="Token budget for extended thinking (default: 10000)",
     )
+    parser.add_argument(
+        "--best-of", "-B",
+        type=int,
+        default=None,
+        dest="best_of_n",
+        help="Number of candidates per iteration (default: from preset, or 1)",
+    )
 
     return parser
 
@@ -168,6 +175,8 @@ def _build_config(args: argparse.Namespace) -> AgentConfig:
         config.max_tokens = args.max_tokens
     if args.thinking_budget is not None:
         config.thinking_budget = args.thinking_budget
+    if args.best_of_n is not None:
+        config.best_of_n = args.best_of_n
 
     # Boolean flags: --thinking enables extended thinking (override preset)
     if args.thinking:
@@ -255,6 +264,7 @@ def main(argv: list[str] | None = None) -> int:
             "confidence": result.confidence,
             "iterations_used": result.iterations_used,
             "total_revisions": result.total_revisions,
+            "candidates_per_iteration": result.candidates_per_iteration,
             "admitted_failure": result.admitted_failure,
             "elapsed_seconds": result.elapsed_seconds,
             "solution": result.solution,

@@ -125,6 +125,7 @@ class TestPresets:
         assert config.max_revisions_per_cycle == 1
         assert config.confidence_threshold == 0.85
         assert config.extended_thinking is False
+        assert config.best_of_n == 1
 
     def test_preset_from_preset_thorough(self):
         config = AgentConfig.from_preset("thorough")
@@ -134,6 +135,7 @@ class TestPresets:
         assert config.extended_thinking is True
         assert config.thinking_budget == 15000
         assert config.max_tokens == 32768
+        assert config.best_of_n == 3
 
     def test_preset_from_preset_with_overrides(self):
         config = AgentConfig.from_preset("quick", max_iterations=10)

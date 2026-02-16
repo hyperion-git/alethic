@@ -26,6 +26,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import anthropic
 
@@ -115,6 +116,89 @@ class MathAgent:
                 elapsed_seconds=elapsed,
             )
         return None
+
+    def _generate_candidates(
+        self,
+        *,
+        problem: str,
+        config: AgentConfig,
+        iteration: int,
+        balanced: bool,
+        prompts: dict[str, str],
+        n: int,
+    ) -> list[tuple[Solution, float]]:
+        """Generate N candidates. Parallel (ThreadPoolExecutor) when N>1, sequential when N=1."""
+
+        def _gen_one(candidate_idx: int) -> tuple[Solution, float]:
+            t0 = time.time()
+            sol = generate(
+                self.client,
+                problem=problem,
+                config=config,
+                iteration=iteration,
+                balanced=balanced,
+                system_prompt=prompts.get("generator_system"),
+                user_template=prompts.get("generator_user"),
+                balanced_addendum=prompts.get("balanced_addendum"),
+            )
+            return sol, time.time() - t0
+
+        if n == 1:
+            return [_gen_one(1)]
+
+        results: list[tuple[Solution, float]] = []
+        with ThreadPoolExecutor(max_workers=n) as pool:
+            futures = {pool.submit(_gen_one, i): i for i in range(1, n + 1)}
+            for future in as_completed(futures):
+                idx = futures[future]
+                try:
+                    results.append(future.result())
+                except Exception as e:
+                    logger.warning("Candidate %d failed: %s", idx, e)
+        return results
+
+    def _verify_candidates(
+        self,
+        *,
+        problem: str,
+        candidates: list[tuple[Solution, float]],
+        prompts: dict[str, str],
+    ) -> list[tuple[Solution, VerificationResult, float, float]]:
+        """Verify all candidates sequentially. Return list sorted by confidence desc.
+
+        Returns list of (solution, verification, gen_time, verify_time) tuples.
+        """
+        verified: list[tuple[Solution, VerificationResult, float, float]] = []
+        for solution, gen_time in candidates:
+            t0 = time.time()
+            verification = verify(
+                self.client,
+                problem=problem,
+                solution=solution,
+                config=self.config,
+                system_prompt=prompts.get("verifier_system"),
+                user_template=prompts.get("verifier_user"),
+            )
+            verify_time = time.time() - t0
+            verified.append((solution, verification, gen_time, verify_time))
+
+        # Sort by confidence descending
+        verified.sort(key=lambda x: x[1].confidence, reverse=True)
+        return verified
+
+    def _log_candidates(
+        self,
+        verified: list[tuple[Solution, VerificationResult, float, float]],
+        generation_wall_time: float,
+    ) -> None:
+        """Log generation wall time and a ranked table of candidates (N>1 only)."""
+        self._log(f"[BEST-OF-N] Generated {len(verified)} candidates "
+                   f"(wall time: {generation_wall_time:.1f}s)")
+        self._log(f"{'Rank':<6}{'Verdict':<16}{'Confidence':<13}{'Gen(s)':<10}{'Ver(s)':<10}")
+        self._log(f"{'─' * 55}")
+        for rank, (_sol, ver, gen_t, ver_t) in enumerate(verified, 1):
+            self._log(f"{rank:<6}{ver.verdict.value:<16}{ver.confidence:<13.0%}"
+                       f"{gen_t:<10.1f}{ver_t:<10.1f}")
 
     def _run_revision_loop(
         self,
@@ -235,12 +319,16 @@ class MathAgent:
         threshold = self.config.confidence_threshold
         prompts = self._prompt_set()
 
+        n = self.config.best_of_n
+
         self._log(f"{'=' * 60}")
         self._log(self._log_header())
         self._log(f"Model: {self.config.model}")
         self._log(f"Max iterations: {self.config.max_iterations}")
         self._log(f"Confidence threshold: {threshold:.0%}")
         self._log(f"Code execution: {'enabled' if self.config.enable_code_execution else 'disabled'}")
+        if n > 1:
+            self._log(f"Best-of-N: {n} candidates per iteration (parallel)")
         self._log(f"{'=' * 60}")
         self._log(f"Problem: {problem[:200]}{'...' if len(problem) > 200 else ''}")
         self._log("")
@@ -251,43 +339,65 @@ class MathAgent:
             self._log(f"{'─' * 40}")
 
             try:
-                # ── GENERATE ──
-                self._log("[GENERATE] Producing candidate solution...")
-                solution = generate(
-                    self.client,
+                # ── GENERATE N CANDIDATES ──
+                if n > 1:
+                    self._log(f"[GENERATE] Producing {n} candidate solutions (parallel)...")
+                else:
+                    self._log("[GENERATE] Producing candidate solution...")
+
+                gen_t0 = time.time()
+                candidates = self._generate_candidates(
                     problem=problem,
                     config=self.config,
                     iteration=iteration,
                     balanced=balanced,
-                    system_prompt=prompts.get("generator_system"),
-                    user_template=prompts.get("generator_user"),
-                    balanced_addendum=prompts.get("balanced_addendum"),
+                    prompts=prompts,
+                    n=n,
                 )
-                history.append({
-                    "phase": "generate",
-                    "iteration": iteration,
-                    "solution_preview": solution.solution_text[:500],
-                })
-                self._log(f"[GENERATE] Solution produced ({len(solution.solution_text)} chars)")
+                gen_wall_time = time.time() - gen_t0
 
-                # ── VERIFY (decoupled — no access to generator's thinking) ──
-                self._log("[VERIFY] Independently verifying solution...")
-                verification = verify(
-                    self.client,
+                if not candidates:
+                    self._log("[GENERATE] All candidates failed — skipping iteration")
+                    history.append({"phase": "error", "iteration": iteration, "error": "all candidates failed"})
+                    continue
+
+                for idx, (sol, gen_t) in enumerate(candidates, 1):
+                    history.append({
+                        "phase": "generate",
+                        "iteration": iteration,
+                        "candidate": idx,
+                        "solution_preview": sol.solution_text[:500],
+                    })
+                    self._log(f"[GENERATE] Candidate {idx}/{len(candidates)} produced "
+                               f"({len(sol.solution_text)} chars, {gen_t:.1f}s)")
+
+                # ── VERIFY ALL CANDIDATES (decoupled) ──
+                self._log("[VERIFY] Independently verifying candidates...")
+                verified = self._verify_candidates(
                     problem=problem,
-                    solution=solution,
-                    config=self.config,
-                    system_prompt=prompts.get("verifier_system"),
-                    user_template=prompts.get("verifier_user"),
+                    candidates=candidates,
+                    prompts=prompts,
                 )
-                history.append({
-                    "phase": "verify",
-                    "iteration": iteration,
-                    "verdict": verification.verdict.value,
-                    "confidence": verification.confidence,
-                    "num_issues": len(verification.issues),
-                })
-                self._log(f"[VERIFY] Verdict: {verification.verdict.value} "
+
+                # Log rankings for N>1
+                if n > 1:
+                    self._log_candidates(verified, gen_wall_time)
+
+                # Record all in history
+                for idx, (_sol, ver, _gen_t, _ver_t) in enumerate(verified, 1):
+                    history.append({
+                        "phase": "verify",
+                        "iteration": iteration,
+                        "candidate": idx,
+                        "verdict": ver.verdict.value,
+                        "confidence": ver.confidence,
+                        "num_issues": len(ver.issues),
+                    })
+
+                # Best candidate is first (sorted by confidence desc)
+                solution, verification, _, _ = verified[0]
+
+                self._log(f"[VERIFY] Best: {verification.verdict.value} "
                            f"(confidence: {verification.confidence:.0%})")
                 if verification.issues:
                     for issue in verification.issues:
@@ -313,6 +423,7 @@ class MathAgent:
                         admitted_failure=False,
                         history=history,
                         elapsed_seconds=elapsed,
+                        candidates_per_iteration=n,
                     )
 
                 # ── CHECK: False premise? ──
@@ -321,9 +432,10 @@ class MathAgent:
                     total_revisions, history, start_time,
                 )
                 if fp:
+                    fp.candidates_per_iteration = n
                     return fp
 
-                # ── REVISE (if fixable) ──
+                # ── REVISE (best candidate only, if fixable) ──
                 if verification.needs_revision(threshold):
                     result = self._run_revision_loop(
                         problem=problem,
@@ -339,6 +451,7 @@ class MathAgent:
                         best_confidence=best_confidence,
                     )
                     if isinstance(result, AgentResult):
+                        result.candidates_per_iteration = n
                         return result
                     total_revisions, best_solution, best_confidence = result
                 else:
@@ -367,6 +480,7 @@ class MathAgent:
             admitted_failure=True,
             history=history,
             elapsed_seconds=elapsed,
+            candidates_per_iteration=n,
         )
 
     def _log(self, message: str) -> None:
