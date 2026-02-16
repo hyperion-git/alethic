@@ -94,13 +94,14 @@ def _call_model(
         messages.append({"role": "assistant", "content": response.content})
 
         # Then add tool results
-        tool_result_content = []
-        for tr in tool_results:
-            tool_result_content.append({
+        tool_result_content = [
+            {
                 "type": "tool_result",
                 "tool_use_id": tr["tool_use_id"],
                 "content": tr["result"],
-            })
+            }
+            for tr in tool_results
+        ]
         messages.append({"role": "user", "content": tool_result_content})
         kwargs["messages"] = messages
 
@@ -280,13 +281,13 @@ def verify(
 
     tools = [PYTHON_TOOL] if config.enable_code_execution else None
 
-    sys_prompt = system_prompt if system_prompt is not None else VERIFIER_SYSTEM
+    system = system_prompt if system_prompt is not None else VERIFIER_SYSTEM
 
     logger.info("Verifier: evaluating solution from iteration %d", solution.iteration)
 
     text = _call_model(
         client,
-        system=sys_prompt,
+        system=system,
         user_message=user_msg,
         config=config,
         temperature=config.temperature_verifier,
@@ -370,7 +371,7 @@ def revise(
 
     tools = [PYTHON_TOOL] if config.enable_code_execution else None
 
-    sys_prompt = system_prompt if system_prompt is not None else REVISER_SYSTEM
+    system = system_prompt if system_prompt is not None else REVISER_SYSTEM
 
     logger.info(
         "Reviser: revision %d based on %s verdict",
@@ -380,7 +381,7 @@ def revise(
 
     text = _call_model(
         client,
-        system=sys_prompt,
+        system=system,
         user_message=user_msg,
         config=config,
         temperature=config.temperature_reviser,

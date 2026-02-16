@@ -6,9 +6,11 @@ Alethic's use of computational verification alongside natural-language reasoning
 
 from __future__ import annotations
 
+import builtins as _builtins_mod
 import contextlib
 import io
 import re
+import signal
 import traceback
 
 # Anthropic tool schema for Python code execution
@@ -65,33 +67,26 @@ def execute_python(code: str, timeout_seconds: int = 30) -> str:
     Returns:
         String containing stdout output and/or error messages.
     """
-    import signal
-
     stdout_capture = io.StringIO()
 
     # Build restricted globals
-    import builtins
-
-    safe_builtins = {k: getattr(builtins, k) for k in _SAFE_BUILTINS if hasattr(builtins, k)}
+    safe_builtins = {k: getattr(_builtins_mod, k) for k in _SAFE_BUILTINS if hasattr(_builtins_mod, k)}
     safe_builtins["__import__"] = _restricted_import
 
     restricted_globals = {"__builtins__": safe_builtins}
 
-    # Pre-import commonly needed modules
-    for mod_name in ("math", "fractions", "decimal", "itertools", "functools"):
+    # Pre-import commonly needed modules (alias → None means no alias)
+    _pre_imports = {
+        "math": None, "fractions": None, "decimal": None,
+        "itertools": None, "functools": None,
+        "numpy": "np", "sympy": "sp",
+    }
+    for mod_name, alias in _pre_imports.items():
         try:
-            restricted_globals[mod_name] = __import__(mod_name)
-        except ImportError:
-            pass
-
-    # Try importing numpy and sympy
-    for mod_name in ("numpy", "sympy"):
-        try:
-            restricted_globals[mod_name] = __import__(mod_name)
-            if mod_name == "numpy":
-                restricted_globals["np"] = restricted_globals[mod_name]
-            if mod_name == "sympy":
-                restricted_globals["sp"] = restricted_globals[mod_name]
+            mod = __import__(mod_name)
+            restricted_globals[mod_name] = mod
+            if alias:
+                restricted_globals[alias] = mod
         except ImportError:
             pass
 
