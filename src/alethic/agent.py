@@ -114,6 +114,7 @@ class MathAgent:
                 admitted_failure=False,
                 history=history,
                 elapsed_seconds=elapsed,
+                candidates_per_iteration=self.config.best_of_n,
             )
         return None
 
@@ -121,7 +122,6 @@ class MathAgent:
         self,
         *,
         problem: str,
-        config: AgentConfig,
         iteration: int,
         balanced: bool,
         prompts: dict[str, str],
@@ -129,12 +129,12 @@ class MathAgent:
     ) -> list[tuple[Solution, float]]:
         """Generate N candidates. Parallel (ThreadPoolExecutor) when N>1, sequential when N=1."""
 
-        def _gen_one(candidate_idx: int) -> tuple[Solution, float]:
+        def _gen_one() -> tuple[Solution, float]:
             t0 = time.time()
             sol = generate(
                 self.client,
                 problem=problem,
-                config=config,
+                config=self.config,
                 iteration=iteration,
                 balanced=balanced,
                 system_prompt=prompts.get("generator_system"),
@@ -144,11 +144,11 @@ class MathAgent:
             return sol, time.time() - t0
 
         if n == 1:
-            return [_gen_one(1)]
+            return [_gen_one()]
 
         results: list[tuple[Solution, float]] = []
         with ThreadPoolExecutor(max_workers=n) as pool:
-            futures = {pool.submit(_gen_one, i): i for i in range(1, n + 1)}
+            futures = {pool.submit(_gen_one): i for i in range(1, n + 1)}
             for future in as_completed(futures):
                 idx = futures[future]
                 try:
@@ -275,6 +275,7 @@ class MathAgent:
                     admitted_failure=False,
                     history=history,
                     elapsed_seconds=elapsed,
+                    candidates_per_iteration=self.config.best_of_n,
                 )
 
             # If major flaw after revision, break to restart from generator
@@ -339,16 +340,15 @@ class MathAgent:
             self._log(f"{'─' * 40}")
 
             try:
-                # ── GENERATE N CANDIDATES ──
+                # ── GENERATE ──
                 if n > 1:
-                    self._log(f"[GENERATE] Producing {n} candidate solutions (parallel)...")
+                    self._log(f"[GENERATE] Producing {n} candidates (parallel)...")
                 else:
                     self._log("[GENERATE] Producing candidate solution...")
 
                 gen_t0 = time.time()
                 candidates = self._generate_candidates(
                     problem=problem,
-                    config=self.config,
                     iteration=iteration,
                     balanced=balanced,
                     prompts=prompts,
@@ -371,8 +371,8 @@ class MathAgent:
                     self._log(f"[GENERATE] Candidate {idx}/{len(candidates)} produced "
                                f"({len(sol.solution_text)} chars, {gen_t:.1f}s)")
 
-                # ── VERIFY ALL CANDIDATES (decoupled) ──
-                self._log("[VERIFY] Independently verifying candidates...")
+                # ── VERIFY (decoupled) ──
+                self._log("[VERIFY] Independently verifying...")
                 verified = self._verify_candidates(
                     problem=problem,
                     candidates=candidates,
@@ -432,10 +432,9 @@ class MathAgent:
                     total_revisions, history, start_time,
                 )
                 if fp:
-                    fp.candidates_per_iteration = n
                     return fp
 
-                # ── REVISE (best candidate only, if fixable) ──
+                # ── REVISE (best candidate) ──
                 if verification.needs_revision(threshold):
                     result = self._run_revision_loop(
                         problem=problem,
@@ -451,7 +450,6 @@ class MathAgent:
                         best_confidence=best_confidence,
                     )
                     if isinstance(result, AgentResult):
-                        result.candidates_per_iteration = n
                         return result
                     total_revisions, best_solution, best_confidence = result
                 else:

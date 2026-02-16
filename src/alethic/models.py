@@ -31,6 +31,10 @@ class AgentConfig:
         temperature_verifier: Sampling temperature for the verifier (lower = stricter).
         temperature_reviser: Sampling temperature for the reviser.
         max_tokens: Max tokens per API call.
+        extended_thinking: Enable Claude's extended thinking mode.
+        thinking_budget: Token budget for extended thinking.
+        confidence_threshold: Minimum confidence for accepting a solution.
+        best_of_n: Number of candidates to generate per iteration (1 = sequential).
         verbose: Print progress to stdout.
     """
 
