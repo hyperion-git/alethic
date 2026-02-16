@@ -113,25 +113,34 @@ def generate(
     config: AgentConfig,
     iteration: int,
     balanced: bool = True,
+    *,
+    system_prompt: str | None = None,
+    user_template: str | None = None,
+    balanced_addendum: str | None = None,
 ) -> Solution:
-    """Generate a candidate mathematical solution.
+    """Generate a candidate solution.
 
     Args:
         client: Anthropic client instance.
-        problem: The mathematical problem statement.
+        problem: The problem statement.
         config: Agent configuration.
         iteration: Current iteration number (for logging).
         balanced: If True, append balanced prompting addendum to encourage
                   exploring counterexamples before proving.
+        system_prompt: Override the default generator system prompt.
+        user_template: Override the default generator user template.
+        balanced_addendum: Override the default balanced prompting addendum.
 
     Returns:
         A Solution object containing the candidate.
     """
-    system = GENERATOR_SYSTEM
+    system = system_prompt if system_prompt is not None else GENERATOR_SYSTEM
     if balanced:
-        system += BALANCED_GENERATOR_ADDENDUM
+        addendum = balanced_addendum if balanced_addendum is not None else BALANCED_GENERATOR_ADDENDUM
+        system += addendum
 
-    user_msg = GENERATOR_USER.format(problem=problem)
+    template = user_template if user_template is not None else GENERATOR_USER
+    user_msg = template.format(problem=problem)
 
     tools = [PYTHON_TOOL] if config.enable_code_execution else None
 
@@ -220,6 +229,9 @@ def verify(
     problem: str,
     solution: Solution,
     config: AgentConfig,
+    *,
+    system_prompt: str | None = None,
+    user_template: str | None = None,
 ) -> VerificationResult:
     """Independently verify a candidate solution.
 
@@ -232,22 +244,27 @@ def verify(
         problem: Original problem statement.
         solution: The candidate solution to verify.
         config: Agent configuration.
+        system_prompt: Override the default verifier system prompt.
+        user_template: Override the default verifier user template.
 
     Returns:
         A VerificationResult with verdict, critique, and issues.
     """
-    user_msg = VERIFIER_USER.format(
+    template = user_template if user_template is not None else VERIFIER_USER
+    user_msg = template.format(
         problem=problem,
         solution=solution.solution_text,
     )
 
     tools = [PYTHON_TOOL] if config.enable_code_execution else None
 
+    sys_prompt = system_prompt if system_prompt is not None else VERIFIER_SYSTEM
+
     logger.info("Verifier: evaluating solution from iteration %d", solution.iteration)
 
     text = _call_model(
         client,
-        system=VERIFIER_SYSTEM,
+        system=sys_prompt,
         user_message=user_msg,
         config=config,
         temperature=config.temperature_verifier,
@@ -298,6 +315,9 @@ def revise(
     verification: VerificationResult,
     config: AgentConfig,
     revision_number: int,
+    *,
+    system_prompt: str | None = None,
+    user_template: str | None = None,
 ) -> Solution:
     """Revise a solution based on verifier feedback.
 
@@ -308,6 +328,8 @@ def revise(
         verification: The verifier's critique and issues.
         config: Agent configuration.
         revision_number: Which revision attempt this is.
+        system_prompt: Override the default reviser system prompt.
+        user_template: Override the default reviser user template.
 
     Returns:
         A new Solution containing the revised answer.
@@ -316,7 +338,8 @@ def revise(
     if not issues_text:
         issues_text = "See critique above."
 
-    user_msg = REVISER_USER.format(
+    template = user_template if user_template is not None else REVISER_USER
+    user_msg = template.format(
         problem=problem,
         solution=solution.solution_text,
         critique=verification.critique,
@@ -324,6 +347,8 @@ def revise(
     )
 
     tools = [PYTHON_TOOL] if config.enable_code_execution else None
+
+    sys_prompt = system_prompt if system_prompt is not None else REVISER_SYSTEM
 
     logger.info(
         "Reviser: revision %d based on %s verdict",
@@ -333,7 +358,7 @@ def revise(
 
     text = _call_model(
         client,
-        system=REVISER_SYSTEM,
+        system=sys_prompt,
         user_message=user_msg,
         config=config,
         temperature=config.temperature_reviser,

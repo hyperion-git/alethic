@@ -1,4 +1,4 @@
-"""Data models for the Alethic math agent."""
+"""Data models for the Alethic agent."""
 
 from __future__ import annotations
 
@@ -106,7 +106,7 @@ class AgentConfig:
 
 @dataclass
 class Solution:
-    """A candidate mathematical solution produced by the Generator."""
+    """A candidate solution produced by the Generator."""
 
     problem: str
     solution_text: str

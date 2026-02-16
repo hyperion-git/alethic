@@ -1,10 +1,11 @@
-"""CLI interface for the Alethic math agent.
+"""CLI interface for the Alethic agent.
 
 Usage:
-    python -m alethic "Prove that sqrt(2) is irrational"
-    python -m alethic --file problem.txt
-    python -m alethic --preset thorough "Prove the Cayley-Hamilton theorem"
-    python -m alethic --iterations 3 --no-code "Find all primes below 100"
+    alethic "Prove that sqrt(2) is irrational"
+    alethic solve "Prove that sqrt(2) is irrational"
+    alethic derive "Derive the energy levels of the quantum harmonic oscillator"
+    alethic --preset thorough "Prove the Cayley-Hamilton theorem"
+    alethic derive --preset thorough "Derive the hydrogen atom spectrum"
 """
 
 from __future__ import annotations
@@ -20,15 +21,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="alethic",
         description=(
-            "Alethic — A mathematical reasoning agent powered by Claude.\n"
-            "Implements a Generate → Verify → Revise loop with decoupled verification."
+            "Alethic — A reasoning agent powered by Claude.\n"
+            "Implements a Generate → Verify → Revise loop with decoupled verification.\n\n"
+            "Subcommands (optional):\n"
+            "  solve   Solve a mathematical problem (default)\n"
+            "  derive  Derive a physics result"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
 Examples:
   %(prog)s "Prove that there are infinitely many primes"
+  %(prog)s solve "Prove the Cayley-Hamilton theorem"
+  %(prog)s derive "Derive the energy levels of the quantum harmonic oscillator"
   %(prog)s --preset quick "Is 17 prime?"
-  %(prog)s --preset thorough "Prove the Cayley-Hamilton theorem"
+  %(prog)s derive --preset thorough "Derive the hydrogen atom spectrum"
   %(prog)s --file problem.txt --iterations 3
   %(prog)s --model claude-sonnet-4-5-20250929 "What is 17 * 23?"
   %(prog)s --no-code "Prove the AM-GM inequality"
@@ -40,7 +46,7 @@ Examples:
     parser.add_argument(
         "problem",
         nargs="?",
-        help="The mathematical problem to solve (inline)",
+        help="The problem to solve (inline)",
     )
     parser.add_argument(
         "--file", "-f",
@@ -171,7 +177,31 @@ def _build_config(args: argparse.Namespace) -> AgentConfig:
     return config
 
 
+def _detect_subcommand(argv: list[str]) -> tuple[str | None, list[str]]:
+    """Detect and strip a 'solve' or 'derive' subcommand from argv.
+
+    Returns (command, remaining_argv). If the first non-flag argument is
+    'solve' or 'derive', it is removed from argv and returned as the command.
+    Otherwise, command is None and argv is unchanged.
+    """
+    for i, arg in enumerate(argv):
+        if arg.startswith("-"):
+            # Skip flags; also skip the next arg if this flag takes a value
+            # (flags that take values: -f, -p, -m, -n, --file, --preset, etc.)
+            continue
+        # First positional argument found
+        if arg in ("solve", "derive"):
+            return arg, argv[:i] + argv[i + 1:]
+        break
+    return None, argv
+
+
 def main(argv: list[str] | None = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+
+    command, argv = _detect_subcommand(argv)
+
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -192,10 +222,13 @@ def main(argv: list[str] | None = None) -> int:
     # Build config
     config = _build_config(args)
 
-    # Import here to avoid slow import on --help
-    from alethic.agent import MathAgent
-
-    agent = MathAgent(config=config, api_key=args.api_key)
+    # Select agent based on command
+    if command == "derive":
+        from alethic.physics_agent import PhysicsAgent
+        agent = PhysicsAgent(config=config, api_key=args.api_key)
+    else:
+        from alethic.agent import MathAgent
+        agent = MathAgent(config=config, api_key=args.api_key)
 
     try:
         result = agent.solve(problem, balanced=not args.no_balanced)

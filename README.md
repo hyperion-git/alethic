@@ -1,14 +1,16 @@
 # Alethic
 
-A mathematical reasoning agent inspired by [Google DeepMind's Aletheia](https://arxiv.org/abs/2602.10177), built on **Claude (Opus 4.6)**. Alethic implements a Generate-Verify-Revise loop with decoupled verification — the core architectural insight from DeepMind's design — to produce rigorous mathematical proofs and solutions with high confidence.
+A reasoning agent for mathematics and physics inspired by [Google DeepMind's Aletheia](https://arxiv.org/abs/2602.10177), built on **Claude (Opus 4.6)**. Alethic implements a Generate-Verify-Revise loop with decoupled verification — a key architectural insight from DeepMind's design — to produce rigorous mathematical proofs and physics derivations with high confidence.
 
-Available as a **Claude Code `/solve` skill** (recommended) or as a standalone **Python library** with CLI.
+Available as Claude Code skills (`/solve` for math, `/derive` for physics) or as a standalone **Python library** with CLI.
 
 ## Background and Motivation
 
-In February 2026, Google DeepMind introduced Aletheia, a multi-agent system that achieved 95% accuracy on IMO-ProofBench Advanced and autonomously resolved open Erdős conjectures. The system's central innovation lies in its separation of solution generation from solution verification: by preventing the verifier from observing the generator's intermediate reasoning traces, Aletheia avoids the confidence inflation that arises when a model evaluates its own chain of thought. When a verifier has access to the generator's internal reasoning, it tends to follow the same logical path and confirm flawed steps with unwarranted certainty. Decoupling forces the verifier to reconstruct and independently assess each argument from the final output alone.
+In February 2026, Google DeepMind introduced Aletheia, a multi-agent system that achieved 95% accuracy on IMO-ProofBench Advanced and autonomously resolved open Erdős conjectures. The system's central innovation lies in its separation of solution generation from solution verification: by preventing the verifier from observing the generator's intermediate reasoning traces, Aletheia avoids the confidence inflation that arises when a model evaluates its own chain of thought.
 
-Alethic translates this architecture to Claude's API. The project implements the same three-subagent loop — Generator, Verifier, and Reviser — with each role instantiated as an independent API call (in the Python library) or a separate Task sub-agent with a fresh context window (in the Claude Code skill). The result is a system that can solve mathematical problems with verified confidence, or honestly admit failure when it cannot.
+When a verifier has access to the generator's internal reasoning, it tends to follow the same logical path and confirm flawed steps with unwarranted certainty. Decoupling forces the verifier to reconstruct and independently assess each argument from the final output alone.
+
+Alethic translates this decoupled verification approach to Claude's API. The project implements the same three-subagent loop — Generator, Verifier, and Reviser — with each role instantiated as an independent API call (in the Python library) or a separate Task sub-agent with a fresh context window (in the Claude Code skill). The orchestrator logic is domain-neutral; only the prompt templates differ between math (`MathAgent`, `/solve`) and physics (`PhysicsAgent`, `/derive`). The result is a system that can solve mathematical problems and derive physics results with verified confidence, or honestly admit failure when it cannot.
 
 ### Key References
 
@@ -75,7 +77,7 @@ sequenceDiagram
 
 Each subagent is instantiated as an independent Claude API call with role-specific system prompts, temperature settings, and tool access. This separation ensures that no subagent can observe another's internal state.
 
-**Generator.** The Generator's task is to produce a complete, self-contained mathematical solution. Its system prompt instructs it to restate the problem, select a proof strategy explicitly, justify every inference, and use precise mathematical notation. When balanced prompting is enabled (the default), an addendum directs the Generator to first explore whether the statement might be false by testing small cases, boundary conditions, and degenerate inputs before committing to a proof strategy. This anti-confirmation-bias technique, drawn directly from the Aletheia design, prevents the model from anchoring prematurely on a flawed approach. The Generator has access to a sandboxed Python environment for computational verification of intermediate results.
+**Generator.** The Generator's task is to produce a complete, self-contained solution — a mathematical proof (in `/solve` / `MathAgent`) or a physics derivation (in `/derive` / `PhysicsAgent`). Its system prompt instructs it to restate the problem, select a strategy explicitly (proof techniques for math, derivation methods like Lagrangian mechanics or perturbation theory for physics), justify every inference, and use precise notation. When balanced prompting is enabled (the default), an addendum directs the Generator to first check whether the problem might be ill-posed: for math, this means testing small cases and boundary conditions; for physics, checking dimensional consistency and known limiting cases. This anti-confirmation-bias technique, adapted from the Aletheia design, reduces the risk of the model anchoring prematurely on a flawed approach. The Generator has access to a sandboxed Python environment for computational verification of intermediate results.
 
 **Verifier.** The Verifier is the architectural cornerstone of the system. Its system prompt establishes strict independence: it must evaluate the solution purely on its written merits, checking every logical step, re-deriving computations independently, and flagging common mathematical errors including sign mistakes, off-by-one errors, vacuous truth claims, circular reasoning, non-exhaustive case analysis, and incorrect theorem application. The Verifier produces a structured output containing a verdict (`correct`, `minor_issues`, `major_flaw`, or `unsolved`), a numerical confidence score calibrated against explicit benchmarks (0.95-1.0 for fully verified solutions, below 0.50 for likely errors), a step-by-step critique, a reason field for false-premise detection, and a list of specific issues. The confidence threshold (default 90%, configurable via `confidence_threshold`) means that even a `correct` verdict at lower confidence is treated as requiring revision — the Verifier must be genuinely certain.
 
@@ -128,10 +130,10 @@ flowchart TD
     Iter -->|Yes| Gen
     Iter -->|No| Fail[Admit failure]
 
-    Accept --> B[Beautify]
+    Accept --> B["Beautify (skill only)"]
     B --> Solved([SOLVED])
     FP --> Halt([HALT - premise false])
-    Fail --> BF[Beautify best effort]
+    Fail --> BF["Beautify best effort (skill only)"]
     BF --> Unsolved([UNSOLVED - best effort])
 ```
 
@@ -157,13 +159,13 @@ ISSUES:
 
 **Decoupled verification.** The separation of Generator and Verifier contexts is the single most important architectural decision. In the Python library, decoupling is enforced at the API level: the `verify()` function receives only the problem string and the solution text, never the Generator's response object or thinking blocks. In the Claude Code skill, decoupling is enforced structurally — each Verifier runs as a separate Task sub-agent that launches with a fresh context window and physically cannot access the Generator's reasoning.
 
-**Balanced prompting.** Before committing to a proof strategy, the Generator is instructed to actively search for counterexamples. This technique, adapted from the Aletheia paper, counteracts the confirmation bias that arises when a language model generates a solution: once a model begins pursuing a particular approach, it tends to rationalize intermediate steps rather than question the approach itself. By forcing an explicit counterexample search, the Generator is more likely to discover when a statement is false or when a different proof strategy would be more appropriate.
+**Balanced prompting.** Before committing to a strategy, the Generator is instructed to actively look for reasons the problem might be ill-posed or the approach might fail. For math, this means searching for counterexamples and testing boundary conditions; for physics, checking dimensional consistency and verifying known limiting cases. This technique, adapted from the Aletheia paper, counteracts the confirmation bias that arises when a language model generates a solution: once a model begins pursuing a particular approach, it tends to rationalize intermediate steps rather than question the approach itself. Balanced prompting is enabled by default and can be disabled via `--no-balanced` (CLI) or `balanced=False` (Python API).
 
 **Strategic failure admission.** When the Verifier cannot approve any solution after exhausting the iteration budget, the system returns `Verdict.UNSOLVED` along with the highest-confidence solution encountered during the run. This honest failure mode prevents the agent from hallucinating confidence in an unverified answer. The `admitted_failure` flag on the result object distinguishes between problems that were identified as having a false premise (a valid finding) and problems that the agent simply could not solve.
 
-**Confidence calibration.** The Verifier's confidence score is calibrated against explicit benchmarks in the system prompt. A score of 0.95-1.0 indicates that every step has been verified and computationally confirmed. A score below 0.85 means the Verifier would not stake its professional reputation on the result. This calibration prevents the common failure mode where a model assigns high confidence to every output regardless of actual certainty.
+**Confidence calibration.** The Verifier outputs a numerical confidence score between 0.0 and 1.0. The system prompt instructs the Verifier to be skeptical and to assign confidence proportional to the rigor of its own verification. The configurable confidence threshold (default 90%) means that even a `CORRECT` verdict at lower confidence is treated as uncertain and sent for revision, preventing the common failure mode where a model assigns high confidence to every output regardless of actual certainty.
 
-**Sandboxed code execution.** Both the Generator and Verifier have access to a Python sandbox for computational verification. The sandbox restricts available builtins to a safe subset, limits importable modules to mathematical libraries (math, sympy, numpy, and related packages), and enforces execution timeouts via `SIGALRM`. This allows the subagents to test conjectures numerically, verify algebraic manipulations symbolically, and check edge cases computationally — all without the security risks of unrestricted code execution.
+**Sandboxed code execution.** Both the Generator and Verifier have access to a Python sandbox for computational verification. The sandbox restricts available builtins to a safe subset, limits importable modules to mathematical and scientific libraries (math, sympy, numpy, scipy, mpmath, and related packages), and enforces execution timeouts via `SIGALRM`. This allows the subagents to test conjectures numerically, verify algebraic manipulations symbolically, evaluate special functions, and check edge cases computationally — all without the security risks of unrestricted code execution.
 
 **File-based state (skill only).** In the Claude Code skill, all solutions, verifications, and revisions are written to files in a session directory (`/tmp/alethic-{timestamp}/`). The orchestrator tracks only summary metrics — verdict strings, confidence floats, and file paths — in its own context. This prevents the exponential context growth that would occur if full solution texts accumulated across iterations, enabling the system to run for many iterations without approaching context limits.
 
@@ -180,11 +182,14 @@ Alethic provides four named presets that control the speed-vs-rigor tradeoff. Ea
 
 Explicit flags (CLI) or keyword arguments (Python API) override preset values, so `--preset quick --iterations 4` uses the `quick` preset but with 4 iterations instead of 2.
 
-> **Skill note:** The `/solve` skill supports presets via `-p`/`--preset` for iterations, revisions, budget, and confidence threshold. Temperature and extended thinking are not controllable through the skill (Task sub-agent limitation).
+> **Skill note:** Both `/solve` and `/derive` support presets via `-p`/`--preset` for iterations, revisions, budget, and confidence threshold. Temperature and extended thinking are not controllable through the skills (Task sub-agent limitation).
 
-## Claude Code Skill (Recommended)
+## Claude Code Skills (Recommended)
 
-The `/solve` command runs Alethic natively inside Claude Code, using Task sub-agents for true architectural decoupling. Each Verifier launches as an independent Task with a fresh context window, providing the strongest possible guarantee that it cannot observe the Generator's reasoning process. The skill also includes a Beautifier stage that formats accepted solutions into clean LaTeX/Markdown for presentation.
+Alethic provides two Claude Code skills that run natively inside Claude Code, using Task sub-agents for true architectural decoupling. Each Verifier launches as an independent Task with a fresh context window, providing the strongest possible guarantee that it cannot observe the Generator's reasoning process. Both skills include a Beautifier stage that formats accepted outputs into clean LaTeX/Markdown.
+
+- **`/solve`** — Mathematical problem solving (proofs, computations, theorems)
+- **`/derive`** — Physics derivations (with physics-specific strategies, error checking, and notation)
 
 ### Install
 
@@ -203,20 +208,22 @@ mkdir -p "$DEST"
 cp -r alethic/.claude-plugin alethic/skills "$DEST/"
 ```
 
-Restart Claude Code. The `/solve` command is now available.
+Restart Claude Code. The `/solve` and `/derive` commands are now available.
 
 ### Usage
 
 ```
+# Math
 /solve "Prove that sqrt(2) is irrational"
-
 /solve -p thorough "Prove the Fundamental Theorem of Algebra"
-
 /solve -p quick -i 4 "Is 17 prime?"
-
 /solve -t 0.95 "Prove the AM-GM inequality for n variables"
 
-/solve -i 5 -r 4 -b 80 "Prove the Basel problem"
+# Physics
+/derive "Derive the energy levels of the quantum harmonic oscillator"
+/derive -p thorough "Derive the hydrogen atom energy spectrum"
+/derive -i 8 -r 5 "Derive the Dirac equation from relativistic quantum mechanics"
+/derive "Show that the Euler-Lagrange equations follow from Hamilton's principle"
 ```
 
 | Flag | Short | Default | Description |
@@ -227,9 +234,23 @@ Restart Claude Code. The `/solve` command is now available.
 | `--revisions` | `-r` | 3 | Maximum revision attempts per iteration |
 | `--budget` | `-b` | 50 | Total sub-agent call budget |
 
+### How `/derive` Differs from `/solve`
+
+Both skills share the same orchestrator logic (iteration loop, verdict parsing, file-based state, budget tracking). The differences are entirely in the prompt templates:
+
+| Component | `/solve` | `/derive` |
+|-----------|----------|-----------|
+| Generator role | "mathematical problem solver" | "theoretical physics derivation solver" |
+| Strategy catalog | Proof strategies (induction, contradiction, pigeonhole, ...) | Derivation techniques (Lagrangian, perturbation theory, WKB, Feynman diagrams, ...) |
+| Balanced approach | Test counterexamples, boundary cases | Check dimensional consistency, verify limiting cases (ħ→0, c→∞) |
+| Verifier errors | Math errors (sign, off-by-one, circular reasoning) | Math errors + physics errors (dimensional inconsistency, violated conservation laws, wrong sign convention, unjustified approximation) |
+| Correct = | "Mathematically sound" | "Physically and mathematically sound" |
+| Beautifier symbols | Standard LaTeX math | + `\hbar`, `\nabla`, `\partial`, `\langle\rangle`, `\mathcal{H}`, `\mathcal{L}`, `\dagger`, `\mathrm{d}`, bra-ket |
+| Document structure | Proof strategy → Body → Conclusion ∎ | Setup (system, assumptions) → Derivation → Result → Limiting cases |
+
 ### Skill Execution Flow
 
-The skill orchestrator proceeds through four stages. First, the **Generator** (an Opus Task sub-agent) reads the problem file, uses Bash for Python computation and WebSearch for theorem lookup, and writes a complete solution to disk. Second, the **Verifier** (a separate Opus Task sub-agent with a fresh context) reads only the problem file and the solution file, performs its independent evaluation, and writes a structured verification report. If issues are found, the **Reviser** (another Opus Task sub-agent) reads the solution and the critique, writes a revised solution, and the cycle repeats with a fresh Verifier. Finally, the **Beautifier** formats the accepted solution into clean LaTeX/Markdown with proper mathematical typesetting. All intermediate state lives in `/tmp/alethic-{timestamp}/`, and the orchestrator tracks only verdicts and confidence scores in its own context window.
+Both skills follow the same four-stage flow. First, the **Generator** (an Opus Task sub-agent) reads the problem file, uses Bash for Python computation and WebSearch for theorem/identity lookup, and writes a complete solution to disk. Second, the **Verifier** (a separate Opus Task sub-agent with a fresh context) reads only the problem file and the solution file, performs its independent evaluation, and writes a structured verification report. If issues are found, the **Reviser** (another Opus Task sub-agent) reads the solution and the critique, writes a revised solution, and the cycle repeats with a fresh Verifier. Finally, the **Beautifier** formats the accepted solution into clean LaTeX/Markdown with proper typesetting. All intermediate state lives in `/tmp/alethic-{timestamp}/`, and the orchestrator tracks only verdicts and confidence scores in its own context window.
 
 ## Python Library
 
@@ -244,20 +265,49 @@ pip install -e ".[dev]"  # from source
 ### Quick Start
 
 ```python
-from alethic import MathAgent, AgentConfig
+from alethic import MathAgent, PhysicsAgent, AgentConfig
 
+# Math
 agent = MathAgent()  # uses ANTHROPIC_API_KEY env var
 result = agent.solve("Prove that the square root of 2 is irrational.")
 
 print(result)            # Full formatted output
 print(result.solved)     # True/False
 print(result.confidence) # 0.0-1.0
+
+# Physics
+agent = PhysicsAgent()
+result = agent.solve("Derive the energy levels of the quantum harmonic oscillator.")
 ```
+
+`PhysicsAgent` is a thin subclass of `MathAgent` that injects physics-specific prompt templates into the same Generate-Verify-Revise loop. All orchestrator logic is inherited — only the prompts differ.
+
+The `AgentResult` returned by `solve()` exposes:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `solved` | `bool` | `True` if verdict is `CORRECT` and solution exists |
+| `solution` | `str \| None` | The solution text (best attempt if unsolved) |
+| `verdict` | `Verdict` | `CORRECT`, `MINOR_ISSUES`, `MAJOR_FLAW`, or `UNSOLVED` |
+| `confidence` | `float` | Verifier's confidence (0.0–1.0) |
+| `iterations_used` | `int` | Number of generate-verify cycles used |
+| `total_revisions` | `int` | Total revision attempts across all iterations |
+| `admitted_failure` | `bool` | `True` if all iterations exhausted without success |
+| `elapsed_seconds` | `float` | Wall-clock time for the solve call |
+| `history` | `list[dict]` | Per-phase log entries for debugging |
 
 ### CLI
 
 ```bash
-# Use a preset
+# Math (default — no subcommand needed)
+alethic "Prove that there are infinitely many primes"
+alethic solve "Prove that there are infinitely many primes"  # explicit
+
+# Physics derivations
+alethic derive "Derive the energy levels of the quantum harmonic oscillator"
+alethic derive --preset thorough "Derive the hydrogen atom energy spectrum"
+
+# Presets
 alethic --preset quick "Is 17 prime?"
 alethic --preset thorough "Prove the Cayley-Hamilton theorem"
 
@@ -267,11 +317,9 @@ alethic --preset quick --iterations 4 "Prove the AM-GM inequality"
 # Set confidence threshold
 alethic --confidence-threshold 0.95 "Prove the Basel problem"
 
-# Inline problem
-alethic "Prove that there are infinitely many primes"
-
 # From file
 alethic --file problem.txt
+alethic derive --file derivation.txt
 
 # JSON output for pipeline integration
 alethic --json "Solve x^2 - 5x + 6 = 0"
@@ -291,7 +339,7 @@ alethic --no-code "Prove Euler's identity"
 The `AgentConfig` dataclass exposes all tunable parameters. The easiest way to get started is with a named preset:
 
 ```python
-from alethic import MathAgent, AgentConfig
+from alethic import MathAgent, PhysicsAgent, AgentConfig
 
 # Quick preset for simple problems
 config = AgentConfig.from_preset("quick")
@@ -299,7 +347,9 @@ config = AgentConfig.from_preset("quick")
 # Thorough preset with a custom iteration limit
 config = AgentConfig.from_preset("thorough", max_iterations=10)
 
+# Same config works for both agents
 agent = MathAgent(config=config)
+agent = PhysicsAgent(config=config)  # same presets, physics prompts
 ```
 
 For full control, construct `AgentConfig` directly. Temperature settings follow the Aletheia design: high for creative generation, low for strict verification, moderate for targeted revision.
@@ -344,24 +394,28 @@ python -m alethic.examples --iterations 3
 
 ## Module Reference
 
-The Python library is organized into six modules, each with a single clear responsibility.
+The Python library is organized into the following modules, each with a single clear responsibility.
 
 | Module | Purpose |
 |--------|---------|
 | `agent.py` | `MathAgent` orchestrator — runs the full Generate-Verify-Revise loop with false-premise detection and strategic failure admission |
-| `subagents.py` | `generate()`, `verify()`, `revise()` — each wraps a Claude API call with role-specific prompts, temperature, and tool configuration; includes the tool-use loop (up to 5 rounds) and structured output parsing |
+| `physics_agent.py` | `PhysicsAgent` — thin subclass of `MathAgent` that injects physics-specific prompt templates |
+| `subagents.py` | `generate()`, `verify()`, `revise()` — each wraps a Claude API call with role-specific prompts, temperature, and tool configuration; accepts optional prompt kwargs for domain specialization; includes the tool-use loop (up to 5 rounds) and structured output parsing |
 | `models.py` | Dataclasses: `AgentConfig` (with `PRESETS` and `from_preset()`), `Solution`, `VerificationResult`, `Revision`, `AgentResult`, and the `Verdict` enum |
-| `prompts.py` | System and user prompt templates for all three subagents, plus the balanced prompting addendum |
+| `prompts.py` | System and user prompt templates for the math subagents, plus the balanced prompting addendum |
+| `physics_prompts.py` | Physics-specific prompt templates: derivation strategies, physics error checklist, dimensional/limiting-case balanced addendum |
 | `tools.py` | `execute_python()` sandbox with restricted builtins and module allowlist, `PYTHON_TOOL` schema for the Anthropic API, and `process_tool_calls()` for the tool-use loop |
-| `cli.py` | `argparse`-based CLI entry point (`alethic`) with `--preset`, `--confidence-threshold`, `--thinking`, `--json`, and `--file` support |
+| `cli.py` | `argparse`-based CLI entry point (`alethic`) with `solve`/`derive` subcommands, `--preset`, `--confidence-threshold`, `--thinking`, `--json`, and `--file` support |
 | `examples.py` | Six bundled example problems (`python -m alethic.examples`) |
 
 | Skill file | Purpose |
 |------------|---------|
 | `skills/solve/SKILL.md` | `/solve` command orchestrator — spawns Opus Task sub-agents with file-based state |
+| `skills/derive/SKILL.md` | `/derive` command orchestrator — physics derivations with physics-specific prompts |
 | `.claude-plugin/plugin.json` | Plugin metadata for Claude Code |
 | `.claude-plugin/marketplace.json` | Marketplace manifest for `hyperion-git/alethic` |
-| `skills/solve/references/*.md` | Standalone prompt references (generator, verifier, reviser, beautifier) |
+| `skills/solve/references/*.md` | Standalone math prompt references (generator, verifier, reviser, beautifier) |
+| `skills/derive/references/*.md` | Standalone physics prompt references (generator, verifier, reviser, beautifier) |
 
 ## Project Structure
 
@@ -371,31 +425,42 @@ alethic/
 │   ├── plugin.json                 # Plugin metadata (v0.2.0)
 │   └── marketplace.json            # Marketplace manifest
 ├── skills/                         # Claude Code skills
-│   └── solve/
-│       ├── SKILL.md                # /solve command orchestrator
-│       └── references/             # Standalone prompt references
+│   ├── solve/
+│   │   ├── SKILL.md                # /solve command orchestrator
+│   │   └── references/             # Math prompt references
+│   │       ├── generator.md
+│   │       ├── verifier.md
+│   │       ├── reviser.md
+│   │       └── beautifier.md
+│   └── derive/
+│       ├── SKILL.md                # /derive command orchestrator
+│       └── references/             # Physics prompt references
 │           ├── generator.md
 │           ├── verifier.md
 │           ├── reviser.md
 │           └── beautifier.md
 ├── src/alethic/                    # Python library
 │   ├── agent.py                    # MathAgent orchestrator
+│   ├── physics_agent.py            # PhysicsAgent (subclass of MathAgent)
 │   ├── subagents.py                # generate(), verify(), revise()
 │   ├── models.py                   # Data models + Verdict enum
-│   ├── prompts.py                  # System/user prompt templates
+│   ├── prompts.py                  # Math prompt templates
+│   ├── physics_prompts.py          # Physics prompt templates
 │   ├── tools.py                    # Python sandbox + tool-use loop
-│   ├── cli.py                      # CLI entry point
+│   ├── cli.py                      # CLI entry point (solve/derive)
 │   └── examples.py                 # Bundled example problems
 └── tests/
-    └── test_alethic.py             # 43 tests (mocked API)
+    ├── test_alethic.py             # Core tests (43)
+    ├── test_physics.py             # Physics tests (35)
+    └── test_adversarial_*.py       # Adversarial tests (185)
 ```
 
 ## Testing
 
-All tests use mocked API responses and require no API key. The test suite covers data models, prompt content validation, sandbox execution (including timeout enforcement and import restrictions), structured output parsing for all verdict types, preset creation and overrides, configurable confidence thresholds, CLI argument parsing (including `--preset` and `--confidence-threshold`), and end-to-end integration flows for solved, revised, and failed problems.
+All tests use mocked API responses and require no API key. The test suite covers data models, prompt content validation (math and physics), sandbox execution (including timeout enforcement and import restrictions), structured output parsing for all verdict types, preset creation and overrides, configurable confidence thresholds, CLI argument parsing (including `solve`/`derive` subcommands, `--preset`, and `--confidence-threshold`), physics prompt injection via kwargs, `PhysicsAgent` instantiation and integration, and end-to-end flows for solved, revised, and failed problems. Adversarial tests cover edge cases in CLI parsing, backward compatibility, prompt kwargs, sandbox allowlist, and skill file structure.
 
 ```bash
-# Run all 43 tests
+# Run all 263 tests
 pytest
 
 # With coverage report

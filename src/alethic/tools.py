@@ -20,7 +20,7 @@ PYTHON_TOOL = {
         "verify formulas numerically, or perform symbolic computation. "
         "Available libraries: math, fractions, decimal, itertools, functools, "
         "collections, operator, random, statistics. "
-        "NumPy and SymPy are also available if installed."
+        "NumPy, SymPy, SciPy, and mpmath are also available if installed."
     ),
     "input_schema": {
         "type": "object",
@@ -51,7 +51,7 @@ _ALLOWED_MODULES = {
     "collections", "operator", "random", "statistics", "re", "string",
     "textwrap", "numbers",
     # Scientific (available if installed)
-    "numpy", "sympy",
+    "numpy", "sympy", "scipy", "mpmath",
 }
 
 
