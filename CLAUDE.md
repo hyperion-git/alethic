@@ -43,6 +43,13 @@ alethic --best-of 3 "Prove the Cayley-Hamilton theorem"
 alethic --preset thorough -B 5 "Prove the Riemann mapping theorem"
 alethic derive -B 3 "Derive the hydrogen atom energy spectrum"
 
+# Textbook-style output (skills only)
+# /alethic-solve --textbook "Prove sqrt(2) is irrational"
+# /alethic-solve -p thorough --textbook "Prove the Cayley-Hamilton theorem"
+# /alethic-derive --textbook "Derive harmonic oscillator energy levels"
+# /alethic-textbook .alethic/{existing-session}/
+# /alethic-textbook --domain physics derivation.md
+
 # Run examples
 python -m alethic.examples --list
 python -m alethic.examples --pick 1
@@ -124,14 +131,15 @@ Both `/alethic-solve` and `/alethic-derive` support presets via `-p`/`--preset`,
 |------------|---------|
 | `skills/alethic-solve/SKILL.md` | `/alethic-solve` command orchestrator — spawns Opus Task sub-agents with file-based state, best-of-N candidate generation, and monitoring dashboard |
 | `skills/alethic-derive/SKILL.md` | `/alethic-derive` command orchestrator — physics derivations with physics-specific prompts, best-of-N candidate generation, and monitoring dashboard |
+| `skills/alethic-textbook/SKILL.md` | `/alethic-textbook` command — standalone textbook-style converter for existing sessions or raw .md files |
 | `skills/alethic-scientific-figure/SKILL.md` | `/alethic-scientific-figure` command — publication-quality scientific figures with AFP color palette and Tufte principles |
 | `skills/alethic-scientific-figure/references/*.md` | Color palette reference, presentation/poster overrides |
 | `skills/alethic-scientific-figure/scripts/register_colormaps.py` | Registers 56 CIELAB-linearized AFP colormaps with matplotlib |
 | `skills/alethic-scientific-figure/evals.json` | Evaluation scenarios for the `/alethic-scientific-figure` skill |
 | `.claude-plugin/plugin.json` | Plugin metadata |
 | `.claude-plugin/marketplace.json` | Marketplace manifest for `hyperion-git/alethic` |
-| `skills/alethic-solve/references/*.md` | Standalone math prompt references (generator, verifier, reviser, beautifier) |
-| `skills/alethic-derive/references/*.md` | Standalone physics prompt references (generator, verifier, reviser, beautifier) |
+| `skills/alethic-solve/references/*.md` | Standalone math prompt references (generator, verifier, reviser, beautifier, textbook planner/writer/fidelity) |
+| `skills/alethic-derive/references/*.md` | Standalone physics prompt references (generator, verifier, reviser, beautifier, textbook planner/writer/fidelity) |
 
 ## Key Design Decisions
 
@@ -145,7 +153,8 @@ Both `/alethic-solve` and `/alethic-derive` support presets via `-p`/`--preset`,
 8. **Strategic failure admission**: After exhausting `max_iterations`, the agent returns `Verdict.UNSOLVED` with the best solution seen, rather than hallucinating confidence.
 9. **File-based state** (skill only): Session directories in `.alethic/` (project-local) prevent context window exhaustion — the orchestrator tracks only verdicts and confidence, full text lives in files. Falls back to `/tmp/alethic-*/` outside git repositories.
 10. **Best-of-N sampling**: Each iteration generates N candidates (configurable via `--best-of` / `-B`), verifies all, selects the highest-confidence candidate, and revises only the winner. The Python library uses `ThreadPoolExecutor` for parallel generation when N>1; skills generate sequentially and display a monitoring dashboard with candidate rankings and cumulative iteration history. When N=1, behavior is identical to the pre-best-of-N code path (no thread pool, same log messages, same history shape). `AgentResult` includes `candidates_per_iteration` metadata. Preset defaults: quick=1, default=2, thorough=3, extreme=5.
+11. **Textbook-style converter** (skill only): The `--textbook` flag on `/alethic-solve` and `/alethic-derive` (or standalone `/alethic-textbook`) runs a staged sub-agent pipeline — Planner → Writer × N → Fidelity Verifier — that converts raw solutions into textbook-quality documents with theorem/definition/lemma environments (math) or setup/derivation/result environments (physics), pedagogical motivation, numbered equations with back-references, and connecting prose. The Planner adaptively decides section count based on solution length (1–8 sections), keeping each Writer's context bounded. The Fidelity Verifier compares the textbook version against the original on a 6-point checklist; MAJOR_ALTERATION triggers fallback to the simple beautifier. The orchestrator never reads solution text — only file paths and one-line summaries.
 
 ### Session Directory Layout (skills only)
 
-Skills persist sessions in `.alethic/` within the project directory (detected via `.git`). Each session gets a `{slug}-{YYYYMMDD}-{4hex}/` directory containing `session.json` (metadata), `problem.md`, `output.md` (final deliverable), and a `worklog/` subdirectory for intermediate files. When best-of-N > 1, each iteration's worklog contains `candidate_{C}.md` and `verification_c{C}.md` files for each candidate, with the best candidate copied to the standard `solution.md` / `verification.md` locations. An append-only `sessions.jsonl` index at the `.alethic/` root enables querying across sessions. Falls back to `/tmp/alethic-*` outside git repositories. The Python library (`MathAgent`, `PhysicsAgent`) is unaffected — it uses in-memory `AgentResult` objects.
+Skills persist sessions in `.alethic/` within the project directory (detected via `.git`). Each session gets a `{slug}-{YYYYMMDD}-{4hex}/` directory containing `session.json` (metadata), `problem.md`, `output.md` (final deliverable), and a `worklog/` subdirectory for intermediate files. When best-of-N > 1, each iteration's worklog contains `candidate_{C}.md` and `verification_c{C}.md` files for each candidate, with the best candidate copied to the standard `solution.md` / `verification.md` locations. When `--textbook` is used, the worklog additionally contains `textbook_plan.md` (Planner output), `textbook_section_{K}.md` (Writer outputs), `textbook_context.md` (rolling context for Writer continuity), `textbook_draft.md` (assembled sections), and `fidelity_check.md` (Fidelity Verifier output). An append-only `sessions.jsonl` index at the `.alethic/` root enables querying across sessions. Falls back to `/tmp/alethic-*` outside git repositories. The Python library (`MathAgent`, `PhysicsAgent`) is unaffected — it uses in-memory `AgentResult` objects.
