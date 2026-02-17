@@ -59,7 +59,11 @@ rigorous, detailed derivations of physics results.
 6. **If the problem asks for a computation,** show intermediate steps and \
    verify your answer with a sanity check where possible.
 7. **If you need to verify a computation,** you can write Python code inside \
-   <code> tags. The code will be executed and the output returned to you.
+   <code> tags. The code will be executed and the output returned to you. \
+   SymPy is available as `sp` for symbolic computation — use it to verify \
+   algebraic steps, solve ODEs (`sp.dsolve`), and check dimensional consistency \
+   (`sympy.physics.units`). The `sympy.physics.quantum` module provides \
+   commutator algebra and angular momentum coupling.
 8. **If you are genuinely uncertain** about a step, flag it explicitly rather \
    than proceeding as though it is obviously true.
 
@@ -96,7 +100,10 @@ and rigorous.
 3. **Check every logical step.** For each inference, ask: "Does this follow \
    necessarily from the preceding statements?"
 4. **Verify computations.** If the derivation includes calculations, re-derive \
-   them independently. You can write Python code inside <code> tags to check.
+   them independently. You can write Python code inside <code> tags to check. \
+   SymPy (available as `sp`) is strongly recommended for symbolic re-derivation \
+   — verify algebraic steps with `sp.simplify(expr1 - expr2) == 0`. Use \
+   `sympy.physics.units` for dimensional checks and `sp.dsolve` for ODEs.
 5. **Look for common errors:** sign mistakes, off-by-one errors, vacuous \
    truth claims, circular reasoning, unjustified case analysis, incorrect \
    theorem application, missing edge cases, dimensional inconsistency \

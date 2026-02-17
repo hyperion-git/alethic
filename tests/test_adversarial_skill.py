@@ -676,3 +676,95 @@ class TestBalancedAddendum:
         assert "limiting case" in derive_skill.lower(), (
             "derive balanced addendum should mention limiting cases"
         )
+
+
+# ── 19. SymPy guidance in reference files ────────────────────────────
+
+
+@pytest.fixture(scope="module")
+def reference_files() -> dict:
+    """Load generator and verifier reference files for both skills."""
+    return {
+        "solve_generator": _read(os.path.join(SOLVE_REFS, "generator.md")),
+        "solve_verifier": _read(os.path.join(SOLVE_REFS, "verifier.md")),
+        "derive_generator": _read(os.path.join(DERIVE_REFS, "generator.md")),
+        "derive_verifier": _read(os.path.join(DERIVE_REFS, "verifier.md")),
+    }
+
+
+class TestSympyGuidance:
+    """Verify that reference files contain SymPy-specific verification guidance."""
+
+    @pytest.fixture(autouse=True)
+    def load_files(self, reference_files):
+        self.ref = reference_files
+
+    # --- Math Generator ---
+    def test_math_generator_mentions_sympy(self):
+        assert "SymPy" in self.ref["solve_generator"]
+
+    def test_math_generator_mentions_sp_simplify(self):
+        assert "sp.simplify" in self.ref["solve_generator"]
+
+    def test_math_generator_mentions_sp_integrate(self):
+        assert "sp.integrate" in self.ref["solve_generator"]
+
+    def test_math_generator_has_toolkit_section(self):
+        assert "### SymPy Verification Toolkit" in self.ref["solve_generator"]
+
+    def test_math_generator_no_physics_modules(self):
+        assert "sympy.physics" not in self.ref["solve_generator"]
+
+    # --- Math Verifier ---
+    def test_math_verifier_mentions_sympy(self):
+        assert "SymPy" in self.ref["solve_verifier"]
+
+    def test_math_verifier_mandatory_section(self):
+        assert "### Mandatory SymPy Re-derivation" in self.ref["solve_verifier"]
+
+    def test_math_verifier_red_flag(self):
+        assert "RED FLAG" in self.ref["solve_verifier"]
+
+    def test_math_verifier_no_physics_modules(self):
+        assert "sympy.physics" not in self.ref["solve_verifier"]
+
+    # --- Physics Generator ---
+    def test_physics_generator_mentions_sympy(self):
+        assert "SymPy" in self.ref["derive_generator"]
+
+    def test_physics_generator_has_toolkit_section(self):
+        assert "### SymPy Verification Toolkit" in self.ref["derive_generator"]
+
+    def test_physics_generator_mentions_physics_units(self):
+        assert "sympy.physics.units" in self.ref["derive_generator"]
+
+    def test_physics_generator_mentions_physics_quantum(self):
+        assert "sympy.physics.quantum" in self.ref["derive_generator"]
+
+    def test_physics_generator_mentions_dsolve(self):
+        assert "sp.dsolve" in self.ref["derive_generator"]
+
+    # --- Physics Verifier ---
+    def test_physics_verifier_mentions_sympy(self):
+        assert "SymPy" in self.ref["derive_verifier"]
+
+    def test_physics_verifier_mandatory_section(self):
+        assert "### Mandatory SymPy Re-derivation" in self.ref["derive_verifier"]
+
+    def test_physics_verifier_red_flag(self):
+        assert "RED FLAG" in self.ref["derive_verifier"]
+
+    def test_physics_verifier_mentions_physics_units(self):
+        assert "sympy.physics.units" in self.ref["derive_verifier"]
+
+    def test_physics_verifier_mentions_dsolve(self):
+        assert "sp.dsolve" in self.ref["derive_verifier"]
+
+    # --- All files mention sp is pre-imported ---
+    def test_all_generators_mention_sp_preimport(self):
+        for key in ["solve_generator", "derive_generator"]:
+            assert "pre-imported as `sp`" in self.ref[key], f"{key} missing sp pre-import note"
+
+    def test_all_verifiers_mention_sp_preimport(self):
+        for key in ["solve_verifier", "derive_verifier"]:
+            assert "pre-imported as `sp`" in self.ref[key], f"{key} missing sp pre-import note"

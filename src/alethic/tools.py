@@ -19,6 +19,8 @@ PYTHON_TOOL = {
         "Execute Python code for computational verification. "
         "Use this to check calculations, test conjectures with examples, "
         "verify formulas numerically, or perform symbolic computation. "
+        "SymPy is pre-imported as `sp` — use it for symbolic simplification, "
+        "integration, series expansion, equation solving, and matrix algebra. "
         "Available libraries: math, fractions, decimal, itertools, functools, "
         "collections, operator, random, statistics. "
         "NumPy, SymPy, SciPy, and mpmath are also available if installed."
