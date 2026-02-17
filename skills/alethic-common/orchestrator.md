@@ -115,6 +115,33 @@ Sub-agent prompts are stored in the skill's `references/` directory and loaded j
 
 ---
 
+## Event Logging
+
+After each Task sub-agent call, log an event by appending one JSON line to `{session_dir}/worklog/events.jsonl` using Bash:
+
+```bash
+echo '{"type":"{role}","iteration":{N},...,"timestamp":"'$(date -Iseconds)'"}' >> {session_dir}/worklog/events.jsonl
+```
+
+Event types and their fields:
+
+| Event type | Additional fields |
+|-----------|-------------------|
+| `generate` | `"iteration": {N}, "candidate": {C}` |
+| `verify` | `"iteration": {N}, "candidate": {C}, "verdict": "{verdict}", "confidence": {confidence}, "has_critical": {true\|false}` |
+| `revise` | `"iteration": {N}, "revision": {M}` |
+| `verify` (re-verify) | `"iteration": {N}, "revision": {M}, "verdict": "{verdict}", "confidence": {confidence}, "has_critical": {true\|false}` |
+| `beautify` | (no additional fields) |
+| `plan_textbook` | `"sections": {N}` |
+| `write_textbook` | `"section": {K}, "total": {N}` |
+| `verify_fidelity` | `"fidelity": "{verdict}"` |
+| `accept` | `"iteration": {N}, "confidence": {confidence}` |
+| `fail` | `"reason": "iterations_exhausted" or "budget_exhausted"` |
+
+Log each event immediately after the corresponding Task call completes (or fails). This enables post-hoc analysis of session dynamics.
+
+---
+
 ## Step 1: Setup
 
 1. **Project detection**: Use Bash to check if `.git` exists in the current working directory or any parent (up to 5 levels):
@@ -172,6 +199,8 @@ Sub-agent prompts are stored in the skill's `references/` directory and loaded j
      "best_verification_path": null,
      "verdict": null,
      "output_file": null,
+     "failed_approaches": [],
+     "elapsed_seconds": null,
      "created_at": "{ISO 8601 timestamp}",
      "completed_at": null
    }
@@ -179,7 +208,12 @@ Sub-agent prompts are stored in the skill's `references/` directory and loaded j
 
 7. Initialize a counter variable: `task_calls = 0`.
 
-8. **Resource estimate**: Calculate the worst-case Task calls: `max_iterations * (best_of_n * 2 + max_revisions * 2) + 1`. Print to the user:
+8. **Capture start time**:
+   ```bash
+   START_TIME=$(date +%s)
+   ```
+
+9. **Resource estimate**: Calculate the worst-case Task calls: `max_iterations * (best_of_n * 2 + max_revisions * 2) + 1`. Print to the user:
    ```
    Alethic {agent_title} Agent
    Session: .alethic/{session_id}/
@@ -225,15 +259,17 @@ Loop for iterations 1 through `max_iterations`. For each iteration N:
    - "Read the problem from `{session_dir}/problem.md`."
    - When `best_of_n == 1`: "Write your complete {noun} to `{session_dir}/worklog/iter{N}/solution.md`."
    - When `best_of_n > 1`: "Write your complete {noun} to `{session_dir}/worklog/iter{N}/candidate_{C}.md`."
-   - If iteration 2+: include the strategy history — "Previous attempts used the following strategies and were not fully verified: {list of strategy summaries from prior iterations}. Try a DIFFERENT approach."
+   - If iteration 2+: include the strategy history from `failed_approaches` — "Previous attempts:\n- Iter 1: {strategy} -> {verdict} ({confidence}): {top_issue}\n- Iter 2: {strategy} -> {verdict} ({confidence}): {top_issue}\nTry a DIFFERENT approach."
    - When `best_of_n > 1` and C > 1: "Other candidates are being generated in parallel. Use a DIFFERENT strategy from your default approach to maximize diversity."
    - "After writing the {noun} file, return a ONE-LINE summary of your strategy and approach (e.g., 'Proof by contradiction using infinite descent' or 'Lagrangian mechanics with small-angle approximation')."
 
-4. If a Task fails (error or no output), log `[Iter {N}] Generator (candidate {C}) FAILED` and continue to next candidate. If ALL candidates fail, skip to the next iteration.
+4. **Log event**: `{"type":"generate","iteration":{N},"candidate":{C},"timestamp":"..."}`
 
-5. **Track strategy**: Record each Generator's one-line return as the strategy summary. Maintain a list of strategy summaries across iterations for use in subsequent Generator prompts.
+5. If a Task fails (error or no output), log `[Iter {N}] Generator (candidate {C}) FAILED` and continue to next candidate. If ALL candidates fail, skip to the next iteration.
 
-6. Print: `[Iter {N}] Generator: {C} candidate(s) produced` (or `[Iter {N}] Generator: {summary}` when `best_of_n == 1`)
+6. **Track strategy**: Record each Generator's one-line return as the strategy summary. Maintain a list of strategy summaries across iterations for use in subsequent Generator prompts.
+
+7. Print: `[Iter {N}] Generator: {C} candidate(s) produced` (or `[Iter {N}] Generator: {summary}` when `best_of_n == 1`)
 
 ### Step 2b: Verify (DECOUPLED)
 
@@ -266,6 +302,8 @@ Loop for iterations 1 through `max_iterations`. For each iteration N:
    - If that fails, Read the verification file and extract the same fields.
    - If both fail, use `verdict = "unsolved"`, `confidence = 0.0`.
    - Clamp confidence to [0.0, 1.0].
+
+   **Log event**: `{"type":"verify","iteration":{N},"candidate":{C},"verdict":"{verdict}","confidence":{confidence},"has_critical":{true|false},"timestamp":"..."}`
 
 3. After all candidates are verified, **select the best candidate** — the one with the highest confidence. Copy the best candidate's files to the standard locations:
    - When `best_of_n > 1`: Copy `candidate_{best_C}.md` -> `solution.md` and `verification_c{best_C}.md` -> `verification.md` in the iteration directory.
@@ -308,6 +346,7 @@ When `best_of_n == 1`, print: `[Iter {N}] Verifier: VERDICT: {verdict} | CONFIDE
     - Log: `[Iter {N}] CRITICAL issue detected — forcing revision`
     - Treat as "major_flaw" regardless of verdict and confidence — proceed to Step 2d.
   - Otherwise: Update `session.json`: `"status": "solved"`, `"verdict": "correct"`, current iteration, confidence.
+  - **Log event**: `{"type":"accept","iteration":{N},"confidence":{confidence},"timestamp":"..."}`
   - Go to **Step 4: Format Output**, then **Step 5: Present Results**.
   - **STOP the loop.**
 
@@ -352,23 +391,27 @@ For revision M = 1 to `max_revisions`:
    - "Write your complete revised {noun} to `{session_dir}/worklog/iter{N}/revision_{M}.md`."
    - "After writing both files, return a ONE-LINE summary of changes made."
 
-3. If the Task fails, log `[Iter {N}] Reviser (rev {M}) FAILED` and break out of revision loop.
+3. **Log event**: `{"type":"revise","iteration":{N},"revision":{M},"timestamp":"..."}`
 
-4. Print: `[Iter {N}] Reviser (rev {M}): {summary}`
+4. If the Task fails, log `[Iter {N}] Reviser (rev {M}) FAILED` and break out of revision loop.
 
-5. **Re-verify the revision** — Read the Verifier prompt from `{references_dir}/verifier.md`. Increment `task_calls`, spawn a fresh Verifier Task with `model: "{model}"`:
+5. Print: `[Iter {N}] Reviser (rev {M}): {summary}`
+
+6. **Re-verify the revision** — Read the Verifier prompt from `{references_dir}/verifier.md`. Increment `task_calls`, spawn a fresh Verifier Task with `model: "{model}"`:
    - Problem file: `{session_dir}/problem.md`
    - Solution file: `{session_dir}/worklog/iter{N}/revision_{M}.md` (the clean revision, NOT the changelog)
    - Verification output: `{session_dir}/worklog/iter{N}/verification_rev{M}.md`
    - Same decoupling rules and Verifier prompt as Step 2b.
 
-6. Extract verdict using the Error Handling Protocol (same as Step 2b.2).
+7. Extract verdict using the Error Handling Protocol (same as Step 2b.2).
 
-7. Print (skip if `--quiet` is set): `[Iter {N}] Re-verification (rev {M}): VERDICT: {verdict} | CONFIDENCE: {confidence}`
+   **Log event**: `{"type":"verify","iteration":{N},"revision":{M},"verdict":"{verdict}","confidence":{confidence},"has_critical":{true|false},"timestamp":"..."}`
 
-8. **Unconditionally update best_confidence** — same logic as Step 2c: if confidence > best_confidence, update and copy revision to `worklog/best_solution.md`.
+8. Print (skip if `--quiet` is set): `[Iter {N}] Re-verification (rev {M}): VERDICT: {verdict} | CONFIDENCE: {confidence}`
 
-9. **Branch on verdict:**
+9. **Unconditionally update best_confidence** — same logic as Step 2c: if confidence > best_confidence, update and copy revision to `worklog/best_solution.md`.
+
+10. **Branch on verdict:**
    - **If "correct" AND confidence >= {confidence_threshold}**: **CRITICAL issue guard** — if HAS_CRITICAL is "yes", log `[Iter {N}] CRITICAL issue detected — forcing revision` and treat as "major_flaw" (break out of revision loop, continue to next iteration). Otherwise, update session.json, go to Step 4 then Step 5, **STOP**.
    - **If "correct" but confidence < {confidence_threshold}**: Treat as "minor_issues", continue to next revision.
    - **If "minor_issues"**: Continue to next revision (M+1).
@@ -377,13 +420,21 @@ For revision M = 1 to `max_revisions`:
 
 ### Step 2e: Update State
 
-After each iteration (whether solved or not), update `{session_dir}/session.json` with:
-- `"current_iteration": {N}`
-- `"task_calls": {task_calls}`
-- `"best_confidence": {best_confidence}`
-- `"best_solution_path": "{path to best solution}"`
-- `"best_verification_path": "{path to corresponding verification file}"`
-- `"verdict": "{latest verdict}"`
+After each iteration (whether solved or not):
+
+1. **Accumulate failed approach** (if the iteration did not produce an accepted solution): Append to the running `failed_approaches` list:
+   ```json
+   {"iteration": {N}, "strategy": "{generator return summary}", "verdict": "{verdict}", "confidence": {confidence}, "top_issue": "{TOP_ISSUE from verifier}"}
+   ```
+
+2. Update `{session_dir}/session.json` with:
+   - `"current_iteration": {N}`
+   - `"task_calls": {task_calls}`
+   - `"best_confidence": {best_confidence}`
+   - `"best_solution_path": "{path to best solution}"`
+   - `"best_verification_path": "{path to corresponding verification file}"`
+   - `"verdict": "{latest verdict}"`
+   - `"failed_approaches": [{accumulated list}]`
 
 ---
 
@@ -391,10 +442,11 @@ After each iteration (whether solved or not), update `{session_dir}/session.json
 
 If all iterations are exhausted or budget is hit without an accepted solution:
 
-1. Read `{session_dir}/worklog/best_solution.md` (if it exists).
-2. Read the corresponding verification file for the best solution to extract outstanding issues.
-3. Update `session.json` with `"status": "unsolved"`, final `task_calls`, and `best_confidence`.
-4. Go to **Step 4: Format Output**, then **Step 5: Present Results** with `solved = false`.
+1. **Log event**: `{"type":"fail","reason":"iterations_exhausted","timestamp":"..."}` (or `"reason":"budget_exhausted"` if budget was the limiting factor).
+2. Read `{session_dir}/worklog/best_solution.md` (if it exists).
+3. Read the corresponding verification file for the best solution to extract outstanding issues.
+4. Update `session.json` with `"status": "unsolved"`, final `task_calls`, and `best_confidence`.
+5. Go to **Step 4: Format Output**, then **Step 5: Present Results** with `solved = false`.
 
 ---
 
@@ -423,9 +475,11 @@ After the loop terminates — whether solved or unsolved — and **if a {noun} e
    - "Write the formatted document to `{session_dir}/output.md`."
    - "Return a ONE-LINE summary: 'Formatted: {number} sections, {number} equations'."
 
-3. If the Task fails, fall back to presenting `worklog/best_solution.md` unformatted.
+3. **Log event**: `{"type":"beautify","timestamp":"..."}`
 
-4. Print: `[Beautify] {summary}`
+4. If the Task fails, fall back to presenting `worklog/best_solution.md` unformatted.
+
+5. Print: `[Beautify] {summary}`
 
 ### Step 4b: Adaptive Textbook Pipeline (when `--textbook` IS set)
 
@@ -454,11 +508,13 @@ This pipeline converts the raw {noun} into a textbook-quality document with stru
    - "Write the textbook plan to `{session_dir}/worklog/textbook_plan.md`."
    - "After writing the plan file, return ONLY this single line: Plan: {N} sections, {type}, {M} pedagogy insertions"
 
-3. Parse the return value for section count N using regex: `Plan:\s*(\d+)\s*sections?`. If parsing fails, default N = 2.
+3. **Log event**: `{"type":"plan_textbook","sections":{N},"timestamp":"..."}`
 
-4. If the Task fails entirely, fall back to Step 4a (simple beautifier).
+4. Parse the return value for section count N using regex: `Plan:\s*(\d+)\s*sections?`. If parsing fails, default N = 2.
 
-5. Print: `[Textbook] Planner: {return value}`
+5. If the Task fails entirely, fall back to Step 4a (simple beautifier).
+
+6. Print: `[Textbook] Planner: {return value}`
 
 #### Stage 2: Writer Loop (N iterations)
 
@@ -486,14 +542,16 @@ For K = 1 to N:
    - "Follow the plan for Section {K} exactly. Include all structural elements and pedagogy insertions specified for this section."
    - "After writing, return ONLY: Section {K}/{N}: {title}, {M} equations, {J} environments"
 
-2. If the Task fails, log `[Textbook] Writer section {K} FAILED`, stop the Writer loop, and proceed to Stage 3 with whatever sections exist.
+2. **Log event**: `{"type":"write_textbook","section":{K},"total":{N},"timestamp":"..."}`
 
-3. **Update prior context** — use Bash to extract the tail of the section for the next Writer:
+3. If the Task fails, log `[Textbook] Writer section {K} FAILED`, stop the Writer loop, and proceed to Stage 3 with whatever sections exist.
+
+4. **Update prior context** — use Bash to extract the tail of the section for the next Writer:
    ```bash
    tail -5 {session_dir}/worklog/textbook_section_{K}.md > {session_dir}/worklog/textbook_context.md
    ```
 
-4. Print: `[Textbook] Writer: {return value}`
+5. Print: `[Textbook] Writer: {return value}`
 
 #### Stage 3: Assembly (no Task call)
 
@@ -528,13 +586,15 @@ If no section files exist (all Writers failed), fall back to Step 4a (simple bea
    - "Write your fidelity check to `{session_dir}/worklog/fidelity_check.md`."
    - "After writing, return ONLY: FIDELITY: {verdict}"
 
-3. Extract verdict via regex: `FIDELITY:\s*(FAITHFUL|MINOR_DRIFT|MAJOR_ALTERATION)` from the return value. If parsing fails, Read `{session_dir}/worklog/fidelity_check.md` and re-extract. Default: MINOR_DRIFT.
+3. **Log event**: `{"type":"verify_fidelity","fidelity":"{verdict}","timestamp":"..."}`
 
-4. **Verdict handling**:
+4. Extract verdict via regex: `FIDELITY:\s*(FAITHFUL|MINOR_DRIFT|MAJOR_ALTERATION)` from the return value. If parsing fails, Read `{session_dir}/worklog/fidelity_check.md` and re-extract. Default: MINOR_DRIFT.
+
+5. **Verdict handling**:
    - **FAITHFUL** or **MINOR_DRIFT**: Copy `worklog/textbook_draft.md` to `{session_dir}/output.md`. Print: `[Textbook] Fidelity: {verdict} — textbook version accepted`
    - **MAJOR_ALTERATION**: Print: `[Textbook] Fidelity: MAJOR_ALTERATION — falling back to simple beautifier`. Run Step 4a (simple beautifier) instead.
 
-5. If the Fidelity Task fails, copy draft to output and note "fidelity: unchecked".
+6. If the Fidelity Task fails, copy draft to output and note "fidelity: unchecked".
 
 If no {noun} exists (all iterations produced nothing), skip this step entirely.
 
@@ -553,11 +613,11 @@ If no {noun} exists (all iterations produced nothing), skip this step entirely.
   "iterations_used": {N},
   "total_revisions": {count},
   "task_calls": {task_calls},
-  "elapsed_seconds": null,
+  "elapsed_seconds": "$(( $(date +%s) - START_TIME ))",
   "solution_path": "{session_dir}/worklog/best_solution.md",
   "output_path": "{session_dir}/output.md",
   "session_id": "{session_id}",
-  "failed_approaches": []
+  "failed_approaches": [{accumulated list}]
 }
 ```
 
@@ -630,9 +690,14 @@ The raw {noun} is always at `{session_dir}/worklog/best_solution.md` and the for
 
 After presenting results, finalize the session state for future reference.
 
-1. **Update `session.json`**: Set `status` to `"solved"` or `"unsolved"`, set `completed_at` to the current ISO 8601 timestamp, and set `output_file` to `"output.md"` (or `null` if no output was produced).
+1. **Compute elapsed time**:
+   ```bash
+   ELAPSED=$(($(date +%s) - START_TIME))
+   ```
 
-2. **Append to session index**: If the session directory is inside `.alethic/` (not a `/tmp/` fallback), append one JSON line to `.alethic/sessions.jsonl`:
+2. **Update `session.json`**: Set `status` to `"solved"` or `"unsolved"`, set `completed_at` to the current ISO 8601 timestamp, set `output_file` to `"output.md"` (or `null` if no output was produced), and set `"elapsed_seconds": {ELAPSED}`.
+
+3. **Append to session index**: If the session directory is inside `.alethic/` (not a `/tmp/` fallback), append one JSON line to `.alethic/sessions.jsonl`:
    ```json
    {"session_id":"{session_id}","problem":"{problem text}","domain":"{domain}","status":"{solved|unsolved}","confidence":{best_confidence},"created_at":"{created_at}","completed_at":"{completed_at}"}
    ```
