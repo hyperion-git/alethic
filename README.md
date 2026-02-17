@@ -487,8 +487,6 @@ ruff format src tests
 
 **Single-model verification.** Both the Generator and Verifier use the same underlying model (Claude Opus). While decoupling prevents the Verifier from following the Generator's specific reasoning path, both models share the same training data and potential blind spots. The Aletheia paper uses the same single-model approach (Gemini for all roles) and notes that decoupling alone provides substantial gains, but cross-model verification could further improve robustness.
 
-**No best-of-N sampling.** Each iteration generates a single candidate solution. The Aletheia system benefits from sampling multiple candidates in parallel and selecting the best. The Python library could be extended with parallel generation; the skill architecture does not currently support this.
-
 **Temperature override with extended thinking.** The Anthropic API requires `temperature=1` when extended thinking is enabled, which overrides the carefully tuned per-subagent temperatures. In this mode, the Verifier loses its low-temperature strictness, potentially reducing verification precision. The prompt instructions partially compensate for this by emphasizing skepticism and rigor.
 
 **Skill temperature limitations.** Claude Code Task sub-agents run at the default temperature. The per-subagent temperature tuning (T=1.0, T=0.2, T=0.7) is only available through the Python library. The skill relies on prompt instructions to approximate these behavioral differences.
@@ -498,6 +496,10 @@ ruff format src tests
 **Beautifier runs post-verification.** The Beautifier formats the accepted solution after the final verification pass. While it is constrained to formatting-only changes (converting text math to LaTeX, adding section headers), there is no re-verification of the beautified output. The raw verified solution is preserved at `worklog/best_solution.md` as a fallback.
 
 **Session storage.** Sessions are stored in `.alethic/` in the project directory (falls back to `/tmp/alethic-*` outside git repos). Intermediate files live in `worklog/` subdirectories and can be pruned with `rm -rf .alethic/*/worklog/`. Add `.alethic/` to your `.gitignore`.
+
+## Related Work
+
+Alethic is one of several AI-assisted mathematical reasoning systems. For a detailed architectural comparison with Tobias Osborne's **Alethfeld** (Clojure, Lean 4 formalization) and **Vibefeld** (Go, adversarial proof framework), see [docs/comparison.md](docs/comparison.md).
 
 ## License
 
