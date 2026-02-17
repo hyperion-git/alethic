@@ -15,6 +15,7 @@ import anthropic
 
 from alethic.models import (
     AgentConfig,
+    Issue,
     Revision,
     Solution,
     Verdict,
@@ -257,12 +258,12 @@ def _parse_verification(text: str) -> VerificationResult:
     issues_match = re.search(
         r"ISSUES:\s*\n(.*?)(?=\nREASON:|\Z)", text, re.DOTALL | re.IGNORECASE
     )
-    issues: list[str] = []
+    issues: list[Issue] = []
     if issues_match:
         raw_issues = issues_match.group(1).strip()
         if raw_issues.lower() != "none":
             issues = [
-                cleaned
+                Issue(text=cleaned)
                 for line in raw_issues.split("\n")
                 if (cleaned := line.strip().lstrip("- ").strip())
             ]

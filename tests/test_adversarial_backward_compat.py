@@ -12,8 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from alethic.models import AgentConfig, Solution, Verdict, VerificationResult
-
+from alethic.models import AgentConfig, Issue, Solution, Verdict, VerificationResult
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -202,7 +201,7 @@ class TestReviseDefaultPrompt:
             verdict=Verdict.MINOR_ISSUES,
             critique="Needs work",
             confidence=0.6,
-            issues=["Step 2 is wrong"],
+            issues=[Issue(text="Step 2 is wrong")],
         )
 
         mock_client = MagicMock()

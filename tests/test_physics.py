@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from alethic.models import AgentConfig, Verdict
+from alethic.models import AgentConfig, Issue, Verdict
 from alethic.physics_prompts import (
     BALANCED_PHYSICS_ADDENDUM,
     PHYSICS_GENERATOR_SYSTEM,
@@ -394,7 +394,7 @@ class TestPromptKwargs:
         config = AgentConfig(enable_code_execution=False, verbose=False)
         sol = Solution(problem="test", solution_text="old answer", iteration=1)
         ver = VerificationResult(
-            verdict=Verdict.MINOR_ISSUES, critique="Fix it", confidence=0.7, issues=["Bug"]
+            verdict=Verdict.MINOR_ISSUES, critique="Fix it", confidence=0.7, issues=[Issue(text="Bug")]
         )
 
         result = revise(

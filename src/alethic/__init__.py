@@ -31,8 +31,13 @@ Usage:
 from alethic.agent import MathAgent
 from alethic.models import (
     AgentConfig,
+    AgentEvent,
     AgentResult,
+    EventType,
+    Issue,
+    IssueSeverity,
     Revision,
+    SectionConfidence,
     Solution,
     Verdict,
     VerificationResult,
@@ -43,11 +48,16 @@ __all__ = [
     "MathAgent",
     "PhysicsAgent",
     "AgentConfig",
+    "AgentEvent",
     "AgentResult",
-    "Solution",
-    "VerificationResult",
+    "EventType",
+    "Issue",
+    "IssueSeverity",
     "Revision",
+    "SectionConfidence",
+    "Solution",
     "Verdict",
+    "VerificationResult",
 ]
 
 __version__ = "1.0.0"

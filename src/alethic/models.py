@@ -17,6 +17,56 @@ class Verdict(enum.Enum):
     UNSOLVED = "unsolved"  # strategic failure admission
 
 
+class IssueSeverity(enum.Enum):
+    """Severity level for individual verification issues."""
+
+    CRITICAL = "critical"
+    MAJOR = "major"
+    MINOR = "minor"
+
+
+@dataclass(frozen=True)
+class Issue:
+    """A single issue found by the Verifier, with severity tracking."""
+
+    text: str
+    severity: IssueSeverity = IssueSeverity.MAJOR
+    addressed: bool = False
+
+    def __str__(self) -> str:
+        return self.text
+
+
+@dataclass(frozen=True)
+class SectionConfidence:
+    """Per-section confidence from the Verifier."""
+
+    section: str
+    confidence: float
+    note: str = ""
+
+
+class EventType(enum.Enum):
+    """Type of event in the agent's execution log."""
+
+    GENERATE = "generate"
+    VERIFY = "verify"
+    REVISE = "revise"
+    ERROR = "error"
+    ACCEPT = "accept"
+    FAIL = "fail"
+
+
+@dataclass(frozen=True)
+class AgentEvent:
+    """A single event in the agent's execution log."""
+
+    type: EventType
+    iteration: int
+    timestamp: float = field(default_factory=time.time)
+    data: dict[str, Any] = field(default_factory=dict)
+
+
 @dataclass(frozen=True)
 class AgentConfig:
     """Configuration for the Alethic agent.
@@ -137,11 +187,20 @@ class VerificationResult:
     verdict: Verdict
     critique: str
     confidence: float  # 0.0 to 1.0
-    issues: list[str] = field(default_factory=list)
+    issues: list[Issue] = field(default_factory=list)
     reason: str = ""  # For false-premise detection (REASON field from verifier)
+    section_confidences: list[SectionConfidence] = field(default_factory=list)
 
     def is_acceptable(self, threshold: float = 0.90) -> bool:
-        return self.verdict == Verdict.CORRECT and self.confidence >= threshold
+        has_critical = any(
+            getattr(issue, "severity", None) == IssueSeverity.CRITICAL
+            for issue in self.issues
+        )
+        return (
+            self.verdict == Verdict.CORRECT
+            and self.confidence >= threshold
+            and not has_critical
+        )
 
     def needs_revision(self, threshold: float = 0.90) -> bool:
         return self.verdict in (Verdict.MINOR_ISSUES, Verdict.MAJOR_FLAW) or (
@@ -182,13 +241,29 @@ class AgentResult:
     iterations_used: int
     total_revisions: int
     admitted_failure: bool
-    history: list[dict] = field(default_factory=list)
+    events: list[AgentEvent] = field(default_factory=list)
     elapsed_seconds: float = 0.0
     candidates_per_iteration: int = 1
+    failed_approaches: list[str] = field(default_factory=list)
 
     @property
     def solved(self) -> bool:
         return self.verdict == Verdict.CORRECT and self.solution is not None
+
+    @property
+    def history(self) -> list[dict]:
+        """Backward-compatible dict view of events. Deprecated: use .events instead."""
+        import warnings
+
+        warnings.warn(
+            "AgentResult.history is deprecated; use AgentResult.events instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return [
+            {"phase": e.type.value, "iteration": e.iteration, **e.data}
+            for e in self.events
+        ]
 
     def __str__(self) -> str:
         status = "SOLVED" if self.solved else "UNSOLVED"
@@ -201,6 +276,8 @@ class AgentResult:
         ]
         if self.candidates_per_iteration > 1:
             lines.append(f"Candidates per iteration: {self.candidates_per_iteration}")
+        if self.failed_approaches:
+            lines.append(f"Failed approaches: {len(self.failed_approaches)}")
         lines.extend([
             f"Time: {self.elapsed_seconds:.1f}s",
             f"{'=' * 60}",

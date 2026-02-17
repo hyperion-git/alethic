@@ -27,15 +27,45 @@ import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 
 import anthropic
 
-from alethic.models import AgentConfig, AgentResult, Solution, Verdict, VerificationResult
+from alethic.models import (
+    AgentConfig,
+    AgentEvent,
+    AgentResult,
+    EventType,
+    Solution,
+    Verdict,
+    VerificationResult,
+)
 from alethic.subagents import generate, revise, verify
 
 logger = logging.getLogger("alethic")
 
 _EMPTY_REASONS = frozenset({"n/a", "na", "none", "not applicable", ""})
+
+
+@dataclass
+class RunState:
+    """Mutable state accumulated across iterations of the GVR loop."""
+
+    total_revisions: int = 0
+    best_solution: Solution | None = None
+    best_confidence: float = 0.0
+    failed_approaches: list[str] = field(default_factory=list)
+    start_time: float = field(default_factory=time.time)
+
+
+@dataclass
+class EventLog:
+    """Append-only event log for the GVR loop."""
+
+    events: list[AgentEvent] = field(default_factory=list)
+
+    def emit(self, type: EventType, iteration: int, **data) -> None:
+        self.events.append(AgentEvent(type=type, iteration=iteration, data=data))
 
 
 class MathAgent:
@@ -90,9 +120,8 @@ class MathAgent:
         verification: VerificationResult,
         problem: str,
         iteration: int,
-        total_revisions: int,
-        history: list[dict],
-        start_time: float,
+        state: RunState,
+        log: EventLog,
     ) -> AgentResult | None:
         """Return AgentResult if verifier detected a false premise, else None."""
         if (
@@ -103,18 +132,19 @@ class MathAgent:
             self._log("")
             self._log("[FALSE PREMISE] Verifier detected the problem's premise is false:")
             self._log(f"  {verification.reason}")
-            elapsed = time.time() - start_time
+            elapsed = time.time() - state.start_time
             return AgentResult(
                 problem=problem,
                 solution=verification.reason,
                 verdict=Verdict.UNSOLVED,
                 confidence=verification.confidence,
                 iterations_used=iteration,
-                total_revisions=total_revisions,
+                total_revisions=state.total_revisions,
                 admitted_failure=False,
-                history=history,
+                events=log.events,
                 elapsed_seconds=elapsed,
                 candidates_per_iteration=self.config.best_of_n,
+                failed_approaches=state.failed_approaches,
             )
         return None
 
@@ -208,14 +238,11 @@ class MathAgent:
         verification: VerificationResult,
         prompts: dict[str, str],
         iteration: int,
-        total_revisions: int,
-        history: list[dict],
-        start_time: float,
+        state: RunState,
+        log: EventLog,
         threshold: float,
-        best_solution: Solution | None,
-        best_confidence: float,
-    ) -> AgentResult | tuple[int, Solution | None, float]:
-        """Run revision sub-loop. Returns AgentResult if solved, else updated state tuple."""
+    ) -> AgentResult | None:
+        """Run revision sub-loop. Returns AgentResult if solved, else None (mutates state)."""
         current_solution = solution
 
         for rev_num in range(1, self.config.max_revisions_per_cycle + 1):
@@ -230,12 +257,12 @@ class MathAgent:
                 system_prompt=prompts.get("reviser_system"),
                 user_template=prompts.get("reviser_user"),
             )
-            total_revisions += 1
-            history.append({
-                "phase": "revise",
-                "iteration": iteration,
-                "revision": rev_num,
-            })
+            state.total_revisions += 1
+            log.emit(
+                EventType.REVISE,
+                iteration,
+                revision=rev_num,
+            )
 
             # Re-verify the revision
             self._log(f"[VERIFY] Re-verifying revision {rev_num}...")
@@ -247,35 +274,36 @@ class MathAgent:
                 system_prompt=prompts.get("verifier_system"),
                 user_template=prompts.get("verifier_user"),
             )
-            history.append({
-                "phase": "verify",
-                "iteration": iteration,
-                "revision": rev_num,
-                "verdict": verification.verdict.value,
-                "confidence": verification.confidence,
-            })
+            log.emit(
+                EventType.VERIFY,
+                iteration,
+                revision=rev_num,
+                verdict=verification.verdict.value,
+                confidence=verification.confidence,
+            )
             self._log(f"[VERIFY] Verdict: {verification.verdict.value} "
                        f"(confidence: {verification.confidence:.0%})")
 
-            if verification.confidence > best_confidence:
-                best_confidence = verification.confidence
-                best_solution = current_solution
+            if verification.confidence > state.best_confidence:
+                state.best_confidence = verification.confidence
+                state.best_solution = current_solution
 
             if verification.is_acceptable(threshold):
                 self._log("")
                 self._log("[SOLVED] Verifier approved the revised solution!")
-                elapsed = time.time() - start_time
+                elapsed = time.time() - state.start_time
                 return AgentResult(
                     problem=problem,
                     solution=current_solution.solution_text,
                     verdict=Verdict.CORRECT,
                     confidence=verification.confidence,
                     iterations_used=iteration,
-                    total_revisions=total_revisions,
+                    total_revisions=state.total_revisions,
                     admitted_failure=False,
-                    history=history,
+                    events=log.events,
                     elapsed_seconds=elapsed,
                     candidates_per_iteration=self.config.best_of_n,
+                    failed_approaches=state.failed_approaches,
                 )
 
             # If major flaw after revision, break to restart from generator
@@ -287,7 +315,7 @@ class MathAgent:
             if verification.verdict == Verdict.UNSOLVED:
                 fp = self._check_false_premise(
                     verification, problem, iteration,
-                    total_revisions, history, start_time,
+                    state, log,
                 )
                 if fp:
                     return fp
@@ -296,7 +324,7 @@ class MathAgent:
         else:
             self._log(f"[REVISE] Exhausted revision attempts for iteration {iteration}")
 
-        return total_revisions, best_solution, best_confidence
+        return None
 
     def solve(
         self,
@@ -312,11 +340,8 @@ class MathAgent:
         Returns:
             AgentResult with the solution (or admitted failure).
         """
-        start_time = time.time()
-        history: list[dict] = []
-        total_revisions = 0
-        best_solution = None
-        best_confidence = 0.0
+        state = RunState()
+        log = EventLog()
         threshold = self.config.confidence_threshold
         prompts = self._prompt_set()
 
@@ -358,7 +383,7 @@ class MathAgent:
 
                 if not candidates:
                     self._log("[GENERATE] All candidates failed — skipping iteration")
-                    history.append({"phase": "error", "iteration": iteration, "error": "all candidates failed"})
+                    log.emit(EventType.ERROR, iteration, error="all candidates failed")
                     continue
 
                 if len(candidates) < n:
@@ -371,12 +396,12 @@ class MathAgent:
                                f"succeeded ({failures} failed)")
 
                 for idx, (sol, gen_t) in enumerate(candidates, 1):
-                    history.append({
-                        "phase": "generate",
-                        "iteration": iteration,
-                        "candidate": idx,
-                        "solution_preview": sol.solution_text[:500],
-                    })
+                    log.emit(
+                        EventType.GENERATE,
+                        iteration,
+                        candidate=idx,
+                        solution_preview=sol.solution_text[:500],
+                    )
                     self._log(f"[GENERATE] Candidate {idx}/{len(candidates)} produced "
                                f"({len(sol.solution_text)} chars, {gen_t:.1f}s)")
 
@@ -392,16 +417,16 @@ class MathAgent:
                 if n > 1:
                     self._log_candidates(verified, gen_wall_time)
 
-                # Record all in history
+                # Record all in log
                 for idx, (_sol, ver, _gen_t, _ver_t) in enumerate(verified, 1):
-                    history.append({
-                        "phase": "verify",
-                        "iteration": iteration,
-                        "candidate": idx,
-                        "verdict": ver.verdict.value,
-                        "confidence": ver.confidence,
-                        "num_issues": len(ver.issues),
-                    })
+                    log.emit(
+                        EventType.VERIFY,
+                        iteration,
+                        candidate=idx,
+                        verdict=ver.verdict.value,
+                        confidence=ver.confidence,
+                        num_issues=len(ver.issues),
+                    )
 
                 # Best candidate is first (sorted by confidence desc)
                 solution, verification, _, _ = verified[0]
@@ -410,35 +435,36 @@ class MathAgent:
                            f"(confidence: {verification.confidence:.0%})")
                 if verification.issues:
                     for issue in verification.issues:
-                        self._log(f"  Issue: {issue[:100]}")
+                        self._log(f"  Issue: {str(issue)[:100]}")
 
                 # Track best solution seen
-                if verification.confidence > best_confidence:
-                    best_confidence = verification.confidence
-                    best_solution = solution
+                if verification.confidence > state.best_confidence:
+                    state.best_confidence = verification.confidence
+                    state.best_solution = solution
 
                 # ── CHECK: Is it correct? ──
                 if verification.is_acceptable(threshold):
                     self._log("")
                     self._log("[SOLVED] Verifier approved the solution!")
-                    elapsed = time.time() - start_time
+                    elapsed = time.time() - state.start_time
                     return AgentResult(
                         problem=problem,
                         solution=solution.solution_text,
                         verdict=Verdict.CORRECT,
                         confidence=verification.confidence,
                         iterations_used=iteration,
-                        total_revisions=total_revisions,
+                        total_revisions=state.total_revisions,
                         admitted_failure=False,
-                        history=history,
+                        events=log.events,
                         elapsed_seconds=elapsed,
                         candidates_per_iteration=n,
+                        failed_approaches=state.failed_approaches,
                     )
 
                 # ── CHECK: False premise? ──
                 fp = self._check_false_premise(
                     verification, problem, iteration,
-                    total_revisions, history, start_time,
+                    state, log,
                 )
                 if fp:
                     return fp
@@ -451,43 +477,40 @@ class MathAgent:
                         verification=verification,
                         prompts=prompts,
                         iteration=iteration,
-                        total_revisions=total_revisions,
-                        history=history,
-                        start_time=start_time,
+                        state=state,
+                        log=log,
                         threshold=threshold,
-                        best_solution=best_solution,
-                        best_confidence=best_confidence,
                     )
                     if isinstance(result, AgentResult):
                         return result
-                    total_revisions, best_solution, best_confidence = result
                 else:
                     self._log("[GENERATE] Solution unsolvable in this attempt — will retry from scratch")
 
             except anthropic.APIError as e:
                 logger.warning("Iteration %d failed: %s", iteration, e)
-                history.append({"phase": "error", "iteration": iteration, "error": str(e)})
+                log.emit(EventType.ERROR, iteration, error=str(e))
                 continue
 
         # ── FAILURE ADMISSION ──
-        elapsed = time.time() - start_time
+        elapsed = time.time() - state.start_time
         self._log("")
         self._log(f"{'=' * 60}")
         self._log("[ADMITTED FAILURE] Exhausted all iterations without verified solution")
-        self._log(f"Best confidence seen: {best_confidence:.0%}")
+        self._log(f"Best confidence seen: {state.best_confidence:.0%}")
         self._log(f"{'=' * 60}")
 
         return AgentResult(
             problem=problem,
-            solution=best_solution.solution_text if best_solution else None,
+            solution=state.best_solution.solution_text if state.best_solution else None,
             verdict=Verdict.UNSOLVED,
-            confidence=best_confidence,
+            confidence=state.best_confidence,
             iterations_used=self.config.max_iterations,
-            total_revisions=total_revisions,
+            total_revisions=state.total_revisions,
             admitted_failure=True,
-            history=history,
+            events=log.events,
             elapsed_seconds=elapsed,
             candidates_per_iteration=n,
+            failed_approaches=state.failed_approaches,
         )
 
     def _log(self, message: str) -> None:

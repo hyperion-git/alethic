@@ -13,6 +13,7 @@ import anthropic
 from alethic.models import (
     AgentConfig,
     AgentResult,
+    EventType,
     Solution,
     Verdict,
     VerificationResult,
@@ -301,7 +302,7 @@ ISSUES:
         assert result.verdict == Verdict.MAJOR_FLAW
         assert result.confidence == 0.2
         assert len(result.issues) == 2
-        assert "division by zero" in result.issues[0].lower()
+        assert "division by zero" in result.issues[0].text.lower()
 
     def test_parse_minor_issues_verification(self):
         text = """\
@@ -340,7 +341,7 @@ ISSUES:
         assert "premise is false" in result.reason.lower()
         assert "Brouwer" in result.reason
         assert len(result.issues) == 1
-        assert "premise" in result.issues[0].lower()
+        assert "premise" in result.issues[0].text.lower()
 
     def test_parse_correct_with_reason_na(self):
         """REASON: N/A should result in empty/N/A reason for correct verdicts."""
@@ -591,10 +592,10 @@ class TestAgentIntegration:
 
         assert result.solved
         assert result.iterations_used == 2
-        # History should contain an error entry from iteration 1
-        error_entries = [h for h in result.history if h.get("phase") == "error"]
+        # Events should contain an error entry from iteration 1
+        error_entries = [e for e in result.events if e.type == EventType.ERROR]
         assert len(error_entries) == 1
-        assert error_entries[0]["iteration"] == 1
+        assert error_entries[0].iteration == 1
 
 
 # ── Confidence parsing edge-case tests ───────────────────────────────

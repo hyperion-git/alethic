@@ -9,11 +9,13 @@ propagate as expected.
 
 from __future__ import annotations
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from alethic.models import (
     AgentConfig,
+    Issue,
     Solution,
     Verdict,
     VerificationResult,
@@ -28,7 +30,6 @@ from alethic.prompts import (
     VERIFIER_USER,
 )
 from alethic.subagents import _parse_verification, generate, revise, verify
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -150,7 +151,7 @@ class TestDefaultPromptsUnchanged:
             verdict=Verdict.MINOR_ISSUES,
             critique="Small error",
             confidence=0.7,
-            issues=["Sign error"],
+            issues=[Issue(text="Sign error")],
         )
 
         revise(client, "P", sol, vr, config, revision_number=1)
@@ -169,7 +170,7 @@ class TestDefaultPromptsUnchanged:
             verdict=Verdict.MINOR_ISSUES,
             critique="Small error",
             confidence=0.7,
-            issues=["Sign error"],
+            issues=[Issue(text="Sign error")],
         )
 
         revise(client, "P", sol, vr, config, revision_number=1)
@@ -230,7 +231,7 @@ class TestEmptyStringPrompts:
             verdict=Verdict.MINOR_ISSUES,
             critique="err",
             confidence=0.6,
-            issues=["err"],
+            issues=[Issue(text="err")],
         )
 
         revise(client, "P", sol, vr, config, revision_number=1, system_prompt="")
@@ -301,7 +302,7 @@ class TestNonePromptsUseDefaults:
             verdict=Verdict.MINOR_ISSUES,
             critique="err",
             confidence=0.6,
-            issues=["err"],
+            issues=[Issue(text="err")],
         )
 
         revise(
@@ -515,7 +516,7 @@ class TestUserTemplateMissingKeys:
             verdict=Verdict.MINOR_ISSUES,
             critique="err",
             confidence=0.6,
-            issues=["err"],
+            issues=[Issue(text="err")],
         )
 
         revise(
@@ -573,7 +574,7 @@ class TestUserTemplateExtraKeys:
             verdict=Verdict.MINOR_ISSUES,
             critique="err",
             confidence=0.6,
-            issues=["err"],
+            issues=[Issue(text="err")],
         )
 
         with pytest.raises(KeyError):
@@ -639,7 +640,7 @@ class TestKwargsDontLeak:
             verdict=Verdict.MINOR_ISSUES,
             critique="err",
             confidence=0.6,
-            issues=["err"],
+            issues=[Issue(text="err")],
         )
 
         # First call: custom
@@ -700,7 +701,7 @@ class TestReviserUserTemplateFormatKeys:
             verdict=Verdict.MINOR_ISSUES,
             critique="err",
             confidence=0.6,
-            issues=["err"],
+            issues=[Issue(text="err")],
         )
 
         client = _make_client(
@@ -731,7 +732,7 @@ class TestReviserUserTemplateFormatKeys:
             verdict=Verdict.MINOR_ISSUES,
             critique="err",
             confidence=0.6,
-            issues=["err"],
+            issues=[Issue(text="err")],
         )
 
         client = _make_client(
@@ -762,7 +763,7 @@ class TestReviserUserTemplateFormatKeys:
             verdict=Verdict.MINOR_ISSUES,
             critique="err",
             confidence=0.6,
-            issues=["err"],
+            issues=[Issue(text="err")],
         )
 
         with pytest.raises(KeyError):
@@ -785,7 +786,7 @@ class TestReviserUserTemplateFormatKeys:
             verdict=Verdict.MINOR_ISSUES,
             critique="small error",
             confidence=0.6,
-            issues=["issue1"],
+            issues=[Issue(text="issue1")],
         )
 
         client = _make_client(
@@ -869,7 +870,7 @@ class TestParseVerificationWithCustomPrompts:
         assert result.verdict == Verdict.MAJOR_FLAW
         assert result.confidence == 0.3
         assert len(result.issues) == 2
-        assert "Gap in step 3" in result.issues[0]
+        assert "Gap in step 3" in result.issues[0].text
 
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     def test_parse_minor_issues_with_custom_prompt(self, _mock_tools):

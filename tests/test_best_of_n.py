@@ -14,6 +14,7 @@ import pytest
 from alethic.models import (
     AgentConfig,
     AgentResult,
+    EventType,
     Verdict,
 )
 
@@ -431,17 +432,17 @@ class TestBestOfNHistory:
 
         result = agent.solve("test")
 
-        # Check generate entries have candidate field
-        gen_entries = [h for h in result.history if h["phase"] == "generate"]
+        # Check generate events have candidate field
+        gen_entries = [e for e in result.events if e.type == EventType.GENERATE]
         assert len(gen_entries) == 2
-        assert gen_entries[0]["candidate"] == 1
-        assert gen_entries[1]["candidate"] == 2
+        assert gen_entries[0].data["candidate"] == 1
+        assert gen_entries[1].data["candidate"] == 2
 
-        # Check verify entries have candidate field
-        ver_entries = [h for h in result.history if h["phase"] == "verify"]
+        # Check verify events have candidate field
+        ver_entries = [e for e in result.events if e.type == EventType.VERIFY]
         assert len(ver_entries) == 2
         for entry in ver_entries:
-            assert "candidate" in entry
+            assert "candidate" in entry.data
 
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     def test_n1_history_has_candidate_one(self, _mock_tools):
@@ -465,9 +466,9 @@ class TestBestOfNHistory:
 
         result = agent.solve("test")
 
-        gen_entries = [h for h in result.history if h["phase"] == "generate"]
+        gen_entries = [e for e in result.events if e.type == EventType.GENERATE]
         assert len(gen_entries) == 1
-        assert gen_entries[0]["candidate"] == 1
+        assert gen_entries[0].data["candidate"] == 1
 
 
 # ── AgentResult display tests ────────────────────────────────────────
