@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+from typing import Any
 
 import anthropic
 
@@ -88,7 +89,7 @@ def _call_model(
 
     Returns the final text response after all tool calls have been resolved.
     """
-    messages = [{"role": "user", "content": user_message}]
+    messages: list[dict[str, Any]] = [{"role": "user", "content": user_message}]
     kwargs = {
         "model": config.model,
         "max_tokens": config.max_tokens,
@@ -226,6 +227,37 @@ _VERDICT_MAP: dict[str, Verdict] = {
 }
 
 
+def _parse_issues(text: str) -> list[Issue]:
+    """Parse the ISSUES block from verifier output into Issue objects."""
+    issues_match = re.search(
+        r"ISSUES:\s*\n(.*?)(?=\nREASON:|\nSECTION CONFIDENCES:|\Z)", text, re.DOTALL | re.IGNORECASE
+    )
+    if not issues_match:
+        return []
+
+    raw_issues = issues_match.group(1).strip()
+    if raw_issues.lower() == "none":
+        return []
+
+    issues: list[Issue] = []
+    for line in raw_issues.split("\n"):
+        cleaned = line.strip().lstrip("- ").strip()
+        if not cleaned:
+            continue
+        # Try to parse severity tag: [CRITICAL], [MAJOR], [MINOR]
+        severity_tag_match = re.match(r"\[(\w+)\]\s*(.*)", cleaned)
+        if severity_tag_match:
+            tag = severity_tag_match.group(1).upper()
+            issue_text = severity_tag_match.group(2).strip()
+            severity = _SEVERITY_MAP.get(tag, IssueSeverity.MAJOR)
+        else:
+            issue_text = cleaned
+            severity = IssueSeverity.MAJOR
+        if issue_text:
+            issues.append(Issue(text=issue_text, severity=severity))
+    return issues
+
+
 def _parse_section_confidences(text: str) -> list[SectionConfidence]:
     """Parse SECTION CONFIDENCES block from verifier output."""
     match = re.search(
@@ -299,29 +331,7 @@ def _parse_verification(text: str) -> VerificationResult:
     )
     reason = reason_match.group(1).strip() if reason_match else ""
 
-    # Extract issues (stops at REASON:, SECTION CONFIDENCES:, or end of text)
-    issues_match = re.search(
-        r"ISSUES:\s*\n(.*?)(?=\nREASON:|\nSECTION CONFIDENCES:|\Z)", text, re.DOTALL | re.IGNORECASE
-    )
-    issues: list[Issue] = []
-    if issues_match:
-        raw_issues = issues_match.group(1).strip()
-        if raw_issues.lower() != "none":
-            for line in raw_issues.split("\n"):
-                cleaned = line.strip().lstrip("- ").strip()
-                if not cleaned:
-                    continue
-                # Try to parse severity tag: [CRITICAL], [MAJOR], [MINOR]
-                severity_tag_match = re.match(r"\[(\w+)\]\s*(.*)", cleaned)
-                if severity_tag_match:
-                    tag = severity_tag_match.group(1).upper()
-                    issue_text = severity_tag_match.group(2).strip()
-                    severity = _SEVERITY_MAP.get(tag, IssueSeverity.MAJOR)
-                else:
-                    issue_text = cleaned
-                    severity = IssueSeverity.MAJOR
-                if issue_text:
-                    issues.append(Issue(text=issue_text, severity=severity))
+    issues = _parse_issues(text)
 
     if not verdict_match and not conf_match and not critique_match:
         logger.warning(

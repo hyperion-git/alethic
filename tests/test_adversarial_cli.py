@@ -6,12 +6,12 @@ empty inputs, ambiguous positional arguments, and agent routing.
 
 from __future__ import annotations
 
-import pytest
 from unittest.mock import MagicMock, patch
 
-from alethic.cli import _detect_subcommand, build_parser, main
-from alethic.models import AgentConfig, AgentResult, Verdict
+import pytest
 
+from alethic.cli import _detect_subcommand, build_parser, main
+from alethic.models import AgentResult, Verdict
 
 # ── Helper ───────────────────────────────────────────────────────────
 
@@ -188,49 +188,51 @@ class TestMainRouting:
 
     # 10. derive routes to PhysicsAgent.
     @patch("alethic.cli.PhysicsAgent", create=True)
-    def test_main_derive_routes_to_physics_agent(self, MockPhysicsAgent):
+    def test_main_derive_routes_to_physics_agent(self, mock_physics_agent):
         """main(["derive", "test"]) should instantiate PhysicsAgent."""
         mock_agent_instance = MagicMock()
         mock_agent_instance.solve.return_value = _mock_agent_result("test")
-        MockPhysicsAgent.return_value = mock_agent_instance
+        mock_physics_agent.return_value = mock_agent_instance
 
-        with patch("alethic.cli._detect_subcommand", return_value=("derive", ["test"])):
-            with patch.dict("sys.modules", {}):
-                # We need to patch the import inside main()
-                with patch("alethic.physics_agent.PhysicsAgent", MockPhysicsAgent):
-                    ret = main(["derive", "test"])
+        with (
+            patch("alethic.cli._detect_subcommand", return_value=("derive", ["test"])),
+            patch.dict("sys.modules", {}),
+            patch("alethic.physics_agent.PhysicsAgent", mock_physics_agent),
+        ):
+            # We need to patch the import inside main()
+            ret = main(["derive", "test"])
 
         assert ret == 0
-        MockPhysicsAgent.assert_called_once()
+        mock_physics_agent.assert_called_once()
         mock_agent_instance.solve.assert_called_once()
 
     # 11. No subcommand routes to MathAgent.
     @patch("alethic.agent.MathAgent")
-    def test_main_no_subcommand_routes_to_math_agent(self, MockMathAgent):
+    def test_main_no_subcommand_routes_to_math_agent(self, mock_math_agent):
         """main(["test problem"]) should instantiate MathAgent (backward compat)."""
         mock_agent_instance = MagicMock()
         mock_agent_instance.solve.return_value = _mock_agent_result("test problem")
-        MockMathAgent.return_value = mock_agent_instance
+        mock_math_agent.return_value = mock_agent_instance
 
         ret = main(["test problem"])
 
         assert ret == 0
-        MockMathAgent.assert_called_once()
+        mock_math_agent.assert_called_once()
         mock_agent_instance.solve.assert_called_once_with(
             "test problem", balanced=True
         )
 
     @patch("alethic.agent.MathAgent")
-    def test_main_solve_subcommand_routes_to_math_agent(self, MockMathAgent):
+    def test_main_solve_subcommand_routes_to_math_agent(self, mock_math_agent):
         """main(["solve", "test"]) should also use MathAgent."""
         mock_agent_instance = MagicMock()
         mock_agent_instance.solve.return_value = _mock_agent_result("test")
-        MockMathAgent.return_value = mock_agent_instance
+        mock_math_agent.return_value = mock_agent_instance
 
         ret = main(["solve", "test"])
 
         assert ret == 0
-        MockMathAgent.assert_called_once()
+        mock_math_agent.assert_called_once()
 
     # 12. main() with no args at all should error.
     def test_main_no_args_calls_parser_error(self):

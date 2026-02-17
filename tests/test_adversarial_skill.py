@@ -27,7 +27,7 @@ REF_FILES = ["generator.md", "verifier.md", "reviser.md", "beautifier.md"]
 
 
 def _read(path: str) -> str:
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         return f.read()
 
 
@@ -163,7 +163,7 @@ class TestStepStructure:
         ("Step 1", "Setup"),
         ("Step 2", "Main Loop"),
         ("Step 3", "Failure Admission"),
-        ("Step 4", "Beautify"),
+        ("Step 4", "Format Output"),
         ("Step 5", "Present Results"),
     ]
 
@@ -352,7 +352,7 @@ class TestPresetTableIdentical:
             f"derive={len(derive_presets)}"
         )
 
-        for s, d in zip(solve_presets, derive_presets):
+        for s, d in zip(solve_presets, derive_presets, strict=True):
             assert s == d, (
                 f"Preset mismatch: solve={s} vs derive={d}"
             )

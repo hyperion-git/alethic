@@ -193,8 +193,7 @@ class VerificationResult:
 
     def is_acceptable(self, threshold: float = 0.90) -> bool:
         has_critical = any(
-            getattr(issue, "severity", None) == IssueSeverity.CRITICAL
-            for issue in self.issues
+            issue.severity == IssueSeverity.CRITICAL for issue in self.issues
         )
         return (
             self.verdict == Verdict.CORRECT

@@ -10,8 +10,6 @@ from __future__ import annotations
 import inspect
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from alethic.models import AgentConfig, Issue, Solution, Verdict, VerificationResult
 
 # ---------------------------------------------------------------------------
@@ -229,19 +227,19 @@ class TestOldCLIInvocations:
     """Legacy CLI argument patterns must parse and execute without crashes."""
 
     @patch("alethic.agent.MathAgent")
-    def test_iterations_no_code_flags(self, MockAgent):
+    def test_iterations_no_code_flags(self, mock_agent):
         from alethic.cli import main
 
         mock_result = MagicMock()
         mock_result.solved = True
         mock_result.__str__ = lambda self: "OK"
-        MockAgent.return_value.solve.return_value = mock_result
+        mock_agent.return_value.solve.return_value = mock_result
 
         exit_code = main(["--iterations", "3", "--no-code", "test problem"])
         assert exit_code == 0
 
         # Verify the agent was created with expected config
-        call_kwargs = MockAgent.call_args
+        call_kwargs = mock_agent.call_args
         config = call_kwargs.kwargs.get("config", call_kwargs[1].get("config"))
         assert config.max_iterations == 3
         assert config.enable_code_execution is False
@@ -256,18 +254,18 @@ class TestCLIPresetFlag:
     """--preset quick must produce AgentConfig with quick preset values."""
 
     @patch("alethic.agent.MathAgent")
-    def test_preset_quick_via_cli(self, MockAgent):
+    def test_preset_quick_via_cli(self, mock_agent):
         from alethic.cli import main
 
         mock_result = MagicMock()
         mock_result.solved = True
         mock_result.__str__ = lambda self: "OK"
-        MockAgent.return_value.solve.return_value = mock_result
+        mock_agent.return_value.solve.return_value = mock_result
 
         exit_code = main(["--preset", "quick", "test"])
         assert exit_code == 0
 
-        call_kwargs = MockAgent.call_args
+        call_kwargs = mock_agent.call_args
         config = call_kwargs.kwargs.get("config", call_kwargs[1].get("config"))
         assert config.max_iterations == 2
         assert config.max_revisions_per_cycle == 1

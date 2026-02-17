@@ -130,6 +130,33 @@ class MathAgent:
     def _log_header(self) -> str:
         return "ALETHIC MATH AGENT"
 
+    def _make_result(
+        self,
+        *,
+        problem: str,
+        solution: str | None,
+        verdict: Verdict,
+        confidence: float,
+        iterations_used: int,
+        admitted_failure: bool,
+        state: RunState,
+        log: EventLog,
+    ) -> AgentResult:
+        """Build an AgentResult with fields common to all exit paths."""
+        return AgentResult(
+            problem=problem,
+            solution=solution,
+            verdict=verdict,
+            confidence=confidence,
+            iterations_used=iterations_used,
+            total_revisions=state.total_revisions,
+            admitted_failure=admitted_failure,
+            events=log.events,
+            elapsed_seconds=time.time() - state.start_time,
+            candidates_per_iteration=self.config.best_of_n,
+            failed_approaches=state.failed_approaches,
+        )
+
     def _check_false_premise(
         self,
         verification: VerificationResult,
@@ -147,19 +174,15 @@ class MathAgent:
             self._log("")
             self._log("[FALSE PREMISE] Verifier detected the problem's premise is false:")
             self._log(f"  {verification.reason}")
-            elapsed = time.time() - state.start_time
-            return AgentResult(
+            return self._make_result(
                 problem=problem,
                 solution=verification.reason,
                 verdict=Verdict.UNSOLVED,
                 confidence=verification.confidence,
                 iterations_used=iteration,
-                total_revisions=state.total_revisions,
                 admitted_failure=False,
-                events=log.events,
-                elapsed_seconds=elapsed,
-                candidates_per_iteration=self.config.best_of_n,
-                failed_approaches=state.failed_approaches,
+                state=state,
+                log=log,
             )
         return None
 
@@ -308,19 +331,15 @@ class MathAgent:
             if verification.is_acceptable(threshold):
                 self._log("")
                 self._log("[SOLVED] Verifier approved the revised solution!")
-                elapsed = time.time() - state.start_time
-                return AgentResult(
+                return self._make_result(
                     problem=problem,
                     solution=current_solution.solution_text,
                     verdict=Verdict.CORRECT,
                     confidence=verification.confidence,
                     iterations_used=iteration,
-                    total_revisions=state.total_revisions,
                     admitted_failure=False,
-                    events=log.events,
-                    elapsed_seconds=elapsed,
-                    candidates_per_iteration=self.config.best_of_n,
-                    failed_approaches=state.failed_approaches,
+                    state=state,
+                    log=log,
                 )
 
             # If major flaw after revision, break to restart from generator
@@ -464,19 +483,15 @@ class MathAgent:
                 if verification.is_acceptable(threshold):
                     self._log("")
                     self._log("[SOLVED] Verifier approved the solution!")
-                    elapsed = time.time() - state.start_time
-                    return AgentResult(
+                    return self._make_result(
                         problem=problem,
                         solution=solution.solution_text,
                         verdict=Verdict.CORRECT,
                         confidence=verification.confidence,
                         iterations_used=iteration,
-                        total_revisions=state.total_revisions,
                         admitted_failure=False,
-                        events=log.events,
-                        elapsed_seconds=elapsed,
-                        candidates_per_iteration=n,
-                        failed_approaches=state.failed_approaches,
+                        state=state,
+                        log=log,
                     )
 
                 # ── CHECK: False premise? ──
@@ -499,7 +514,7 @@ class MathAgent:
                         log=log,
                         threshold=threshold,
                     )
-                    if isinstance(result, AgentResult):
+                    if result is not None:
                         return result
                 else:
                     self._log("[GENERATE] Solution unsolvable in this attempt — will retry from scratch")
@@ -514,25 +529,22 @@ class MathAgent:
                 continue
 
         # ── FAILURE ADMISSION ──
-        elapsed = time.time() - state.start_time
         self._log("")
         self._log(f"{'=' * 60}")
         self._log("[ADMITTED FAILURE] Exhausted all iterations without verified solution")
         self._log(f"Best confidence seen: {state.best_confidence:.0%}")
         self._log(f"{'=' * 60}")
 
-        return AgentResult(
+        best_text = state.best_solution.solution_text if state.best_solution else None
+        return self._make_result(
             problem=problem,
-            solution=state.best_solution.solution_text if state.best_solution else None,
+            solution=best_text,
             verdict=Verdict.UNSOLVED,
             confidence=state.best_confidence,
             iterations_used=self.config.max_iterations,
-            total_revisions=state.total_revisions,
             admitted_failure=True,
-            events=log.events,
-            elapsed_seconds=elapsed,
-            candidates_per_iteration=n,
-            failed_approaches=state.failed_approaches,
+            state=state,
+            log=log,
         )
 
     def _log(self, message: str) -> None:

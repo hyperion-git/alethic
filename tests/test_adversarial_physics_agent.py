@@ -6,9 +6,7 @@ failure modes, and config propagation — all with mocked API calls.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, call, patch
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from alethic.models import AgentConfig, Verdict
 from alethic.physics_prompts import (

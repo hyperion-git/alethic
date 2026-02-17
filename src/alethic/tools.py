@@ -12,6 +12,7 @@ import io
 import re
 import signal
 import traceback
+from typing import Any
 
 # Anthropic tool schema for Python code execution
 PYTHON_TOOL = {
@@ -73,7 +74,7 @@ def execute_python(code: str, timeout_seconds: int = 30) -> str:
     safe_builtins = {k: getattr(_builtins_mod, k) for k in _SAFE_BUILTINS if hasattr(_builtins_mod, k)}
     safe_builtins["__import__"] = _restricted_import
 
-    restricted_globals = {"__builtins__": safe_builtins}
+    restricted_globals: dict[str, Any] = {"__builtins__": safe_builtins}
 
     # Pre-import commonly needed modules (alias → None means no alias)
     _pre_imports = {

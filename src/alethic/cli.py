@@ -13,9 +13,12 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from alethic.models import AgentConfig
+
+if TYPE_CHECKING:
+    from alethic.agent import MathAgent  # noqa: TC004
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -152,24 +155,26 @@ Examples:
     return parser
 
 
+_FLAG_TO_CONFIG = {
+    "model": "model",
+    "iterations": "max_iterations",
+    "revisions": "max_revisions_per_cycle",
+    "confidence_threshold": "confidence_threshold",
+    "temperature_generator": "temperature_generator",
+    "temperature_verifier": "temperature_verifier",
+    "temperature_reviser": "temperature_reviser",
+    "max_tokens": "max_tokens",
+    "thinking_budget": "thinking_budget",
+    "best_of_n": "best_of_n",
+}
+
+
 def _build_config(args: argparse.Namespace) -> AgentConfig:
     """Build AgentConfig from parsed CLI args with preset -> explicit flag precedence."""
     # Collect overrides from explicit CLI flags (non-None values only)
     overrides: dict[str, Any] = {}
 
-    _flag_map = {
-        "model": "model",
-        "iterations": "max_iterations",
-        "revisions": "max_revisions_per_cycle",
-        "confidence_threshold": "confidence_threshold",
-        "temperature_generator": "temperature_generator",
-        "temperature_verifier": "temperature_verifier",
-        "temperature_reviser": "temperature_reviser",
-        "max_tokens": "max_tokens",
-        "thinking_budget": "thinking_budget",
-        "best_of_n": "best_of_n",
-    }
-    for arg_name, config_name in _flag_map.items():
+    for arg_name, config_name in _FLAG_TO_CONFIG.items():
         val = getattr(args, arg_name, None)
         if val is not None:
             overrides[config_name] = val
@@ -243,6 +248,7 @@ def main(argv: list[str] | None = None) -> int:
     config = _build_config(args)
 
     # Select agent based on command
+    agent: MathAgent
     if command == "derive":
         from alethic.physics_agent import PhysicsAgent
         agent = PhysicsAgent(config=config, api_key=args.api_key)
