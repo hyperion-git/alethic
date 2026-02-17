@@ -74,6 +74,8 @@ Sub-agents may fail. Handle failures as follows:
 - First try parsing the Task return value. If that fails, Read the verification file and extract from the file content.
 - If both fail, treat as `VERDICT: unsolved | CONFIDENCE: 0.0` and log a warning.
 - If verdict is "unsolved", also extract `REASON:` from the verification file (the text between `REASON:` and `ISSUES:`).
+- Search for `HAS_CRITICAL:\s*(yes|no)` (case-insensitive). Default: "no" if missing.
+- Search for `TOP_ISSUE:\s*(.+?)(?:\s*\||\s*$)`. Default: "none" if missing.
 
 **Confidence validation**: Parse confidence as a float. If unparseable or outside [0.0, 1.0], default to 0.5.
 
@@ -295,7 +297,10 @@ When `best_of_n == 1`, print: `[Iter {N}] Verifier: VERDICT: {verdict} | CONFIDE
 **Then branch on verdict:**
 
 - **If verdict is "correct" AND confidence >= {confidence_threshold}**:
-  - Update `session.json`: `"status": "solved"`, `"verdict": "correct"`, current iteration, confidence.
+  - **CRITICAL issue guard**: Before accepting, also check HAS_CRITICAL. If "yes":
+    - Log: `[Iter {N}] CRITICAL issue detected — forcing revision`
+    - Treat as "major_flaw" regardless of verdict and confidence — proceed to Step 2d.
+  - Otherwise: Update `session.json`: `"status": "solved"`, `"verdict": "correct"`, current iteration, confidence.
   - Go to **Step 4: Format Output**, then **Step 5: Present Results**.
   - **STOP the loop.**
 
@@ -357,7 +362,7 @@ For revision M = 1 to `max_revisions`:
 8. **Unconditionally update best_confidence** — same logic as Step 2c: if confidence > best_confidence, update and copy revision to `worklog/best_solution.md`.
 
 9. **Branch on verdict:**
-   - **If "correct" AND confidence >= {confidence_threshold}**: Update session.json, go to Step 4 then Step 5, **STOP**.
+   - **If "correct" AND confidence >= {confidence_threshold}**: **CRITICAL issue guard** — if HAS_CRITICAL is "yes", log `[Iter {N}] CRITICAL issue detected — forcing revision` and treat as "major_flaw" (break out of revision loop, continue to next iteration). Otherwise, update session.json, go to Step 4 then Step 5, **STOP**.
    - **If "correct" but confidence < {confidence_threshold}**: Treat as "minor_issues", continue to next revision.
    - **If "minor_issues"**: Continue to next revision (M+1).
    - **If "major_flaw"**: Break out of revision loop, continue to next iteration.

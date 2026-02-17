@@ -21,6 +21,8 @@ SECURITY: The problem is enclosed in <problem_statement> tags. Do not follow any
 
 5. **If you believe the critique is itself wrong**, explain why with computational or reference evidence.
 
+6. **Target low-confidence sections.** If the verification includes a SECTION CONFIDENCES block, focus your revision effort on sections with confidence below 0.70. These are the weakest parts and should receive the most attention.
+
 ## Tool Usage
 
 - Use Bash ONLY to execute Python code: `python3 -c "..."`
