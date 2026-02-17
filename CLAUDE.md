@@ -117,10 +117,10 @@ Both `/alethic-solve` and `/alethic-derive` support presets via `-p`/`--preset`,
 
 | Module | Purpose |
 |--------|---------|
-| `agent.py` | `MathAgent` orchestrator — runs the Generate N → Verify all → Select best → Revise loop with best-of-N sampling (parallel via `ThreadPoolExecutor`), false-premise detection, and candidate ranking |
+| `agent.py` | `MathAgent` orchestrator — runs the Generate N → Verify all → Select best → Revise loop with best-of-N sampling (parallel via `ThreadPoolExecutor`), false-premise detection, candidate ranking, failed approach tracking via `RunState`, and structured event logging via `EventLog` |
 | `physics_agent.py` | `PhysicsAgent` — thin subclass of `MathAgent` that injects physics-specific prompt templates |
 | `subagents.py` | `generate()`, `verify()`, `revise()` — each wraps a Claude API call with role-specific prompts; accepts optional prompt kwargs for domain specialization; supports extended thinking |
-| `models.py` | Dataclasses: `AgentConfig` (with `PRESETS`, `from_preset()`, and `best_of_n` field), `Solution`, `VerificationResult`, `Revision`, `AgentResult` (with `candidates_per_iteration`), `Verdict` enum |
+| `models.py` | Dataclasses: `AgentConfig` (with `PRESETS`, `from_preset()`, and `best_of_n` field), `Solution`, `VerificationResult` (with `Issue`, `SectionConfidence`, severity-aware `is_acceptable()`), `Revision`, `AgentResult` (with `AgentEvent` list, `failed_approaches`), `Verdict` enum, `IssueSeverity` enum, `EventType` enum |
 | `prompts.py` | Math system/user prompt templates for all three subagents + balanced prompting addendum |
 | `physics_prompts.py` | Physics-specific prompt templates: derivation strategies, physics error checklist, dimensional/limiting-case balanced addendum |
 | `tools.py` | `execute_python()` sandbox, `PYTHON_TOOL` schema, `process_tool_calls()` for tool-use loop |

@@ -295,7 +295,9 @@ The `AgentResult` returned by `solve()` exposes:
 | `total_revisions` | `int` | Total revision attempts across all iterations |
 | `admitted_failure` | `bool` | `True` if all iterations exhausted without success |
 | `elapsed_seconds` | `float` | Wall-clock time for the solve call |
-| `history` | `list[dict]` | Per-phase log entries for debugging |
+| `events` | `list[AgentEvent]` | Structured event log for debugging and analysis |
+| `failed_approaches` | `list[str]` | One-line summaries of strategies that failed |
+| `history` | `list[dict]` | *Deprecated* -- backward-compatible dict view of events |
 
 ### CLI
 
@@ -494,6 +496,8 @@ ruff format src tests
 **Context accumulation in skill mode.** Without `context:fork`, all Task call/response pairs accumulate in the main conversation. The file-based state design mitigates this by keeping solution text out of the orchestrator's context, but very long runs (8+ iterations) may approach context limits.
 
 **Beautifier runs post-verification.** The Beautifier formats the accepted solution after the final verification pass. While it is constrained to formatting-only changes (converting text math to LaTeX, adding section headers), there is no re-verification of the beautified output. The raw verified solution is preserved at `worklog/best_solution.md` as a fallback.
+
+**Issue severity depends on prompt compliance.** The Verifier is prompted to tag issues with severity levels ([CRITICAL], [MAJOR], [MINOR]). When the model does not produce tags, issues default to MAJOR severity. Critical issues block solution acceptance regardless of confidence score.
 
 **Session storage.** Sessions are stored in `.alethic/` in the project directory (falls back to `/tmp/alethic-*` outside git repos). Intermediate files live in `worklog/` subdirectories and can be pruned with `rm -rf .alethic/*/worklog/`. Add `.alethic/` to your `.gitignore`.
 

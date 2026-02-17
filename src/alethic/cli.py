@@ -269,6 +269,11 @@ def main(argv: list[str] | None = None) -> int:
             "admitted_failure": result.admitted_failure,
             "elapsed_seconds": result.elapsed_seconds,
             "solution": result.solution,
+            "failed_approaches": result.failed_approaches,
+            "events": [
+                {"type": e.type.value, "iteration": e.iteration, "timestamp": e.timestamp, **e.data}
+                for e in result.events
+            ],
         }
         print(json.dumps(output, indent=2))
     else:

@@ -658,6 +658,101 @@ class TestSectionConfidenceParsing:
 # ── Reviser section targeting (Task 3.3) ─────────────────────────
 
 
+# ── CLI event output (Task 4.1) ──────────────────────────────────
+
+
+class TestCLIEventOutput:
+    def test_json_output_includes_events(self):
+        import json
+
+        events = [
+            AgentEvent(
+                type=EventType.GENERATE,
+                iteration=1,
+                timestamp=1000.0,
+                data={"candidate": 1, "solution_preview": "Let x = ..."},
+            ),
+            AgentEvent(
+                type=EventType.VERIFY,
+                iteration=1,
+                timestamp=1001.0,
+                data={"verdict": "correct", "confidence": 0.95},
+            ),
+            AgentEvent(
+                type=EventType.ACCEPT,
+                iteration=1,
+                timestamp=1002.0,
+                data={"final_confidence": 0.95},
+            ),
+        ]
+        result = AgentResult(
+            problem="Prove sqrt(2) is irrational",
+            solution="Assume sqrt(2) = p/q ...",
+            verdict=Verdict.CORRECT,
+            confidence=0.95,
+            iterations_used=1,
+            total_revisions=0,
+            admitted_failure=False,
+            events=events,
+            elapsed_seconds=12.5,
+            candidates_per_iteration=2,
+            failed_approaches=["Direct computation diverges", "Induction base case fails"],
+        )
+
+        # Build the output dict exactly as cli.py does
+        output = {
+            "problem": result.problem,
+            "solved": result.solved,
+            "verdict": result.verdict.value,
+            "confidence": result.confidence,
+            "iterations_used": result.iterations_used,
+            "total_revisions": result.total_revisions,
+            "candidates_per_iteration": result.candidates_per_iteration,
+            "admitted_failure": result.admitted_failure,
+            "elapsed_seconds": result.elapsed_seconds,
+            "solution": result.solution,
+            "failed_approaches": result.failed_approaches,
+            "events": [
+                {
+                    "type": e.type.value,
+                    "iteration": e.iteration,
+                    "timestamp": e.timestamp,
+                    **e.data,
+                }
+                for e in result.events
+            ],
+        }
+
+        # Serialize to JSON and parse back
+        json_str = json.dumps(output, indent=2)
+        parsed = json.loads(json_str)
+
+        # Verify top-level fields
+        assert parsed["problem"] == "Prove sqrt(2) is irrational"
+        assert parsed["solved"] is True
+        assert parsed["verdict"] == "correct"
+        assert parsed["confidence"] == 0.95
+        assert parsed["candidates_per_iteration"] == 2
+
+        # Verify failed_approaches
+        assert parsed["failed_approaches"] == [
+            "Direct computation diverges",
+            "Induction base case fails",
+        ]
+
+        # Verify events
+        assert len(parsed["events"]) == 3
+        assert parsed["events"][0]["type"] == "generate"
+        assert parsed["events"][0]["iteration"] == 1
+        assert parsed["events"][0]["timestamp"] == 1000.0
+        assert parsed["events"][0]["candidate"] == 1
+        assert parsed["events"][0]["solution_preview"] == "Let x = ..."
+        assert parsed["events"][1]["type"] == "verify"
+        assert parsed["events"][1]["confidence"] == 0.95
+        assert parsed["events"][2]["type"] == "accept"
+        assert parsed["events"][2]["final_confidence"] == 0.95
+
+
 class TestReviserSectionTargeting:
     def test_reviser_includes_low_confidence_sections(self):
         from alethic.subagents import revise
