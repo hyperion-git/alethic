@@ -403,7 +403,7 @@ class TestSubprocessThreadSafety:
             ]
             results = [f.result(timeout=15) for f in futures]
 
-        for (code, expected), result in zip(codes, results):
+        for (code, expected), result in zip(codes, results, strict=True):
             assert expected in result, (
                 f"Code {code!r}: expected {expected!r} in {result!r}"
             )

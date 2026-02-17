@@ -470,11 +470,11 @@ alethic/
 │   ├── cli.py                      # CLI entry point (solve/derive subcommands)
 │   └── examples.py                 # Bundled example problems
 └── tests/
-    ├── test_alethic.py             # Core tests (43)
-    ├── test_physics.py             # Physics tests (35)
+    ├── test_alethic.py             # Core tests (62)
+    ├── test_physics.py             # Physics tests (40)
     ├── test_new_types.py           # IssueSeverity, Issue, SectionConfidence, EventType, AgentEvent tests
     ├── test_best_of_n.py           # Best-of-N sampling tests
-    └── test_adversarial_*.py       # Adversarial tests (185)
+    └── test_adversarial_*.py       # Adversarial tests (194)
 ```
 
 ## Testing
@@ -482,7 +482,7 @@ alethic/
 All tests use mocked API responses and require no API key. The test suite covers data models, prompt content validation (math and physics), sandbox execution (including timeout enforcement and import restrictions), structured output parsing for all verdict types, preset creation and overrides, configurable confidence thresholds, CLI argument parsing (including `solve`/`derive` subcommands, `--preset`, and `--confidence-threshold`), physics prompt injection via kwargs, `PhysicsAgent` instantiation and integration, and end-to-end flows for solved, revised, and failed problems. Adversarial tests cover edge cases in CLI parsing, backward compatibility, prompt kwargs, sandbox allowlist, and skill file structure.
 
 ```bash
-# Run all 263 tests
+# Run all 367 tests
 pytest
 
 # With coverage report

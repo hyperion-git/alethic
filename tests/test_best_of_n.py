@@ -283,6 +283,8 @@ class TestBestOfNParallel:
 
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     def test_n3_uses_thread_pool(self, _mock_tools):
+        from concurrent.futures import ThreadPoolExecutor as RealTPE
+
         from alethic.agent import MathAgent
 
         config = AgentConfig(
@@ -298,42 +300,21 @@ class TestBestOfNParallel:
             _mock_response("B"),
             _mock_response("C"),
             _mock_response(CORRECT_HIGH),
+            _mock_response(CORRECT_MED),
             _mock_response(MINOR_ISSUES),
-            _mock_response(MAJOR_FLAW),
         ]
 
         agent = MathAgent(config=config)
         agent.client = mock_client
 
-        with patch("alethic.agent.ThreadPoolExecutor") as mock_pool_cls:
-            # Set up the mock pool to behave correctly
-            mock_pool = MagicMock()
-            mock_pool_cls.return_value.__enter__ = MagicMock(return_value=mock_pool)
-            mock_pool_cls.return_value.__exit__ = MagicMock(return_value=False)
+        with patch("alethic.agent.ThreadPoolExecutor", wraps=RealTPE) as mock_pool_cls:
+            result = agent.solve("test")
 
-            # Instead of actually using threads, we test that ThreadPoolExecutor is called
-            # We need to let the real code run, so we just verify the constructor was called
-            # Reset and use real implementation
-            mock_pool_cls.reset_mock()
-
-        # Simpler approach: verify N=3 generates 3 candidates
-        mock_client2 = MagicMock()
-        mock_client2.messages.create.side_effect = [
-            _mock_response("A"),
-            _mock_response("B"),
-            _mock_response("C"),
-            _mock_response(CORRECT_HIGH),
-            _mock_response(CORRECT_MED),
-            _mock_response(MINOR_ISSUES),
-        ]
-
-        agent2 = MathAgent(config=config)
-        agent2.client = mock_client2
-        result = agent2.solve("test")
-
+        # ThreadPoolExecutor should have been instantiated with max_workers=3
+        mock_pool_cls.assert_called_once_with(max_workers=3)
         assert result.solved
-        # 3 gen + 3 ver
-        assert mock_client2.messages.create.call_count == 6
+        # 3 gen + 3 ver = 6 API calls
+        assert mock_client.messages.create.call_count == 6
 
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     def test_n1_does_not_use_thread_pool(self, _mock_tools):

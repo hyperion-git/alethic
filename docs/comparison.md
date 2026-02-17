@@ -21,7 +21,7 @@ Three AI-assisted mathematical reasoning systems by two authors:
 | **Output** | Lean 4 code + LaTeX | Natural-language proof with audit trail | Solution text, optional textbook conversion |
 | **Verification** | Adversarial per-step + anti-sycophancy | Adversarial per-step with challenge severity levels | Decoupled holistic (no reasoning traces) |
 | **State model** | Semantic proof graph (EDN DAG) | Event-sourced ledger (filesystem ACID) | In-memory dataclasses / file sessions |
-| **CLI commands** | ~12 | 60+ | ~10 flags |
+| **CLI commands** | ~12 | 60+ | ~18 flags |
 | **Dependencies** | Malli, tools.cli, data.json | Cobra only (minimal) | Anthropic SDK, argparse |
 | **License** | MIT | MIT | MIT |
 
@@ -213,9 +213,9 @@ Alethic's best-of-N is unique among the three — it generates multiple complete
 | Runtime | JVM (Java 21+) | Native binary | CPython |
 | External deps | Malli, tools.cli, data.json, Criterium | Cobra only | Anthropic SDK |
 | Data format | EDN | Event ledger (custom) | JSON / dataclasses |
-| CLI commands | ~12 | 60+ | ~10 flags |
+| CLI commands | ~12 | 60+ | ~18 flags |
 | Test framework | test.check (property-based) | Go testing (27 packages) | pytest (mocked API) |
-| LOC (approx) | Unknown | ~388 Go files, 2,400+ LOC service | ~1,750 Python LOC |
+| LOC (approx) | Unknown | ~388 Go files, 2,400+ LOC service | ~2,586 Python LOC |
 | Distribution | Git + uberjar | Git + go build | pip + Claude Code plugin |
 | AI coupling | Model-agnostic prompts | AI-agnostic framework | Claude-specific SDK |
 

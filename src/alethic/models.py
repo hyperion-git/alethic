@@ -105,6 +105,22 @@ class AgentConfig:
     def __post_init__(self) -> None:
         if self.best_of_n < 1:
             raise ValueError(f"best_of_n must be >= 1, got {self.best_of_n}")
+        if self.max_iterations < 1:
+            raise ValueError(f"max_iterations must be >= 1, got {self.max_iterations}")
+        if self.max_revisions_per_cycle < 0:
+            raise ValueError(f"max_revisions_per_cycle must be >= 0, got {self.max_revisions_per_cycle}")
+        if not 0.0 <= self.confidence_threshold <= 1.0:
+            raise ValueError(f"confidence_threshold must be in [0.0, 1.0], got {self.confidence_threshold}")
+        if self.temperature_generator < 0:
+            raise ValueError(f"temperature_generator must be >= 0, got {self.temperature_generator}")
+        if self.temperature_verifier < 0:
+            raise ValueError(f"temperature_verifier must be >= 0, got {self.temperature_verifier}")
+        if self.temperature_reviser < 0:
+            raise ValueError(f"temperature_reviser must be >= 0, got {self.temperature_reviser}")
+        if self.max_tokens < 1:
+            raise ValueError(f"max_tokens must be >= 1, got {self.max_tokens}")
+        if self.thinking_budget < 0:
+            raise ValueError(f"thinking_budget must be >= 0, got {self.thinking_budget}")
 
     PRESETS: ClassVar[dict[str, dict[str, Any]]] = {
         "quick": {

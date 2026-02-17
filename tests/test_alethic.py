@@ -208,7 +208,7 @@ class TestPrompts:
 
     def test_verifier_system_is_decoupled(self):
         """Verifier prompt must NOT reference thinking traces or reasoning process."""
-        assert "thinking" not in VERIFIER_SYSTEM.lower() or "intermediate thinking" not in VERIFIER_SYSTEM.lower()
+        assert "thinking" not in VERIFIER_SYSTEM.lower() and "intermediate thinking" not in VERIFIER_SYSTEM.lower()
         assert "You are independent" in VERIFIER_SYSTEM
         assert "VERDICT:" in VERIFIER_SYSTEM
 

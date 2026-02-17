@@ -233,13 +233,14 @@ class MathAgent:
         problem: str,
         candidates: list[tuple[Solution, float]],
         prompts: dict[str, str],
-    ) -> list[tuple[Solution, VerificationResult, float, float]]:
+    ) -> list[tuple[Solution, VerificationResult, float, float, int]]:
         """Verify all candidates sequentially. Return list sorted by confidence desc.
 
-        Returns list of (solution, verification, gen_time, verify_time) tuples.
+        Returns list of (solution, verification, gen_time, verify_time, orig_idx)
+        tuples where orig_idx is the 1-based generation-order index.
         """
-        verified: list[tuple[Solution, VerificationResult, float, float]] = []
-        for solution, gen_time in candidates:
+        verified: list[tuple[Solution, VerificationResult, float, float, int]] = []
+        for idx, (solution, gen_time) in enumerate(candidates, 1):
             t0 = time.time()
             verification = verify(
                 self.client,
@@ -250,7 +251,7 @@ class MathAgent:
                 user_template=prompts.get("verifier_user"),
             )
             verify_time = time.time() - t0
-            verified.append((solution, verification, gen_time, verify_time))
+            verified.append((solution, verification, gen_time, verify_time, idx))
 
         # Sort by confidence descending
         verified.sort(key=lambda x: x[1].confidence, reverse=True)
@@ -258,7 +259,7 @@ class MathAgent:
 
     def _log_candidates(
         self,
-        verified: list[tuple[Solution, VerificationResult, float, float]],
+        verified: list[tuple[Solution, VerificationResult, float, float, int]],
         generation_wall_time: float,
     ) -> None:
         """Log generation wall time and a ranked table of candidates (N>1 only)."""
@@ -266,7 +267,7 @@ class MathAgent:
                    f"(wall time: {generation_wall_time:.1f}s)")
         self._log(f"{'Rank':<6}{'Verdict':<16}{'Confidence':<13}{'Gen(s)':<10}{'Ver(s)':<10}")
         self._log(f"{'─' * 55}")
-        for rank, (_sol, ver, gen_t, ver_t) in enumerate(verified, 1):
+        for rank, (_sol, ver, gen_t, ver_t, _orig_idx) in enumerate(verified, 1):
             self._log(f"{rank:<6}{ver.verdict.value:<16}{ver.confidence:<13.0%}"
                        f"{gen_t:<10.1f}{ver_t:<10.1f}")
 
@@ -331,6 +332,12 @@ class MathAgent:
             if verification.is_acceptable(threshold):
                 self._log("")
                 self._log("[SOLVED] Verifier approved the revised solution!")
+                log.emit(
+                    EventType.ACCEPT,
+                    iteration,
+                    confidence=verification.confidence,
+                    verdict=verification.verdict.value,
+                )
                 return self._make_result(
                     problem=problem,
                     solution=current_solution.solution_text,
@@ -454,19 +461,19 @@ class MathAgent:
                 if n > 1:
                     self._log_candidates(verified, gen_wall_time)
 
-                # Record all in log
-                for idx, (_sol, ver, _gen_t, _ver_t) in enumerate(verified, 1):
+                # Record all in log (use original generation-order index)
+                for _sol, ver, _gen_t, _ver_t, orig_idx in verified:
                     log.emit(
                         EventType.VERIFY,
                         iteration,
-                        candidate=idx,
+                        candidate=orig_idx,
                         verdict=ver.verdict.value,
                         confidence=ver.confidence,
                         num_issues=len(ver.issues),
                     )
 
                 # Best candidate is first (sorted by confidence desc)
-                solution, verification, _, _ = verified[0]
+                solution, verification, _, _, _ = verified[0]
 
                 self._log(f"[VERIFY] Best: {verification.verdict.value} "
                            f"(confidence: {verification.confidence:.0%})")
@@ -483,6 +490,12 @@ class MathAgent:
                 if verification.is_acceptable(threshold):
                     self._log("")
                     self._log("[SOLVED] Verifier approved the solution!")
+                    log.emit(
+                        EventType.ACCEPT,
+                        iteration,
+                        confidence=verification.confidence,
+                        verdict=verification.verdict.value,
+                    )
                     return self._make_result(
                         problem=problem,
                         solution=solution.solution_text,
@@ -534,6 +547,12 @@ class MathAgent:
         self._log("[ADMITTED FAILURE] Exhausted all iterations without verified solution")
         self._log(f"Best confidence seen: {state.best_confidence:.0%}")
         self._log(f"{'=' * 60}")
+
+        log.emit(
+            EventType.FAIL,
+            self.config.max_iterations,
+            reason="max_iterations_exhausted",
+        )
 
         best_text = state.best_solution.solution_text if state.best_solution else None
         return self._make_result(
