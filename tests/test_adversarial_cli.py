@@ -110,33 +110,26 @@ class TestDetectSubcommandAdversarial:
         assert remaining == ["-q"]
 
     # 7. Flag value looks like subcommand.
-    #    --preset takes a value, but _detect_subcommand doesn't know flag arities.
-    #    ["--preset", "derive", "problem"] -- "derive" is the value for --preset,
-    #    but _detect_subcommand skips "--preset" (flag), then sees "derive" as
-    #    first positional and INCORRECTLY strips it.
-    def test_flag_value_looks_like_subcommand_is_misdetected(self):
-        """BUG: ["--preset", "derive", "problem"] -- 'derive' is a flag value,
-        not a subcommand, but _detect_subcommand incorrectly strips it.
-
-        This test documents the known limitation: _detect_subcommand does not
-        understand flag arities, so a flag value matching a subcommand name
-        will be incorrectly consumed.
+    #    --preset takes a value; _detect_subcommand knows flag arities via
+    #    _FLAGS_WITH_VALUE and correctly skips the value token.
+    def test_flag_value_derive_not_misdetected(self):
+        """FIXED: ["--preset", "derive", "problem"] -- 'derive' is the value
+        for --preset, not a subcommand. _detect_subcommand correctly skips it
+        because --preset is in _FLAGS_WITH_VALUE.
         """
         cmd, remaining = _detect_subcommand(["--preset", "derive", "problem"])
-        # This is the ACTUAL behavior (a bug):
-        # _detect_subcommand skips "--preset", sees "derive" as first positional,
-        # and strips it as a subcommand.
-        assert cmd == "derive", (
-            "_detect_subcommand doesn't know --preset takes a value, so it "
-            "treats 'derive' as a subcommand (known limitation)"
+        assert cmd is None, (
+            "'derive' is the value for --preset, not a subcommand"
         )
-        assert remaining == ["--preset", "problem"]
+        assert remaining == ["--preset", "derive", "problem"]
 
-    def test_flag_value_solve_also_misdetected(self):
-        """Same bug with 'solve': ["--preset", "solve", "problem"]."""
+    def test_flag_value_solve_not_misdetected(self):
+        """FIXED: ["--preset", "solve", "problem"] -- same fix for 'solve'."""
         cmd, remaining = _detect_subcommand(["--preset", "solve", "problem"])
-        assert cmd == "solve"
-        assert remaining == ["--preset", "problem"]
+        assert cmd is None, (
+            "'solve' is the value for --preset, not a subcommand"
+        )
+        assert remaining == ["--preset", "solve", "problem"]
 
     # 8. Double subcommand: ["solve", "derive", "problem"].
     def test_double_subcommand(self):
@@ -159,25 +152,42 @@ class TestDetectSubcommandAdversarial:
         assert "problem" in unknown
 
     # 9. Subcommand after flags with values: ["-p", "quick", "derive", "problem"].
-    #    -p is a flag (starts with -), so _detect_subcommand skips it.
-    #    Then "quick" is the first non-flag arg, NOT a subcommand -> break.
+    #    -p is in _FLAGS_WITH_VALUE, so _detect_subcommand skips both -p and "quick".
+    #    Then "derive" is correctly detected as the first positional (a subcommand).
     def test_subcommand_after_flag_with_value_not_detected(self):
-        """["-p", "quick", "derive", "problem"] -- 'quick' is seen first,
-        not a subcommand, so 'derive' is never checked."""
+        """["-p", "quick", "derive", "problem"] -- -p consumes 'quick',
+        so 'derive' is correctly detected as the subcommand."""
         cmd, remaining = _detect_subcommand(["-p", "quick", "derive", "problem"])
-        assert cmd is None, (
-            "'quick' is the first non-flag arg, not a subcommand, so detection "
-            "breaks early and 'derive' is never reached"
+        assert cmd == "derive", (
+            "-p consumes 'quick' as its value, so 'derive' is the first "
+            "positional and is correctly detected as a subcommand"
         )
-        assert remaining == ["-p", "quick", "derive", "problem"]
+        assert remaining == ["-p", "quick", "problem"]
 
     def test_subcommand_after_flag_with_value_long_form(self):
-        """["--preset", "quick", "derive", "problem"] -- same issue with long flag."""
+        """["--preset", "quick", "derive", "problem"] -- same with long flag."""
         cmd, remaining = _detect_subcommand(["--preset", "quick", "derive", "problem"])
-        # --preset is skipped (starts with -), "quick" is first positional,
-        # not a subcommand -> break. derive never checked.
-        assert cmd is None
-        assert remaining == ["--preset", "quick", "derive", "problem"]
+        # --preset consumes "quick", "derive" is first positional -> subcommand.
+        assert cmd == "derive"
+        assert remaining == ["--preset", "quick", "problem"]
+
+    # 9b. Short flag consuming a subcommand-like value.
+    def test_short_flag_value_not_misdetected(self):
+        """["-p", "derive", "problem"] -- -p consumes 'derive' as its value,
+        so no subcommand is detected."""
+        cmd, remaining = _detect_subcommand(["-p", "derive", "problem"])
+        assert cmd is None, (
+            "'derive' is the value for -p, not a subcommand"
+        )
+        assert remaining == ["-p", "derive", "problem"]
+
+    # 9c. Equals syntax does not skip the next token.
+    def test_equals_syntax_does_not_skip_next(self):
+        """["--preset=quick", "derive", "problem"] -- equals-style flag is a single
+        token; 'derive' is the first positional and correctly detected."""
+        cmd, remaining = _detect_subcommand(["--preset=quick", "derive", "problem"])
+        assert cmd == "derive"
+        assert remaining == ["--preset=quick", "problem"]
 
 
 # ── main() routing tests ─────────────────────────────────────────────

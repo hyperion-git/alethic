@@ -201,17 +201,44 @@ def _build_config(args: argparse.Namespace) -> AgentConfig:
     return AgentConfig(**overrides)
 
 
+_FLAGS_WITH_VALUE = frozenset({
+    "-f", "--file",
+    "-p", "--preset",
+    "-m", "--model",
+    "-n", "--iterations",
+    "--revisions",
+    "--confidence-threshold",
+    "--temperature-generator",
+    "--temperature-verifier",
+    "--temperature-reviser",
+    "--api-key",
+    "--max-tokens",
+    "--thinking-budget",
+    "-B", "--best-of",
+})
+
+
 def _detect_subcommand(argv: list[str]) -> tuple[str | None, list[str]]:
     """Detect and strip a 'solve' or 'derive' subcommand from argv.
 
     Returns (command, remaining_argv). If the first non-flag argument is
     'solve' or 'derive', it is removed from argv and returned as the command.
     Otherwise, command is None and argv is unchanged.
+
+    Flags listed in ``_FLAGS_WITH_VALUE`` consume the next token as their
+    value, preventing flag values like ``--preset derive`` from being
+    misidentified as subcommands.  Flags using ``=`` syntax (e.g.
+    ``--preset=quick``) are handled as a single token and do not consume
+    the next argument.
     """
+    skip_next = False
     for i, arg in enumerate(argv):
+        if skip_next:
+            skip_next = False
+            continue
         if arg.startswith("-"):
-            # Skip flags; also skip the next arg if this flag takes a value
-            # (flags that take values: -f, -p, -m, -n, --file, --preset, etc.)
+            if "=" not in arg and arg in _FLAGS_WITH_VALUE:
+                skip_next = True
             continue
         # First positional argument found
         if arg in ("solve", "derive"):
