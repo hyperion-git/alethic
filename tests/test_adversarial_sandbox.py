@@ -239,3 +239,172 @@ class TestTimeoutWithScipy:
         assert "TIMEOUT" in result, (
             f"Expected timeout but got: {result[:200]}"
         )
+
+
+# ---------------------------------------------------------------------------
+# 11. Attribute traversal escape attempts
+# ---------------------------------------------------------------------------
+
+class TestAttributeTraversalBlocked:
+    """Verify that attribute-chain escapes via allowed modules are contained.
+
+    The subprocess sandbox blocks *direct* imports of dangerous modules (os,
+    sys, subprocess) via the import gate.  However, allowed modules like
+    ``random`` and ``fractions`` hold internal references to ``os`` and ``sys``
+    as module attributes (e.g. ``random._os``, ``fractions.sys``).
+
+    Because execute_python() now runs in a child subprocess, attribute
+    traversal still works *inside the child*, but the parent process is
+    unaffected.  These tests document that behavior: the child CAN access
+    ``random._os`` and ``fractions.sys`` (subprocess isolation does not
+    restrict attribute access), but direct ``import os`` is still blocked
+    by the import gate.
+    """
+
+    @pytest.mark.xfail(
+        reason="Known limitation: attribute traversal bypasses import gate. "
+               "Subprocess isolation prevents parent impact but child can run shell commands.",
+        strict=False,
+    )
+    def test_random_os_system_blocked(self):
+        """Attribute traversal via random._os.system() should ideally be blocked.
+
+        Currently the import gate only intercepts ``import`` statements, not
+        attribute access on pre-imported modules.  The child process can call
+        random._os.system() — subprocess isolation limits blast radius but
+        does not prevent execution.  This test is marked xfail to document
+        the gap: it passes (xfail) when the escape works, and will xpass
+        (unexpected pass) if future hardening blocks it.
+        """
+        result = execute_python(
+            "import random\nprint(random._os.system('echo ESCAPED'))"
+        )
+        assert "ESCAPED" not in result, (
+            f"Attribute traversal escape succeeded (known limitation): {result}"
+        )
+
+    @pytest.mark.xfail(
+        reason="Known limitation: attribute traversal exposes os.environ in child.",
+        strict=False,
+    )
+    def test_random_os_environ_blocked(self):
+        """Attribute traversal via random._os.environ should ideally be blocked.
+
+        The child subprocess inherits the parent environment.  Attribute
+        traversal lets code reach os.environ, which may contain secrets
+        like ANTHROPIC_API_KEY.  Marked xfail to document the gap.
+        """
+        result = execute_python(
+            "import random\nprint(random._os.environ.get('HOME', 'NOPE'))"
+        )
+        assert _is_security_block(result), (
+            f"Attribute traversal env access succeeded (known limitation): {result}"
+        )
+
+    def test_os_system_direct_import_still_blocked(self):
+        """Direct 'import os' is blocked by the import gate.
+
+        While random._os works via attribute traversal, a direct
+        ``import os`` statement is caught by the restricted __import__
+        hook.  This confirms the import gate is still enforced even
+        though attribute traversal bypasses it.
+        """
+        result = execute_python("import os; os.system('echo ESCAPED')")
+        assert _is_security_block(result), (
+            f"Direct 'import os' was NOT blocked: {result}"
+        )
+        assert "ESCAPED" not in result, (
+            f"Shell command ran despite import block: {result}"
+        )
+
+    @pytest.mark.xfail(
+        reason="Known limitation: fractions.sys accessible via attribute traversal "
+               "(CPython implementation detail, may vary across versions).",
+        strict=False,
+    )
+    def test_fractions_sys_blocked(self):
+        """Attribute traversal via fractions.sys should ideally be blocked.
+
+        CPython's fractions module holds a reference to sys.  This is an
+        implementation detail that may change across versions.  Marked
+        xfail to document without asserting success.
+        """
+        result = execute_python(
+            "import fractions\nprint(fractions.sys.executable)"
+        )
+        assert _is_security_block(result), (
+            f"Attribute traversal sys access succeeded (known limitation): {result}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 12. Thread safety — execute_python() from worker threads
+# ---------------------------------------------------------------------------
+
+class TestSubprocessThreadSafety:
+    """Verify that execute_python() works from ThreadPoolExecutor workers.
+
+    The old in-process sandbox used signal.signal(SIGALRM) for timeouts,
+    which raises ValueError when called from a non-main thread.  The new
+    subprocess-based sandbox avoids this: signal.signal() is called inside
+    the child process (which IS the main thread of that process), not in
+    the parent's worker thread.  subprocess.run(timeout=...) handles the
+    parent-side timeout without signals.
+    """
+
+    def test_execute_from_worker_thread(self):
+        """Basic execute_python() call from a ThreadPoolExecutor worker."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(execute_python, "print(2 + 2)")
+            result = future.result(timeout=15)
+
+        assert "4" in result, f"Expected '4' in output: {result}"
+        assert _succeeded(result)
+
+    def test_execute_timeout_from_worker_thread(self):
+        """Timeout is enforced when execute_python() runs in a worker thread.
+
+        Uses an infinite loop (not time.sleep, which requires 'time'
+        import) to trigger the child's SIGALRM timeout.
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(
+                execute_python, "while True: pass", 2
+            )
+            result = future.result(timeout=15)
+
+        assert "TIMEOUT" in result, (
+            f"Expected TIMEOUT from worker thread: {result}"
+        )
+
+    def test_multiple_parallel_executions(self):
+        """Multiple concurrent execute_python() calls via ThreadPoolExecutor.
+
+        Submits 3 independent computations in parallel and verifies all
+        return correct results.  This exercises the subprocess-per-call
+        model under concurrent load.
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
+        codes = [
+            ("print(1 + 1)", "2"),
+            ("print(2 * 3)", "6"),
+            ("print(7 ** 2)", "49"),
+        ]
+
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            futures = [
+                pool.submit(execute_python, code)
+                for code, _ in codes
+            ]
+            results = [f.result(timeout=15) for f in futures]
+
+        for (code, expected), result in zip(codes, results):
+            assert expected in result, (
+                f"Code {code!r}: expected {expected!r} in {result!r}"
+            )
+            assert _succeeded(result)
