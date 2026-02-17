@@ -50,6 +50,13 @@ alethic derive -B 3 "Derive the hydrogen atom energy spectrum"
 # /alethic-textbook .alethic/{existing-session}/
 # /alethic-textbook --domain physics derivation.md
 
+# New skill CLI flags
+# /alethic-solve --no-balanced "Prove sqrt(2) is irrational"  # skip counterexample check
+# /alethic-solve --file problem.md                            # read problem from file
+# /alethic-solve -q -p thorough "..."                         # quiet mode (no dashboard)
+# /alethic-solve --json "Is 17 prime?"                        # JSON output
+# /alethic-solve --model sonnet "..."                         # use Sonnet for sub-agents
+
 # Run examples
 python -m alethic.examples --list
 python -m alethic.examples --pick 1
@@ -145,7 +152,7 @@ Both `/alethic-solve` and `/alethic-derive` support presets via `-p`/`--preset`,
 ## Key Design Decisions
 
 1. **Decoupled verification**: The Verifier receives ONLY the final solution text, never the Generator's thinking traces. In the skill, this is enforced by architecture — Task sub-agents get fresh context windows.
-2. **Domain-neutral orchestrator**: The Generate N → Verify all → Select best → Revise loop (including best-of-N sampling) is identical for math and physics. `PhysicsAgent` overrides only the prompt templates via optional kwargs to `generate()`, `verify()`, `revise()` in `subagents.py`. No orchestrator code is duplicated.
+2. **Domain-neutral orchestrator**: The Generate N → Verify all → Select best → Revise loop (including best-of-N sampling) is identical for math and physics. In the Python library, `PhysicsAgent` overrides only the prompt templates via optional kwargs to `generate()`, `verify()`, `revise()` in `subagents.py`. In the skills, both `/alethic-solve` and `/alethic-derive` are thin ~73-line configurators that define domain variables and load a shared `skills/alethic-common/orchestrator.md` (~729 lines). The orchestrator uses placeholders (`{noun}`, `{domain}`, `{verb}`, `{command}`, `{agent_title}`, `{references_dir}`, `{balanced_addendum}`) and reads prompts from the skill's `references/*.md` at runtime. No orchestrator code is duplicated at either level.
 3. **Configurable confidence threshold**: Solutions require `CORRECT` verdict AND confidence ≥ `confidence_threshold` (default 0.90). Correct-but-uncertain solutions are treated as minor issues and sent for revision.
 4. **False-premise detection**: The Verifier's `REASON:` field enables early exit when a problem's premise is false (e.g., contradicts Brouwer's fixed point theorem).
 5. **Structured output parsing**: Verifier output is parsed via regex (`_parse_verification`) for `VERDICT:`, `CONFIDENCE:`, `CRITIQUE:`, `REASON:`, `ISSUES:` fields with independent extraction per field.

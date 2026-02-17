@@ -225,12 +225,21 @@ Restart Claude Code. The `/alethic-solve`, `/alethic-derive`, and `/alethic-scie
 /alethic-solve -p thorough "Prove the Fundamental Theorem of Algebra"
 /alethic-solve -p quick -i 4 "Is 17 prime?"
 /alethic-solve -t 0.95 "Prove the AM-GM inequality for n variables"
+/alethic-solve -B 3 "Prove the Cayley-Hamilton theorem"
+/alethic-solve --textbook "Prove sqrt(2) is irrational"
 
 # Physics
 /alethic-derive "Derive the energy levels of the quantum harmonic oscillator"
 /alethic-derive -p thorough "Derive the hydrogen atom energy spectrum"
 /alethic-derive -i 8 -r 5 "Derive the Dirac equation from relativistic quantum mechanics"
-/alethic-derive "Show that the Euler-Lagrange equations follow from Hamilton's principle"
+/alethic-derive --textbook "Derive harmonic oscillator energy levels"
+
+# Additional flags
+/alethic-solve --no-balanced "Prove sqrt(2) is irrational"      # skip counterexample check
+/alethic-solve --file problem.md                                 # read problem from file
+/alethic-solve -q -p thorough "Prove the Cayley-Hamilton theorem" # quiet mode (no dashboard)
+/alethic-solve --json "Is 17 prime?"                             # JSON output
+/alethic-solve --model sonnet "Prove Fermat's little theorem"    # use Sonnet for sub-agents
 ```
 
 | Flag | Short | Default | Description |
@@ -240,10 +249,17 @@ Restart Claude Code. The `/alethic-solve`, `/alethic-derive`, and `/alethic-scie
 | `--iterations` | `-i` | 5 | Maximum generate-verify-revise iterations |
 | `--revisions` | `-r` | 3 | Maximum revision attempts per iteration |
 | `--budget` | `-b` | 50 | Total sub-agent call budget |
+| `--best-of` | `-B` | 2 | Candidates per iteration (best-of-N sampling) |
+| `--textbook` | | off | Textbook-style output (Planner → Writer × N → Fidelity) |
+| `--no-balanced` | `-n` | off | Disable balanced prompting addendum in Generator |
+| `--file` | `-f` | — | Read problem from file instead of argument |
+| `--quiet` | `-q` | off | Suppress monitoring dashboard and iteration output |
+| `--json` | `-j` | off | JSON output (for pipeline integration) |
+| `--model` | `-m` | `opus` | Model for sub-agents (`opus`, `sonnet`, `haiku`) |
 
 ### How `/alethic-derive` Differs from `/alethic-solve`
 
-Both skills share the same orchestrator logic (iteration loop, verdict parsing, file-based state, budget tracking). The differences are entirely in the prompt templates:
+Both skills are thin ~73-line configurators that load a shared orchestrator (`skills/alethic-common/orchestrator.md`, ~729 lines). The orchestrator uses domain-variable placeholders (`{noun}`, `{domain}`, `{verb}`, etc.) and reads prompt templates from each skill's `references/*.md` at runtime. The differences are entirely in the domain configuration and prompt templates:
 
 | Component | `/alethic-solve` | `/alethic-derive` |
 |-----------|----------|-----------|
@@ -257,7 +273,7 @@ Both skills share the same orchestrator logic (iteration loop, verdict parsing, 
 
 ### Skill Execution Flow
 
-Both skills follow the same four-stage flow. First, the **Generator** (an Opus Task sub-agent) reads the problem file, uses Bash for Python computation and WebSearch for theorem/identity lookup, and writes a complete solution to disk. Second, the **Verifier** (a separate Opus Task sub-agent with a fresh context) reads only the problem file and the solution file, performs its independent evaluation, and writes a structured verification report. If issues are found, the **Reviser** (another Opus Task sub-agent) reads the solution and the critique, writes a revised solution, and the cycle repeats with a fresh Verifier. Finally, the **Beautifier** formats the accepted solution into clean LaTeX/Markdown with proper typesetting. All intermediate state lives in `.alethic/{session}/worklog/` (or `/tmp/alethic-*/` outside git repos), and the orchestrator tracks only verdicts and confidence scores in its own context window.
+Both skills follow the same six-step flow defined in the shared orchestrator. The thin SKILL.md sets domain variables and loads `skills/alethic-common/orchestrator.md`, which drives the entire session. **Step 1** (Setup) parses flags, creates the session directory, and writes `session.json`. **Step 2** (Main Loop) iterates: the **Generator** (an Opus Task sub-agent) reads the problem and writes a solution; the **Verifier** (a separate Opus Task with a fresh context) reads only the problem and solution files, producing a structured verdict with `HAS_CRITICAL` tracking; the **Reviser** handles critique-based fixes with section-targeted revision. When best-of-N > 1, multiple candidates are generated and verified per iteration, with the best selected. **Step 3** handles failure admission. **Step 4** formats output (simple Beautifier or textbook pipeline). **Step 5** presents results (including `--json` mode). **Step 6** finalizes session metadata (events.jsonl, elapsed_seconds, failed_approaches). All intermediate state lives in `.alethic/{session}/worklog/`, and the orchestrator tracks only verdicts and confidence scores in its own context window.
 
 ## Python Library
 
@@ -419,13 +435,15 @@ The Python library is organized into the following modules, each with a single c
 
 | Skill file | Purpose |
 |------------|---------|
-| `skills/alethic-solve/SKILL.md` | `/alethic-solve` command orchestrator — spawns Opus Task sub-agents with file-based state |
-| `skills/alethic-derive/SKILL.md` | `/alethic-derive` command orchestrator — physics derivations with physics-specific prompts |
+| `skills/alethic-common/orchestrator.md` | Shared GVR loop orchestrator — parameterized by domain, reads prompts from `references/*.md`, handles session management, dashboard, textbook pipeline, event logging, and all CLI flags |
+| `skills/alethic-solve/SKILL.md` | `/alethic-solve` thin configurator — sets math domain variables, balanced approach addendum, loads shared orchestrator |
+| `skills/alethic-derive/SKILL.md` | `/alethic-derive` thin configurator — sets physics domain variables, balanced approach addendum, loads shared orchestrator |
+| `skills/alethic-textbook/SKILL.md` | `/alethic-textbook` — standalone textbook-style converter for existing sessions or raw .md files |
 | `skills/alethic-scientific-figure/SKILL.md` | `/alethic-scientific-figure` — publication-quality scientific figures with AFP palette |
 | `.claude-plugin/plugin.json` | Plugin metadata for Claude Code |
 | `.claude-plugin/marketplace.json` | Marketplace manifest for `hyperion-git/alethic` |
-| `skills/alethic-solve/references/*.md` | Standalone math prompt references (generator, verifier, reviser, beautifier) |
-| `skills/alethic-derive/references/*.md` | Standalone physics prompt references (generator, verifier, reviser, beautifier) |
+| `skills/alethic-solve/references/*.md` | Authoritative math prompt templates (generator, verifier, reviser, beautifier, textbook planner/writer/fidelity) — read by orchestrator at runtime |
+| `skills/alethic-derive/references/*.md` | Authoritative physics prompt templates (generator, verifier, reviser, beautifier, textbook planner/writer/fidelity) — read by orchestrator at runtime |
 | `skills/alethic-scientific-figure/references/*.md` | Color palette guide and presentation override rcParams |
 | `skills/alethic-scientific-figure/scripts/*.py` | AFP colormap registration for matplotlib |
 
@@ -437,20 +455,30 @@ alethic/
 │   ├── plugin.json                 # Plugin metadata (v1.0.0)
 │   └── marketplace.json            # Marketplace manifest
 ├── skills/                         # Claude Code skills
+│   ├── alethic-common/
+│   │   └── orchestrator.md         # Shared GVR loop (parameterized by domain)
 │   ├── alethic-solve/
-│   │   ├── SKILL.md                # /alethic-solve command orchestrator
-│   │   └── references/             # Math prompt references
+│   │   ├── SKILL.md                # Thin configurator (math domain variables)
+│   │   └── references/             # Authoritative math prompt templates
 │   │       ├── generator.md
 │   │       ├── verifier.md
 │   │       ├── reviser.md
-│   │       └── beautifier.md
+│   │       ├── beautifier.md
+│   │       ├── textbook_planner.md
+│   │       ├── textbook_writer.md
+│   │       └── fidelity_verifier.md
 │   ├── alethic-derive/
-│   │   ├── SKILL.md                # /alethic-derive command orchestrator
-│   │   └── references/             # Physics prompt references
+│   │   ├── SKILL.md                # Thin configurator (physics domain variables)
+│   │   └── references/             # Authoritative physics prompt templates
 │   │       ├── generator.md
 │   │       ├── verifier.md
 │   │       ├── reviser.md
-│   │       └── beautifier.md
+│   │       ├── beautifier.md
+│   │       ├── textbook_planner.md
+│   │       ├── textbook_writer.md
+│   │       └── fidelity_verifier.md
+│   ├── alethic-textbook/
+│   │   └── SKILL.md                # Standalone textbook converter
 │   └── alethic-scientific-figure/
 │       ├── SKILL.md                # /alethic-scientific-figure command
 │       ├── evals.json              # Evaluation scenarios
@@ -474,15 +502,15 @@ alethic/
     ├── test_physics.py             # Physics tests (40)
     ├── test_new_types.py           # IssueSeverity, Issue, SectionConfidence, EventType, AgentEvent tests
     ├── test_best_of_n.py           # Best-of-N sampling tests
-    └── test_adversarial_*.py       # Adversarial tests (194)
+    └── test_adversarial_*.py       # Adversarial tests (skill structure, domain config, orchestrator)
 ```
 
 ## Testing
 
-All tests use mocked API responses and require no API key. The test suite covers data models, prompt content validation (math and physics), sandbox execution (including timeout enforcement and import restrictions), structured output parsing for all verdict types, preset creation and overrides, configurable confidence thresholds, CLI argument parsing (including `solve`/`derive` subcommands, `--preset`, and `--confidence-threshold`), physics prompt injection via kwargs, `PhysicsAgent` instantiation and integration, and end-to-end flows for solved, revised, and failed problems. Adversarial tests cover edge cases in CLI parsing, backward compatibility, prompt kwargs, sandbox allowlist, and skill file structure.
+All tests use mocked API responses and require no API key. The test suite covers data models, prompt content validation (math and physics), sandbox execution (including timeout enforcement and import restrictions), structured output parsing for all verdict types, preset creation and overrides, configurable confidence thresholds, CLI argument parsing (including `solve`/`derive` subcommands, `--preset`, and `--confidence-threshold`), physics prompt injection via kwargs, `PhysicsAgent` instantiation and integration, and end-to-end flows for solved, revised, and failed problems. Adversarial tests validate the skill architecture: domain configuration symmetry, shared orchestrator structure and parameterization, reference file authority headers, physics-specific prompts and symbols, extended verifier return lines (HAS_CRITICAL, TOP_ISSUE), CLI flag coverage, event logging, and balanced addendum placement.
 
 ```bash
-# Run all 367 tests
+# Run all tests
 pytest
 
 # With coverage report
