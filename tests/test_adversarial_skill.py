@@ -681,90 +681,119 @@ class TestBalancedAddendum:
 # ── 19. SymPy guidance in reference files ────────────────────────────
 
 
-@pytest.fixture(scope="module")
-def reference_files() -> dict:
-    """Load generator and verifier reference files for both skills."""
-    return {
-        "solve_generator": _read(os.path.join(SOLVE_REFS, "generator.md")),
-        "solve_verifier": _read(os.path.join(SOLVE_REFS, "verifier.md")),
-        "derive_generator": _read(os.path.join(DERIVE_REFS, "generator.md")),
-        "derive_verifier": _read(os.path.join(DERIVE_REFS, "verifier.md")),
-    }
+TOOL_OVERLAY_FILES = [
+    "sympy-generator.md",
+    "sympy-verifier.md",
+    "numpy-generator.md",
+    "numpy-verifier.md",
+]
 
 
-class TestSympyGuidance:
-    """Verify that reference files contain SymPy-specific verification guidance."""
+class TestToolOverlays:
+    """Verify tool overlay files exist, contain expected content, and base files are clean."""
 
-    @pytest.fixture(autouse=True)
-    def load_files(self, reference_files):
-        self.ref = reference_files
+    # --- Overlay files exist ---
+    @pytest.mark.parametrize("overlay", TOOL_OVERLAY_FILES)
+    def test_solve_overlay_exists(self, overlay: str):
+        path = os.path.join(SOLVE_REFS, "tools", overlay)
+        assert os.path.isfile(path), f"Missing solve tool overlay: {path}"
 
-    # --- Math Generator ---
-    def test_math_generator_mentions_sympy(self):
-        assert "SymPy" in self.ref["solve_generator"]
+    @pytest.mark.parametrize("overlay", TOOL_OVERLAY_FILES)
+    def test_derive_overlay_exists(self, overlay: str):
+        path = os.path.join(DERIVE_REFS, "tools", overlay)
+        assert os.path.isfile(path), f"Missing derive tool overlay: {path}"
 
-    def test_math_generator_mentions_sp_simplify(self):
-        assert "sp.simplify" in self.ref["solve_generator"]
+    # --- SymPy overlays mention SymPy ---
+    @pytest.mark.parametrize("skill_refs", [SOLVE_REFS, DERIVE_REFS])
+    def test_sympy_generator_mentions_sympy(self, skill_refs: str):
+        content = _read(os.path.join(skill_refs, "tools", "sympy-generator.md"))
+        assert "SymPy" in content
 
-    def test_math_generator_mentions_sp_integrate(self):
-        assert "sp.integrate" in self.ref["solve_generator"]
+    @pytest.mark.parametrize("skill_refs", [SOLVE_REFS, DERIVE_REFS])
+    def test_sympy_verifier_mentions_sympy(self, skill_refs: str):
+        content = _read(os.path.join(skill_refs, "tools", "sympy-verifier.md"))
+        assert "SymPy" in content
 
-    def test_math_generator_has_toolkit_section(self):
-        assert "### SymPy Verification Toolkit" in self.ref["solve_generator"]
+    # --- NumPy overlays mention NumPy ---
+    @pytest.mark.parametrize("skill_refs", [SOLVE_REFS, DERIVE_REFS])
+    def test_numpy_generator_mentions_numpy(self, skill_refs: str):
+        content = _read(os.path.join(skill_refs, "tools", "numpy-generator.md"))
+        assert "NumPy" in content
 
-    def test_math_generator_no_physics_modules(self):
-        assert "sympy.physics" not in self.ref["solve_generator"]
+    @pytest.mark.parametrize("skill_refs", [SOLVE_REFS, DERIVE_REFS])
+    def test_numpy_verifier_mentions_numpy(self, skill_refs: str):
+        content = _read(os.path.join(skill_refs, "tools", "numpy-verifier.md"))
+        assert "NumPy" in content
 
-    # --- Math Verifier ---
-    def test_math_verifier_mentions_sympy(self):
-        assert "SymPy" in self.ref["solve_verifier"]
+    # --- Verifier overlays contain RED FLAG ---
+    @pytest.mark.parametrize("skill_refs", [SOLVE_REFS, DERIVE_REFS])
+    def test_sympy_verifier_red_flag(self, skill_refs: str):
+        content = _read(os.path.join(skill_refs, "tools", "sympy-verifier.md"))
+        assert "RED FLAG" in content
 
-    def test_math_verifier_mandatory_section(self):
-        assert "### Mandatory SymPy Re-derivation" in self.ref["solve_verifier"]
+    @pytest.mark.parametrize("skill_refs", [SOLVE_REFS, DERIVE_REFS])
+    def test_numpy_verifier_red_flag(self, skill_refs: str):
+        content = _read(os.path.join(skill_refs, "tools", "numpy-verifier.md"))
+        assert "RED FLAG" in content
 
-    def test_math_verifier_red_flag(self):
-        assert "RED FLAG" in self.ref["solve_verifier"]
+    # --- Physics overlays mention physics-specific modules ---
+    def test_physics_sympy_generator_mentions_physics_modules(self):
+        content = _read(os.path.join(DERIVE_REFS, "tools", "sympy-generator.md"))
+        assert "sympy.physics" in content
 
-    def test_math_verifier_no_physics_modules(self):
-        assert "sympy.physics" not in self.ref["solve_verifier"]
+    def test_physics_sympy_verifier_mentions_physics_modules(self):
+        content = _read(os.path.join(DERIVE_REFS, "tools", "sympy-verifier.md"))
+        assert "sympy.physics" in content
 
-    # --- Physics Generator ---
-    def test_physics_generator_mentions_sympy(self):
-        assert "SymPy" in self.ref["derive_generator"]
+    def test_physics_numpy_generator_mentions_scipy_constants(self):
+        content = _read(os.path.join(DERIVE_REFS, "tools", "numpy-generator.md"))
+        assert "scipy.constants" in content
 
-    def test_physics_generator_has_toolkit_section(self):
-        assert "### SymPy Verification Toolkit" in self.ref["derive_generator"]
+    def test_physics_numpy_verifier_mentions_scipy_constants(self):
+        content = _read(os.path.join(DERIVE_REFS, "tools", "numpy-verifier.md"))
+        assert "scipy.constants" in content
 
-    def test_physics_generator_mentions_physics_units(self):
-        assert "sympy.physics.units" in self.ref["derive_generator"]
+    # --- Math overlays do NOT mention physics modules ---
+    def test_math_sympy_generator_no_physics_modules(self):
+        content = _read(os.path.join(SOLVE_REFS, "tools", "sympy-generator.md"))
+        assert "sympy.physics" not in content
 
-    def test_physics_generator_mentions_physics_quantum(self):
-        assert "sympy.physics.quantum" in self.ref["derive_generator"]
+    def test_math_sympy_verifier_no_physics_modules(self):
+        content = _read(os.path.join(SOLVE_REFS, "tools", "sympy-verifier.md"))
+        assert "sympy.physics" not in content
 
-    def test_physics_generator_mentions_dsolve(self):
-        assert "sp.dsolve" in self.ref["derive_generator"]
+    # --- Base reference files no longer contain inline SymPy sections ---
+    def test_solve_generator_no_inline_sympy_section(self):
+        content = _read(os.path.join(SOLVE_REFS, "generator.md"))
+        assert "### SymPy Verification Toolkit" not in content
 
-    # --- Physics Verifier ---
-    def test_physics_verifier_mentions_sympy(self):
-        assert "SymPy" in self.ref["derive_verifier"]
+    def test_solve_verifier_no_inline_sympy_section(self):
+        content = _read(os.path.join(SOLVE_REFS, "verifier.md"))
+        assert "### Mandatory SymPy Re-derivation" not in content
 
-    def test_physics_verifier_mandatory_section(self):
-        assert "### Mandatory SymPy Re-derivation" in self.ref["derive_verifier"]
+    def test_derive_generator_no_inline_sympy_section(self):
+        content = _read(os.path.join(DERIVE_REFS, "generator.md"))
+        assert "### SymPy Verification Toolkit" not in content
 
-    def test_physics_verifier_red_flag(self):
-        assert "RED FLAG" in self.ref["derive_verifier"]
+    def test_derive_verifier_no_inline_sympy_section(self):
+        content = _read(os.path.join(DERIVE_REFS, "verifier.md"))
+        assert "### Mandatory SymPy Re-derivation" not in content
 
-    def test_physics_verifier_mentions_physics_units(self):
-        assert "sympy.physics.units" in self.ref["derive_verifier"]
+    # --- Orchestrator mentions --tools flag ---
+    def test_orchestrator_mentions_tools_flag(self):
+        content = _read(ORCHESTRATOR)
+        assert "--tools" in content
 
-    def test_physics_verifier_mentions_dsolve(self):
-        assert "sp.dsolve" in self.ref["derive_verifier"]
+    # --- All SymPy overlays mention sp is pre-imported ---
+    @pytest.mark.parametrize("skill_refs", [SOLVE_REFS, DERIVE_REFS])
+    def test_sympy_overlays_mention_sp_preimport(self, skill_refs: str):
+        for f in ["sympy-generator.md", "sympy-verifier.md"]:
+            content = _read(os.path.join(skill_refs, "tools", f))
+            assert "pre-imported as `sp`" in content, f"{skill_refs}/tools/{f} missing sp pre-import note"
 
-    # --- All files mention sp is pre-imported ---
-    def test_all_generators_mention_sp_preimport(self):
-        for key in ["solve_generator", "derive_generator"]:
-            assert "pre-imported as `sp`" in self.ref[key], f"{key} missing sp pre-import note"
-
-    def test_all_verifiers_mention_sp_preimport(self):
-        for key in ["solve_verifier", "derive_verifier"]:
-            assert "pre-imported as `sp`" in self.ref[key], f"{key} missing sp pre-import note"
+    # --- All NumPy overlays mention np is pre-imported ---
+    @pytest.mark.parametrize("skill_refs", [SOLVE_REFS, DERIVE_REFS])
+    def test_numpy_overlays_mention_np_preimport(self, skill_refs: str):
+        for f in ["numpy-generator.md", "numpy-verifier.md"]:
+            content = _read(os.path.join(skill_refs, "tools", f))
+            assert "pre-imported as `np`" in content, f"{skill_refs}/tools/{f} missing np pre-import note"

@@ -85,6 +85,7 @@ class AgentConfig:
         thinking_budget: Token budget for extended thinking.
         confidence_threshold: Minimum confidence for accepting a solution.
         best_of_n: Number of candidates to generate per iteration (1 = sequential).
+        tool_guidance: Set of tool guidance overlays to include in prompts (sympy, numpy).
         verbose: Print progress to stdout.
     """
 
@@ -100,6 +101,7 @@ class AgentConfig:
     thinking_budget: int = 10000
     confidence_threshold: float = 0.90
     best_of_n: int = 1
+    tool_guidance: frozenset[str] = frozenset({"sympy", "numpy"})
     verbose: bool = True
 
     def __post_init__(self) -> None:
@@ -109,6 +111,13 @@ class AgentConfig:
             raise ValueError(f"max_iterations must be >= 1, got {self.max_iterations}")
         if self.max_revisions_per_cycle < 0:
             raise ValueError(f"max_revisions_per_cycle must be >= 0, got {self.max_revisions_per_cycle}")
+        _VALID_TOOLS = {"sympy", "numpy"}
+        invalid = self.tool_guidance - _VALID_TOOLS
+        if invalid:
+            raise ValueError(
+                f"Unknown tool_guidance values: {invalid}. "
+                f"Valid values: {_VALID_TOOLS}"
+            )
         if not 0.0 <= self.confidence_threshold <= 1.0:
             raise ValueError(f"confidence_threshold must be in [0.0, 1.0], got {self.confidence_threshold}")
         if self.temperature_generator < 0:

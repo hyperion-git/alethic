@@ -151,6 +151,11 @@ Examples:
         dest="best_of_n",
         help="Number of candidates per iteration (default: from preset, or 1)",
     )
+    parser.add_argument(
+        "--tools",
+        default="sympy,numpy",
+        help="Comma-separated tool guidance to include (sympy, numpy, none). Default: sympy,numpy",
+    )
 
     return parser
 
@@ -185,6 +190,9 @@ def _build_config(args: argparse.Namespace) -> AgentConfig:
     overrides["enable_code_execution"] = not args.no_code
     overrides["verbose"] = not args.quiet
 
+    tool_guidance = frozenset() if args.tools == "none" else frozenset(args.tools.split(","))
+    overrides["tool_guidance"] = tool_guidance
+
     # Auto-bump max_tokens for extended thinking when not explicitly set.
     # Resolve thinking state and budget *before* constructing the config so we
     # only build it once (AgentConfig is frozen).
@@ -215,6 +223,7 @@ _FLAGS_WITH_VALUE = frozenset({
     "--max-tokens",
     "--thinking-budget",
     "-B", "--best-of",
+    "--tools",
 })
 
 

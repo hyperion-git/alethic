@@ -59,11 +59,7 @@ rigorous, detailed derivations of physics results.
 6. **If the problem asks for a computation,** show intermediate steps and \
    verify your answer with a sanity check where possible.
 7. **If you need to verify a computation,** you can write Python code inside \
-   <code> tags. The code will be executed and the output returned to you. \
-   SymPy is available as `sp` for symbolic computation — use it to verify \
-   algebraic steps, solve ODEs (`sp.dsolve`), and check dimensional consistency \
-   (`sympy.physics.units`). The `sympy.physics.quantum` module provides \
-   commutator algebra and angular momentum coupling.
+   <code> tags. The code will be executed and the output returned to you.
 8. **If you are genuinely uncertain** about a step, flag it explicitly rather \
    than proceeding as though it is obviously true.
 
@@ -100,10 +96,7 @@ and rigorous.
 3. **Check every logical step.** For each inference, ask: "Does this follow \
    necessarily from the preceding statements?"
 4. **Verify computations.** If the derivation includes calculations, re-derive \
-   them independently. You can write Python code inside <code> tags to check. \
-   SymPy (available as `sp`) is strongly recommended for symbolic re-derivation \
-   — verify algebraic steps with `sp.simplify(expr1 - expr2) == 0`. Use \
-   `sympy.physics.units` for dimensional checks and `sp.dsolve` for ODEs.
+   them independently. You can write Python code inside <code> tags to check.
 5. **Look for common errors:** sign mistakes, off-by-one errors, vacuous \
    truth claims, circular reasoning, unjustified case analysis, incorrect \
    theorem application, missing edge cases, dimensional inconsistency \
@@ -231,3 +224,89 @@ Also consider whether the problem's premise might be flawed — does it \
 contradict known physical principles? If so, present the contradiction. \
 Otherwise, proceed with the derivation.
 """
+
+# ---------------------------------------------------------------------------
+# Tool guidance (conditionally appended based on AgentConfig.tool_guidance)
+# ---------------------------------------------------------------------------
+
+PHYSICS_SYMPY_GENERATOR_GUIDANCE = """
+
+## SymPy Verification Toolkit
+
+SymPy is available as `sp` for symbolic computation. Use it to verify your \
+reasoning at critical steps:
+- Simplify and check equality: `sp.simplify(expr1 - expr2) == 0`
+- Series expansion: `sp.series(f, x, x0, n)`
+- Symbolic integration: `sp.integrate(f, x)` or `sp.integrate(f, (x, a, b))`
+- Solve differential equations: `sp.dsolve(ode, f(x))`
+- Matrix algebra: `sp.Matrix(...)` for eigenvalues, diagonalization, commutators
+- Dimensional checks: `sympy.physics.units` for dimensional consistency
+- Quantum mechanics: `sympy.physics.quantum` for commutators, bra-ket algebra
+- Special functions: `sp.besselj`, `sp.legendre`, `sp.assoc_laguerre`, `sp.Ynm`
+- Physical constants: `sympy.physics.units` for `hbar`, `c`, `e`, `m_e`, `k_B`
+
+Verify at least one key algebraic step symbolically when the derivation involves \
+non-trivial manipulation.
+"""
+
+PHYSICS_SYMPY_VERIFIER_GUIDANCE = """
+
+## Mandatory SymPy Re-derivation
+
+SymPy is available as `sp`. You MUST use it to independently verify:
+- Every non-trivial algebraic simplification: `sp.simplify(claimed - rederived) == 0`
+- ODE/PDE solutions: re-solve with `sp.dsolve()` and compare
+- Eigenvalue problems: verify with `sp.Matrix.eigenvals()` / `sp.Matrix.eigenvects()`
+- Integrals over configuration/momentum space: re-compute with `sp.integrate()`
+- Limiting cases: substitute limits symbolically (e.g., `expr.subs(hbar, 0)`)
+- Dimensional consistency: `sympy.physics.units` to verify matching dimensions
+- Special function identities: verify with SymPy (Bessel, Legendre, Laguerre, \
+  spherical harmonics)
+
+If SymPy cannot simplify an expression to match the claimed result, this is a \
+RED FLAG — escalate to at least [MAJOR] severity unless you can verify by \
+another method.
+"""
+
+PHYSICS_NUMPY_GENERATOR_GUIDANCE = """
+
+## NumPy/SciPy Numerical Verification
+
+NumPy is available as `np`. Use numerical spot-checks to catch errors that \
+symbolic verification might miss:
+- Random-point identity checks: `np.allclose(lhs(xs), rhs(xs))`
+- Numerical integration: `scipy.integrate.quad()`, `dblquad()`, `nquad()`
+- Numerical ODE solving: `scipy.integrate.solve_ivp()` to verify analytic solutions
+- Matrix exponentials: `scipy.linalg.expm()` to verify time-evolution operators
+- Special functions: `scipy.special` (sph_harm, jv/yv, lpmv, genlaguerre, hermite)
+- Physical constants: `scipy.constants.hbar`, `scipy.constants.c`, \
+  `scipy.constants.e`, `scipy.constants.m_e`, `scipy.constants.k`
+- Eigenvalue problems: `np.linalg.eigh()` for Hermitian matrices
+- FFT verification: `np.fft.fft()` / `np.fft.ifft()`
+
+Use numerical checks as a complement to symbolic verification — if the numbers \
+disagree, something is wrong.
+"""
+
+PHYSICS_NUMPY_VERIFIER_GUIDANCE = """
+
+## Mandatory Numerical Spot-Checks
+
+NumPy is available as `np`. You MUST use numerical evaluation to independently verify:
+- Every claimed identity: evaluate both sides at 5+ random points with `np.allclose()`
+- ODE solutions: integrate with `scipy.integrate.solve_ivp()` and compare
+- Integrals: cross-check with `scipy.integrate.quad()` / `dblquad()`
+- Eigenvalue problems: compute with `np.linalg.eigh()` and compare against claimed spectrum
+- Physical constants: verify prefactors against `scipy.constants` values
+- Limiting cases: evaluate numerically in known limits (large N, small coupling, classical)
+- Special functions: verify at tabulated values using `scipy.special`
+
+If numerical evaluation disagrees with the claimed result at ANY test point, this \
+is a RED FLAG — escalate to at least [MAJOR] severity. Numerical checks are \
+especially valuable when symbolic simplification is inconclusive or times out.
+"""
+
+PHYSICS_TOOL_GUIDANCE = {
+    "sympy": {"generator": PHYSICS_SYMPY_GENERATOR_GUIDANCE, "verifier": PHYSICS_SYMPY_VERIFIER_GUIDANCE},
+    "numpy": {"generator": PHYSICS_NUMPY_GENERATOR_GUIDANCE, "verifier": PHYSICS_NUMPY_VERIFIER_GUIDANCE},
+}

@@ -41,6 +41,7 @@ Parse the user's input for optional flags and the problem statement.
 | `--quiet` | `-q` | off | Suppress monitoring dashboard |
 | `--json` | `-j` | off | Output structured JSON summary |
 | `--model` | `-m` | opus | Model tier for sub-agents (haiku/sonnet/opus) |
+| `--tools` | — | `sympy,numpy` | Comma-separated list of tool guidance to include (`sympy`, `numpy`, or `none`) |
 
 ### Presets
 
@@ -114,6 +115,23 @@ Sub-agent prompts are stored in the skill's `references/` directory and loaded j
 **Loading procedure**: Before each Task sub-agent call, Read the corresponding reference file. Include its content (everything after the header and note line) at the beginning of the Task prompt, followed by the task-specific instructions (file paths, iteration context, etc.).
 
 **Balanced addendum**: When loading the Generator prompt, append the `{balanced_addendum}` text (from the thin SKILL.md's "Balanced Approach Addendum" section) to the Generator's user message, unless `--no-balanced` is set.
+
+### Tool Guidance Overlays
+
+When loading Generator and Verifier prompts, also load tool-specific guidance overlays based on the `--tools` flag (default: `sympy,numpy`).
+
+For each tool name in the `--tools` list:
+1. Check if `{references_dir}/tools/{tool}-generator.md` exists
+2. If it exists, read it and append its contents to the Generator prompt (after the balanced addendum, if any)
+3. Check if `{references_dir}/tools/{tool}-verifier.md` exists
+4. If it exists, read it and append its contents to the Verifier prompt
+
+When `--tools none` is set, skip all tool overlays — sub-agents still have access to the Python sandbox but receive no specific tool guidance.
+
+| Tool | Generator overlay | Verifier overlay |
+|------|------------------|-----------------|
+| `sympy` | `{references_dir}/tools/sympy-generator.md` | `{references_dir}/tools/sympy-verifier.md` |
+| `numpy` | `{references_dir}/tools/numpy-generator.md` | `{references_dir}/tools/numpy-verifier.md` |
 
 ---
 
@@ -241,7 +259,7 @@ Loop for iterations 1 through `max_iterations`. For each iteration N:
 
 1. Use Bash: `mkdir -p {session_dir}/worklog/iter{N}/`
 
-2. **Read the Generator prompt** from `{references_dir}/generator.md`. If `--no-balanced` is NOT set, append the `{balanced_addendum}` text to the prompt.
+2. **Read the Generator prompt** from `{references_dir}/generator.md`. If `--no-balanced` is NOT set, append the `{balanced_addendum}` text to the prompt. Then, for each tool in the `--tools` list, read `{references_dir}/tools/{tool}-generator.md` (if it exists) and append its contents to the prompt.
 
 3. **Generate `best_of_n` candidates.** For each candidate C = 1 to `best_of_n`:
 
@@ -277,7 +295,7 @@ Loop for iterations 1 through `max_iterations`. For each iteration N:
 
 **This is the critical decoupling point.** When constructing the Verifier prompt, do NOT reference any information from the Generator — no summaries, no strategies, no return values. Construct the prompt solely from the Verifier template and file paths.
 
-**Read the Verifier prompt** from `{references_dir}/verifier.md`.
+**Read the Verifier prompt** from `{references_dir}/verifier.md`. Then, for each tool in the `--tools` list, read `{references_dir}/tools/{tool}-verifier.md` (if it exists) and append its contents to the prompt.
 
 **Verify each candidate.** For each successfully generated candidate C:
 
@@ -399,7 +417,7 @@ For revision M = 1 to `max_revisions`:
 
 5. Print: `[Iter {N}] Reviser (rev {M}): {summary}`
 
-6. **Re-verify the revision** — Read the Verifier prompt from `{references_dir}/verifier.md`. Increment `task_calls`, spawn a fresh Verifier Task with `model: "{model}"`:
+6. **Re-verify the revision** — Read the Verifier prompt from `{references_dir}/verifier.md`. Append tool overlays for each tool in `--tools` (same procedure as Step 2b). Increment `task_calls`, spawn a fresh Verifier Task with `model: "{model}"`:
    - Problem file: `{session_dir}/problem.md`
    - Solution file: `{session_dir}/worklog/iter{N}/revision_{M}.md` (the clean revision, NOT the changelog)
    - Verification output: `{session_dir}/worklog/iter{N}/verification_rev{M}.md`

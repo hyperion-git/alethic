@@ -13,6 +13,7 @@ from alethic.physics_prompts import (
     PHYSICS_GENERATOR_USER,
     PHYSICS_REVISER_SYSTEM,
     PHYSICS_REVISER_USER,
+    PHYSICS_TOOL_GUIDANCE,
     PHYSICS_VERIFIER_SYSTEM,
     PHYSICS_VERIFIER_USER,
 )
@@ -41,6 +42,9 @@ class PhysicsAgent(MathAgent):
             "reviser_system": PHYSICS_REVISER_SYSTEM,
             "reviser_user": PHYSICS_REVISER_USER,
         }
+
+    def _get_tool_guidance_map(self) -> dict:
+        return PHYSICS_TOOL_GUIDANCE
 
     def _log_header(self) -> str:
         return "ALETHIC PHYSICS DERIVATION AGENT"

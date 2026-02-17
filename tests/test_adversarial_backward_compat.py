@@ -79,13 +79,13 @@ class TestMathAgentUsesDefaultMathPrompts:
 # ---------------------------------------------------------------------------
 
 
-class TestMathAgentNoExtraKwargs:
-    """MathAgent.solve() must call generate() without system_prompt or
-    user_template keyword arguments — it relies on the defaults."""
+class TestMathAgentPromptKwargs:
+    """MathAgent.solve() injects a system_prompt with tool guidance but does
+    not inject a custom user_template — the default template is used."""
 
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     @patch("alethic.subagents.generate", wraps=None)
-    def test_generate_called_without_prompt_kwargs(self, mock_generate, _mock_tools):
+    def test_generate_called_with_tool_guidance_in_system_prompt(self, mock_generate, _mock_tools):
         from alethic.agent import MathAgent
 
         # Make mock_generate return a Solution and set up verify to approve
@@ -114,10 +114,19 @@ class TestMathAgentNoExtraKwargs:
 
         mock_generate.assert_called_once()
         call_kwargs = mock_generate.call_args
-        # MathAgent passes prompt overrides from _prompt_set() — for the base
-        # class these are all None, ensuring generate() uses its defaults.
-        assert call_kwargs.kwargs.get("system_prompt") is None, (
-            "MathAgent must NOT inject a custom system_prompt into generate()"
+        # MathAgent now builds a system_prompt with tool guidance appended
+        system_prompt = call_kwargs.kwargs.get("system_prompt")
+        assert system_prompt is not None, (
+            "MathAgent should inject a system_prompt with tool guidance"
+        )
+        assert "mathematical problem solver" in system_prompt.lower(), (
+            "system_prompt should start with the math GENERATOR_SYSTEM"
+        )
+        assert "SymPy" in system_prompt, (
+            "system_prompt should include SymPy tool guidance"
+        )
+        assert "NumPy" in system_prompt, (
+            "system_prompt should include NumPy tool guidance"
         )
         assert call_kwargs.kwargs.get("user_template") is None, (
             "MathAgent must NOT inject a custom user_template into generate()"

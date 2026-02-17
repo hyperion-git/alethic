@@ -29,10 +29,7 @@ detailed solutions to mathematical problems.
 5. **If the problem asks for a computation,** show intermediate steps and \
    verify your answer with a sanity check where possible.
 6. **If you need to verify a computation,** you can write Python code inside \
-   <code> tags. The code will be executed and the output returned to you. \
-   SymPy is available as `sp` for symbolic computation — use it to verify \
-   algebraic steps (`sp.simplify`), integrals (`sp.integrate`), series \
-   (`sp.series`), and equation solving (`sp.solve`).
+   <code> tags. The code will be executed and the output returned to you.
 7. **If you are genuinely uncertain** about a step, flag it explicitly rather \
    than proceeding as though it is obviously true.
 
@@ -69,9 +66,7 @@ and rigorous.
 3. **Check every logical step.** For each inference, ask: "Does this follow \
    necessarily from the preceding statements?" If not, it is a flaw.
 4. **Verify computations.** If the solution includes calculations, re-derive \
-   them independently. You can write Python code inside <code> tags to check. \
-   SymPy (available as `sp`) is strongly recommended for symbolic re-derivation \
-   — verify algebraic steps with `sp.simplify(expr1 - expr2) == 0`.
+   them independently. You can write Python code inside <code> tags to check.
 5. **Look for common errors:** sign mistakes, off-by-one errors, vacuous \
    truth claims, circular reasoning, unjustified case analysis, incorrect \
    theorem application, missing edge cases.
@@ -192,3 +187,81 @@ counterexamples. If you find one, present it. If you cannot find one, explain \
 why your search failed and then proceed with the proof. This "balanced" \
 approach prevents confirmation bias.
 """
+
+# ---------------------------------------------------------------------------
+# Tool guidance (conditionally appended based on AgentConfig.tool_guidance)
+# ---------------------------------------------------------------------------
+
+SYMPY_GENERATOR_GUIDANCE = """
+
+## SymPy Verification Toolkit
+
+SymPy is available as `sp` for symbolic computation. Use it to verify your \
+reasoning at critical steps:
+- Simplify and check equality: `sp.simplify(expr1 - expr2) == 0`
+- Expand/factor: `sp.expand()`, `sp.factor()`, `sp.collect()`
+- Series expansion: `sp.series(f, x, x0, n)`
+- Symbolic integration: `sp.integrate(f, x)` or `sp.integrate(f, (x, a, b))`
+- Symbolic sums: `sp.summation(f, (n, a, b))`
+- Solve equations: `sp.solve(eq, var)`
+- Limits: `sp.limit(f, x, x0)`
+
+Verify at least one key algebraic step symbolically when the solution involves \
+non-trivial manipulation.
+"""
+
+SYMPY_VERIFIER_GUIDANCE = """
+
+## Mandatory SymPy Re-derivation
+
+SymPy is available as `sp`. You MUST use it to independently verify:
+- Every non-trivial algebraic simplification: `sp.simplify(claimed - rederived) == 0`
+- Closed-form sums and integrals: re-compute with `sp.summation()` / `sp.integrate()`
+- Polynomial identities: verify with `sp.expand()` and `sp.factor()`
+- Solutions to equations: verify with `sp.solve()` and back-substitution
+- Limits and asymptotics: verify with `sp.limit()` and `sp.series()`
+
+If SymPy cannot simplify an expression to match the claimed result, this is a \
+RED FLAG — escalate to at least [MAJOR] severity unless you can verify by \
+another method.
+"""
+
+NUMPY_GENERATOR_GUIDANCE = """
+
+## NumPy/SciPy Numerical Verification
+
+NumPy is available as `np`. Use numerical spot-checks to catch errors that \
+symbolic verification might miss:
+- Random-point identity checks: evaluate both sides at multiple random points \
+  with `np.allclose(lhs(xs), rhs(xs))`
+- Numerical integration: `from scipy.integrate import quad; quad(f, a, b)`
+- Matrix computations: `np.linalg.eigvals()`, `np.linalg.det()`, `np.linalg.inv()`
+- Special function evaluation: `from scipy.special import ...` (gamma, beta, \
+  erf, jv, legendre, etc.)
+- Series convergence: compute partial sums numerically and compare against the \
+  claimed closed form
+
+Use numerical checks as a complement to symbolic verification — if the numbers \
+disagree, something is wrong.
+"""
+
+NUMPY_VERIFIER_GUIDANCE = """
+
+## Mandatory Numerical Spot-Checks
+
+NumPy is available as `np`. You MUST use numerical evaluation to independently verify:
+- Every claimed identity: evaluate both sides at 5+ random points with `np.allclose()`
+- Integrals: cross-check analytic results with `scipy.integrate.quad()`
+- Series and sums: compare partial sums against claimed closed forms for increasing N
+- Matrix results: verify eigenvalues, determinants with `np.linalg` on concrete examples
+- Special functions: verify values at known points using `scipy.special`
+
+If numerical evaluation disagrees with the claimed result at ANY test point, this \
+is a RED FLAG — escalate to at least [MAJOR] severity. Numerical checks are \
+especially valuable when symbolic simplification is inconclusive.
+"""
+
+TOOL_GUIDANCE = {
+    "sympy": {"generator": SYMPY_GENERATOR_GUIDANCE, "verifier": SYMPY_VERIFIER_GUIDANCE},
+    "numpy": {"generator": NUMPY_GENERATOR_GUIDANCE, "verifier": NUMPY_VERIFIER_GUIDANCE},
+}

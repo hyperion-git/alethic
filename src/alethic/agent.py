@@ -40,6 +40,12 @@ from alethic.models import (
     Verdict,
     VerificationResult,
 )
+from alethic.prompts import (
+    BALANCED_GENERATOR_ADDENDUM,
+    GENERATOR_SYSTEM,
+    TOOL_GUIDANCE,
+    VERIFIER_SYSTEM,
+)
 from alethic.subagents import generate, revise, verify
 
 logger = logging.getLogger("alethic")
@@ -126,6 +132,22 @@ class MathAgent:
               verifier_system, verifier_user, reviser_system, reviser_user.
         """
         return {}
+
+    def _get_tool_guidance_map(self) -> dict:
+        """Return the tool guidance map for this domain.
+
+        Override in subclasses to use domain-specific tool guidance.
+        """
+        return TOOL_GUIDANCE
+
+    def _build_system_prompt(self, role: str, base: str) -> str:
+        """Append tool guidance overlays to a base system prompt."""
+        system = base
+        guide_map = self._get_tool_guidance_map()
+        for tool in sorted(self.config.tool_guidance):
+            if tool in guide_map and role in guide_map[tool]:
+                system += guide_map[tool][role]
+        return system
 
     def _log_header(self) -> str:
         return "ALETHIC MATH AGENT"
@@ -387,6 +409,14 @@ class MathAgent:
         log = EventLog()
         threshold = self.config.confidence_threshold
         prompts = self._prompt_set()
+
+        # Build generator system prompt with tool guidance
+        gen_base = prompts.get("generator_system") or GENERATOR_SYSTEM
+        prompts["generator_system"] = self._build_system_prompt("generator", gen_base)
+
+        # Build verifier system prompt with tool guidance
+        ver_base = prompts.get("verifier_system") or VERIFIER_SYSTEM
+        prompts["verifier_system"] = self._build_system_prompt("verifier", ver_base)
 
         n = self.config.best_of_n
 
