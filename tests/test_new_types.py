@@ -2,17 +2,20 @@
 
 Also tests updated VerificationResult (Issue objects, CRITICAL blocking),
 AgentResult (events field, deprecated history, failed_approaches), and
-the RunState/EventLog helpers.
+the RunState/EventLog helpers, _summarize_failed_approach, and failed_approaches
+wiring into generate().
 """
 
 from __future__ import annotations
 
 import time
 import warnings
+from unittest.mock import MagicMock
 
 import pytest
 
 from alethic.models import (
+    AgentConfig,
     AgentEvent,
     AgentResult,
     EventType,
@@ -320,3 +323,109 @@ class TestRunStateAndEventLog:
         assert log.events[0].iteration == 1
         assert log.events[0].data["candidate"] == 1
         assert log.events[1].data["verdict"] == "correct"
+
+
+# ── _summarize_failed_approach ─────────────────────────────────────
+
+
+class TestSummarizeFailedApproach:
+    def test_extracts_first_sentence_and_top_issue(self):
+        from alethic.agent import _summarize_failed_approach
+
+        vr = VerificationResult(
+            verdict=Verdict.MAJOR_FLAW,
+            critique="The induction step fails at the boundary. Also missing base case.",
+            confidence=0.3,
+            issues=[
+                Issue(text="Induction hypothesis not applied correctly"),
+                Issue(text="Base case missing"),
+            ],
+        )
+        summary = _summarize_failed_approach(vr)
+        assert len(summary) <= 200
+        assert "induction" in summary.lower()
+        assert "Issue:" in summary
+
+    def test_handles_empty_issues(self):
+        from alethic.agent import _summarize_failed_approach
+
+        vr = VerificationResult(
+            verdict=Verdict.MAJOR_FLAW,
+            critique="Direct computation approach diverges. No convergence.",
+            confidence=0.2,
+            issues=[],
+        )
+        summary = _summarize_failed_approach(vr)
+        assert "diverges" in summary.lower()
+        assert "Issue:" not in summary
+
+    def test_handles_long_critique(self):
+        from alethic.agent import _summarize_failed_approach
+
+        long_critique = "A" * 500 + ". Second sentence here."
+        vr = VerificationResult(
+            verdict=Verdict.MAJOR_FLAW,
+            critique=long_critique,
+            confidence=0.1,
+            issues=[Issue(text="Everything wrong")],
+        )
+        summary = _summarize_failed_approach(vr)
+        assert len(summary) <= 200
+
+
+# ── Failed approach wiring into generate() ─────────────────────────
+
+
+class TestFailedApproachInGenerate:
+    def _make_mock_client(self):
+        """Create a mock Anthropic client that returns a simple text response."""
+        client = MagicMock()
+        response = MagicMock()
+        text_block = MagicMock()
+        text_block.text = "Solution text"
+        text_block.type = "text"
+        response.content = [text_block]
+        response.stop_reason = "end_turn"
+        client.messages.create.return_value = response
+        return client
+
+    def test_generate_accepts_failed_approaches(self):
+        from alethic.subagents import generate
+
+        client = self._make_mock_client()
+        config = AgentConfig(enable_code_execution=False, verbose=False)
+
+        generate(
+            client,
+            problem="Prove sqrt(2) is irrational",
+            config=config,
+            iteration=1,
+            balanced=False,
+            failed_approaches=("Tried induction, base case fails",),
+        )
+
+        # Check the user message passed to messages.create
+        call_kwargs = client.messages.create.call_args
+        messages = call_kwargs.kwargs.get("messages") or call_kwargs[1].get("messages")
+        user_msg = messages[0]["content"]
+        assert "Previously attempted" in user_msg
+        assert "Tried induction, base case fails" in user_msg
+
+    def test_generate_no_failed_approaches(self):
+        from alethic.subagents import generate
+
+        client = self._make_mock_client()
+        config = AgentConfig(enable_code_execution=False, verbose=False)
+
+        generate(
+            client,
+            problem="Prove sqrt(2) is irrational",
+            config=config,
+            iteration=1,
+            balanced=False,
+        )
+
+        call_kwargs = client.messages.create.call_args
+        messages = call_kwargs.kwargs.get("messages") or call_kwargs[1].get("messages")
+        user_msg = messages[0]["content"]
+        assert "Previously attempted" not in user_msg

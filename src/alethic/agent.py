@@ -68,6 +68,21 @@ class EventLog:
         self.events.append(AgentEvent(type=type, iteration=iteration, data=data))
 
 
+def _summarize_failed_approach(verification: VerificationResult) -> str:
+    """Extract a one-line summary of a failed approach from a verification result."""
+    # First sentence of critique
+    critique = verification.critique.strip()
+    first_sentence_end = critique.find(". ")
+    summary = critique[: first_sentence_end + 1] if first_sentence_end > 0 else critique[:150]
+
+    # Append top issue if available
+    if verification.issues:
+        top_issue = str(verification.issues[0])
+        summary = f"{summary} Issue: {top_issue}"
+
+    return summary[:200]
+
+
 class MathAgent:
     """Alethic-style mathematical reasoning agent powered by Claude.
 
@@ -156,6 +171,7 @@ class MathAgent:
         balanced: bool,
         prompts: dict[str, str],
         n: int,
+        failed_approaches: tuple[str, ...] = (),
     ) -> list[tuple[Solution, float]]:
         """Generate N candidates. Parallel (ThreadPoolExecutor) when N>1, sequential when N=1."""
 
@@ -167,6 +183,7 @@ class MathAgent:
                 config=self.config,
                 iteration=iteration,
                 balanced=balanced,
+                failed_approaches=failed_approaches,
                 system_prompt=prompts.get("generator_system"),
                 user_template=prompts.get("generator_user"),
                 balanced_addendum=prompts.get("balanced_addendum"),
@@ -378,6 +395,7 @@ class MathAgent:
                     balanced=balanced,
                     prompts=prompts,
                     n=n,
+                    failed_approaches=tuple(state.failed_approaches),
                 )
                 gen_wall_time = time.time() - gen_t0
 
@@ -485,6 +503,10 @@ class MathAgent:
                         return result
                 else:
                     self._log("[GENERATE] Solution unsolvable in this attempt — will retry from scratch")
+
+                # ── ACCUMULATE FAILED APPROACH ──
+                summary = _summarize_failed_approach(verification)
+                state.failed_approaches.append(summary)
 
             except anthropic.APIError as e:
                 logger.warning("Iteration %d failed: %s", iteration, e)
