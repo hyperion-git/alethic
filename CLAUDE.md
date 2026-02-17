@@ -128,9 +128,9 @@ Both `/alethic-solve` and `/alethic-derive` support presets via `-p`/`--preset`,
 | `physics_agent.py` | `PhysicsAgent` — thin subclass of `MathAgent` that injects physics-specific prompt templates |
 | `subagents.py` | `generate()`, `verify()`, `revise()` — each wraps a Claude API call with role-specific prompts; accepts optional prompt kwargs for domain specialization; supports extended thinking |
 | `models.py` | Dataclasses: `AgentConfig` (with `PRESETS`, `from_preset()`, and `best_of_n` field), `Solution`, `VerificationResult` (with `Issue`, `SectionConfidence`, severity-aware `is_acceptable()`), `Revision`, `AgentResult` (with `AgentEvent` list, `failed_approaches`), `Verdict` enum, `IssueSeverity` enum, `EventType` enum |
-| `prompts.py` | Math system/user prompt templates for all three subagents + balanced prompting addendum |
-| `physics_prompts.py` | Physics-specific prompt templates: derivation strategies, physics error checklist, dimensional/limiting-case balanced addendum |
-| `tools.py` | `execute_python()` sandbox, `PYTHON_TOOL` schema, `process_tool_calls()` for tool-use loop |
+| `prompts.py` | Math system/user prompt templates for all three subagents + balanced prompting addendum + SymPy guidance |
+| `physics_prompts.py` | Physics-specific prompt templates: derivation strategies, physics error checklist, dimensional/limiting-case balanced addendum + SymPy/`sympy.physics` guidance |
+| `tools.py` | `execute_python()` sandbox, `PYTHON_TOOL` schema (highlights SymPy as `sp`), `process_tool_calls()` for tool-use loop |
 | `cli.py` | `argparse`-based CLI (`alethic` entry point) with `solve`/`derive` subcommands, `--preset`, `--thinking`, and `--best-of`/`-B` support |
 | `examples.py` | Bundled example problems (`python -m alethic.examples`) |
 
@@ -146,8 +146,8 @@ Both `/alethic-solve` and `/alethic-derive` support presets via `-p`/`--preset`,
 | `skills/alethic-scientific-figure/evals.json` | Evaluation scenarios for the `/alethic-scientific-figure` skill |
 | `.claude-plugin/plugin.json` | Plugin metadata |
 | `.claude-plugin/marketplace.json` | Marketplace manifest for `hyperion-git/alethic` |
-| `skills/alethic-solve/references/*.md` | Authoritative math prompt templates (generator, verifier, reviser, beautifier, textbook planner/writer/fidelity) — read by orchestrator at runtime |
-| `skills/alethic-derive/references/*.md` | Authoritative physics prompt templates (generator, verifier, reviser, beautifier, textbook planner/writer/fidelity) — read by orchestrator at runtime |
+| `skills/alethic-solve/references/*.md` | Authoritative math prompt templates (generator, verifier, reviser, beautifier, textbook planner/writer/fidelity) with SymPy verification toolkit/mandatory re-derivation sections — read by orchestrator at runtime |
+| `skills/alethic-derive/references/*.md` | Authoritative physics prompt templates (generator, verifier, reviser, beautifier, textbook planner/writer/fidelity) with SymPy verification toolkit/mandatory re-derivation sections + `sympy.physics.*` modules — read by orchestrator at runtime |
 
 ## Key Design Decisions
 
@@ -156,7 +156,7 @@ Both `/alethic-solve` and `/alethic-derive` support presets via `-p`/`--preset`,
 3. **Configurable confidence threshold**: Solutions require `CORRECT` verdict AND confidence ≥ `confidence_threshold` (default 0.90). Correct-but-uncertain solutions are treated as minor issues and sent for revision.
 4. **False-premise detection**: The Verifier's `REASON:` field enables early exit when a problem's premise is false (e.g., contradicts Brouwer's fixed point theorem).
 5. **Structured output parsing**: Verifier output is parsed via regex (`_parse_verification`) for `VERDICT:`, `CONFIDENCE:`, `CRITIQUE:`, `REASON:`, `ISSUES:` fields with independent extraction per field.
-6. **Sandboxed code execution**: `execute_python()` runs code in a child subprocess for process-level isolation. Restricted `__builtins__` and an allowlist of importable modules (math, sympy, numpy, scipy, mpmath) provide defense-in-depth. Timeouts enforced at two levels: `signal.SIGALRM` in the child process and `subprocess.run(timeout=)` in the parent. Thread-safe.
+6. **Sandboxed code execution with SymPy**: `execute_python()` runs code in a child subprocess for process-level isolation. Restricted `__builtins__` and an allowlist of importable modules (math, sympy, numpy, scipy, mpmath) provide defense-in-depth. SymPy is pre-imported as `sp` in the sandbox. Generator and Verifier prompts include domain-specific SymPy verification recipes: Generators get a "SymPy Verification Toolkit" (advisory — verify key steps symbolically), Verifiers get "Mandatory SymPy Re-derivation" (imperative — must independently re-derive with SymPy, RED FLAG escalation if SymPy disagrees). Physics prompts additionally reference `sympy.physics.units` (dimensional checks), `sympy.physics.quantum` (commutator algebra), `sp.dsolve` (ODEs), and special functions. Timeouts enforced at two levels: `signal.SIGALRM` in the child process and `subprocess.run(timeout=)` in the parent. Thread-safe.
 7. **Tool-use loop**: `_call_model()` in `subagents.py` handles multi-round tool calls (up to 5 rounds) before extracting the final text response.
 8. **Strategic failure admission**: After exhausting `max_iterations`, the agent returns `Verdict.UNSOLVED` with the best solution seen, rather than hallucinating confidence.
 9. **File-based state** (skill only): Session directories in `.alethic/` (project-local) prevent context window exhaustion — the orchestrator tracks only verdicts and confidence, full text lives in files. Falls back to `/tmp/alethic-*/` outside git repositories.
