@@ -42,6 +42,9 @@ alethic --thinking "Prove the Basel problem"
 alethic --best-of 3 "Prove the Cayley-Hamilton theorem"
 alethic --preset thorough -B 5 "Prove the Riemann mapping theorem"
 alethic derive -B 3 "Derive the hydrogen atom energy spectrum"
+alethic --tools sympy "Prove the Basel problem"             # SymPy only (no NumPy)
+alethic --tools none "Is 17 prime?"                         # no tool guidance
+alethic derive --tools sympy,numpy "Derive the Lamb shift"  # both (default)
 
 # Textbook-style output (skills only)
 # /alethic-solve --textbook "Prove sqrt(2) is irrational"
@@ -56,6 +59,8 @@ alethic derive -B 3 "Derive the hydrogen atom energy spectrum"
 # /alethic-solve -q -p thorough "..."                         # quiet mode (no dashboard)
 # /alethic-solve --json "Is 17 prime?"                        # JSON output
 # /alethic-solve --model sonnet "..."                         # use Sonnet for sub-agents
+# /alethic-solve --tools sympy "Prove the Basel problem"       # SymPy only (no NumPy)
+# /alethic-solve --tools none "Is 17 prime?"                   # no tool guidance
 
 # Run examples
 python -m alethic.examples --list
@@ -124,14 +129,14 @@ Both `/alethic-solve` and `/alethic-derive` support presets via `-p`/`--preset`,
 
 | Module | Purpose |
 |--------|---------|
-| `agent.py` | `MathAgent` orchestrator — runs the Generate N → Verify all → Select best → Revise loop with best-of-N sampling (parallel via `ThreadPoolExecutor`), false-premise detection, candidate ranking, failed approach tracking via `RunState`, and structured event logging via `EventLog` |
-| `physics_agent.py` | `PhysicsAgent` — thin subclass of `MathAgent` that injects physics-specific prompt templates |
+| `agent.py` | `MathAgent` orchestrator — runs the Generate N → Verify all → Select best → Revise loop with best-of-N sampling (parallel via `ThreadPoolExecutor`), false-premise detection, candidate ranking, failed approach tracking via `RunState`, structured event logging via `EventLog`, and switchable tool guidance via `_build_system_prompt()`/`_get_tool_guidance_map()` |
+| `physics_agent.py` | `PhysicsAgent` — thin subclass of `MathAgent` that injects physics-specific prompt templates and overrides `_get_tool_guidance_map()` to return `PHYSICS_TOOL_GUIDANCE` |
 | `subagents.py` | `generate()`, `verify()`, `revise()` — each wraps a Claude API call with role-specific prompts; accepts optional prompt kwargs for domain specialization; supports extended thinking |
-| `models.py` | Dataclasses: `AgentConfig` (with `PRESETS`, `from_preset()`, and `best_of_n` field), `Solution`, `VerificationResult` (with `Issue`, `SectionConfidence`, severity-aware `is_acceptable()`), `Revision`, `AgentResult` (with `AgentEvent` list, `failed_approaches`), `Verdict` enum, `IssueSeverity` enum, `EventType` enum |
-| `prompts.py` | Math system/user prompt templates for all three subagents + balanced prompting addendum + SymPy guidance |
-| `physics_prompts.py` | Physics-specific prompt templates: derivation strategies, physics error checklist, dimensional/limiting-case balanced addendum + SymPy/`sympy.physics` guidance |
-| `tools.py` | `execute_python()` sandbox, `PYTHON_TOOL` schema (highlights SymPy as `sp`), `process_tool_calls()` for tool-use loop |
-| `cli.py` | `argparse`-based CLI (`alethic` entry point) with `solve`/`derive` subcommands, `--preset`, `--thinking`, and `--best-of`/`-B` support |
+| `models.py` | Dataclasses: `AgentConfig` (with `PRESETS`, `from_preset()`, `best_of_n`, and `tool_guidance: frozenset[str]` fields), `Solution`, `VerificationResult` (with `Issue`, `SectionConfidence`, severity-aware `is_acceptable()`), `Revision`, `AgentResult` (with `AgentEvent` list, `failed_approaches`), `Verdict` enum, `IssueSeverity` enum, `EventType` enum |
+| `prompts.py` | Math system/user prompt templates for all three subagents + balanced prompting addendum + `TOOL_GUIDANCE` map (SymPy/NumPy generator/verifier guidance strings) |
+| `physics_prompts.py` | Physics-specific prompt templates: derivation strategies, physics error checklist, dimensional/limiting-case balanced addendum + `PHYSICS_TOOL_GUIDANCE` map (physics-specific SymPy/NumPy guidance) |
+| `tools.py` | `execute_python()` sandbox, `PYTHON_TOOL` schema (highlights SymPy as `sp` and NumPy as `np`), `process_tool_calls()` for tool-use loop |
+| `cli.py` | `argparse`-based CLI (`alethic` entry point) with `solve`/`derive` subcommands, `--preset`, `--thinking`, `--best-of`/`-B`, and `--tools` support |
 | `examples.py` | Bundled example problems (`python -m alethic.examples`) |
 
 | Skill file | Purpose |
@@ -146,8 +151,10 @@ Both `/alethic-solve` and `/alethic-derive` support presets via `-p`/`--preset`,
 | `skills/alethic-scientific-figure/evals.json` | Evaluation scenarios for the `/alethic-scientific-figure` skill |
 | `.claude-plugin/plugin.json` | Plugin metadata |
 | `.claude-plugin/marketplace.json` | Marketplace manifest for `hyperion-git/alethic` |
-| `skills/alethic-solve/references/*.md` | Authoritative math prompt templates (generator, verifier, reviser, beautifier, textbook planner/writer/fidelity) with SymPy verification toolkit/mandatory re-derivation sections — read by orchestrator at runtime |
-| `skills/alethic-derive/references/*.md` | Authoritative physics prompt templates (generator, verifier, reviser, beautifier, textbook planner/writer/fidelity) with SymPy verification toolkit/mandatory re-derivation sections + `sympy.physics.*` modules — read by orchestrator at runtime |
+| `skills/alethic-solve/references/*.md` | Authoritative math prompt templates (generator, verifier, reviser, beautifier, textbook planner/writer/fidelity) — read by orchestrator at runtime |
+| `skills/alethic-solve/references/tools/*.md` | Switchable tool guidance overlays for math (sympy-generator, sympy-verifier, numpy-generator, numpy-verifier) — conditionally loaded by orchestrator based on `--tools` flag |
+| `skills/alethic-derive/references/*.md` | Authoritative physics prompt templates (generator, verifier, reviser, beautifier, textbook planner/writer/fidelity) — read by orchestrator at runtime |
+| `skills/alethic-derive/references/tools/*.md` | Switchable tool guidance overlays for physics (sympy-generator, sympy-verifier, numpy-generator, numpy-verifier) with `sympy.physics.*`, `scipy.constants`, etc. — conditionally loaded by orchestrator based on `--tools` flag |
 
 ## Key Design Decisions
 
@@ -156,7 +163,7 @@ Both `/alethic-solve` and `/alethic-derive` support presets via `-p`/`--preset`,
 3. **Configurable confidence threshold**: Solutions require `CORRECT` verdict AND confidence ≥ `confidence_threshold` (default 0.90). Correct-but-uncertain solutions are treated as minor issues and sent for revision.
 4. **False-premise detection**: The Verifier's `REASON:` field enables early exit when a problem's premise is false (e.g., contradicts Brouwer's fixed point theorem).
 5. **Structured output parsing**: Verifier output is parsed via regex (`_parse_verification`) for `VERDICT:`, `CONFIDENCE:`, `CRITIQUE:`, `REASON:`, `ISSUES:` fields with independent extraction per field.
-6. **Sandboxed code execution with SymPy**: `execute_python()` runs code in a child subprocess for process-level isolation. Restricted `__builtins__` and an allowlist of importable modules (math, sympy, numpy, scipy, mpmath) provide defense-in-depth. SymPy is pre-imported as `sp` in the sandbox. Generator and Verifier prompts include domain-specific SymPy verification recipes: Generators get a "SymPy Verification Toolkit" (advisory — verify key steps symbolically), Verifiers get "Mandatory SymPy Re-derivation" (imperative — must independently re-derive with SymPy, RED FLAG escalation if SymPy disagrees). Physics prompts additionally reference `sympy.physics.units` (dimensional checks), `sympy.physics.quantum` (commutator algebra), `sp.dsolve` (ODEs), and special functions. Timeouts enforced at two levels: `signal.SIGALRM` in the child process and `subprocess.run(timeout=)` in the parent. Thread-safe.
+6. **Sandboxed code execution with switchable tool guidance**: `execute_python()` runs code in a child subprocess for process-level isolation. Restricted `__builtins__` and an allowlist of importable modules (math, sympy, numpy, scipy, mpmath) provide defense-in-depth. SymPy is pre-imported as `sp` and NumPy as `np` in the sandbox. Tool-specific guidance (SymPy symbolic verification, NumPy/SciPy numerical verification) is modular and switchable via `--tools` (CLI/skill) or `AgentConfig.tool_guidance` (Python API). In the skills, guidance lives in overlay files (`references/tools/{tool}-{role}.md`) loaded by the orchestrator; in the Python library, guidance strings are stored in `TOOL_GUIDANCE` / `PHYSICS_TOOL_GUIDANCE` maps and appended to system prompts by `_build_system_prompt()`. Generators get advisory toolkits; Verifiers get mandatory re-derivation/spot-check requirements with RED FLAG escalation. Physics overlays additionally reference `sympy.physics.units`, `sympy.physics.quantum`, `scipy.constants`, and `scipy.integrate.solve_ivp`. Default: `sympy,numpy`; set to `none` to disable. Timeouts enforced at two levels: `signal.SIGALRM` in the child process and `subprocess.run(timeout=)` in the parent. Thread-safe.
 7. **Tool-use loop**: `_call_model()` in `subagents.py` handles multi-round tool calls (up to 5 rounds) before extracting the final text response.
 8. **Strategic failure admission**: After exhausting `max_iterations`, the agent returns `Verdict.UNSOLVED` with the best solution seen, rather than hallucinating confidence.
 9. **File-based state** (skill only): Session directories in `.alethic/` (project-local) prevent context window exhaustion — the orchestrator tracks only verdicts and confidence, full text lives in files. Falls back to `/tmp/alethic-*/` outside git repositories.
