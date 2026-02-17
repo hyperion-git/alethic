@@ -19,6 +19,8 @@ The following variables are defined by the thin SKILL.md that loaded this file. 
 | `{references_dir}` | Absolute path to skill's `references/` directory | (resolved at runtime) | (resolved at runtime) |
 | `{balanced_addendum}` | Domain-specific balanced approach text | (from thin SKILL.md) | (from thin SKILL.md) |
 
+**Note on filenames**: Worklog files use fixed names (`solution.md`, `best_solution.md`, `best_solution_path`) regardless of domain. Only user-facing text and sub-agent instructions use `{noun}`.
+
 ---
 
 ## Argument Parsing
@@ -295,7 +297,7 @@ Loop for iterations 1 through `max_iterations`. For each iteration N:
    - "Read the problem from `{session_dir}/problem.md`."
    - When `best_of_n == 1`: "Read the proposed {noun} from `{session_dir}/worklog/iter{N}/solution.md`." and "Write your full verification to `{session_dir}/worklog/iter{N}/verification.md`."
    - When `best_of_n > 1`: "Read the proposed {noun} from `{session_dir}/worklog/iter{N}/candidate_{C}.md`." and "Write your full verification to `{session_dir}/worklog/iter{N}/verification_c{C}.md`."
-   - "After writing the verification file, return ONLY: VERDICT: {verdict} | CONFIDENCE: {confidence}"
+   - "After writing the verification file, return ONLY: VERDICT: {verdict} | CONFIDENCE: {confidence} | HAS_CRITICAL: {yes|no} | TOP_ISSUE: {first issue text, or 'none'}"
 
 2. **Extract verdict** using the Error Handling Protocol:
    - Try parsing the Task return value by searching for VERDICT and CONFIDENCE independently (as described in the Error Handling Protocol).

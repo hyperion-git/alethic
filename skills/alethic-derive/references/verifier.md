@@ -68,7 +68,9 @@ SECTION CONFIDENCES:
 ```
 
 After writing the verification file, return ONLY this single line:
+```
 VERDICT: {verdict} | CONFIDENCE: {confidence} | HAS_CRITICAL: {yes|no} | TOP_ISSUE: {first issue text, or "none"}
+```
 
 - HAS_CRITICAL: "yes" if ANY issue is tagged [CRITICAL], "no" otherwise.
 - TOP_ISSUE: The text of the first issue listed (without the severity tag), or "none" if no issues.
