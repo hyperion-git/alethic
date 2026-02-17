@@ -429,3 +429,277 @@ class TestFailedApproachInGenerate:
         messages = call_kwargs.kwargs.get("messages") or call_kwargs[1].get("messages")
         user_msg = messages[0]["content"]
         assert "Previously attempted" not in user_msg
+
+
+# ── Verifier prompt severity tags (Task 3.1) ─────────────────────
+
+
+class TestVerifierPromptSeverity:
+    def test_math_verifier_requests_severity_tags(self):
+        from alethic.prompts import VERIFIER_SYSTEM
+
+        assert "[CRITICAL]" in VERIFIER_SYSTEM
+        assert "[MAJOR]" in VERIFIER_SYSTEM
+        assert "[MINOR]" in VERIFIER_SYSTEM
+
+    def test_physics_verifier_requests_severity_tags(self):
+        from alethic.physics_prompts import PHYSICS_VERIFIER_SYSTEM
+
+        assert "[CRITICAL]" in PHYSICS_VERIFIER_SYSTEM
+        assert "[MAJOR]" in PHYSICS_VERIFIER_SYSTEM
+        assert "[MINOR]" in PHYSICS_VERIFIER_SYSTEM
+
+    def test_math_verifier_requests_section_confidences(self):
+        from alethic.prompts import VERIFIER_SYSTEM
+
+        assert "SECTION CONFIDENCES:" in VERIFIER_SYSTEM
+
+    def test_physics_verifier_requests_section_confidences(self):
+        from alethic.physics_prompts import PHYSICS_VERIFIER_SYSTEM
+
+        assert "SECTION CONFIDENCES:" in PHYSICS_VERIFIER_SYSTEM
+
+
+# ── Severity parsing (Task 3.2) ──────────────────────────────────
+
+
+class TestSeverityParsing:
+    def test_tagged_issues(self):
+        from alethic.subagents import _parse_verification
+
+        text = (
+            "VERDICT: minor_issues\n"
+            "CONFIDENCE: 0.75\n"
+            "\n"
+            "CRITIQUE:\n"
+            "Step 2 has a sign error.\n"
+            "\n"
+            "REASON: N/A\n"
+            "\n"
+            "ISSUES:\n"
+            "- [CRITICAL] Division by zero in step 3\n"
+            "- [MINOR] Notation inconsistency\n"
+        )
+        result = _parse_verification(text)
+        assert len(result.issues) == 2
+        assert result.issues[0].severity == IssueSeverity.CRITICAL
+        assert result.issues[0].text == "Division by zero in step 3"
+        assert result.issues[1].severity == IssueSeverity.MINOR
+        assert result.issues[1].text == "Notation inconsistency"
+
+    def test_untagged_issues_default_major(self):
+        from alethic.subagents import _parse_verification
+
+        text = (
+            "VERDICT: minor_issues\n"
+            "CONFIDENCE: 0.70\n"
+            "\n"
+            "CRITIQUE:\n"
+            "Some issues.\n"
+            "\n"
+            "ISSUES:\n"
+            "- Sign error in step 2\n"
+            "- Missing bound check\n"
+        )
+        result = _parse_verification(text)
+        assert len(result.issues) == 2
+        assert result.issues[0].severity == IssueSeverity.MAJOR
+        assert result.issues[1].severity == IssueSeverity.MAJOR
+
+    def test_mixed_tagged_and_untagged(self):
+        from alethic.subagents import _parse_verification
+
+        text = (
+            "VERDICT: major_flaw\n"
+            "CONFIDENCE: 0.40\n"
+            "\n"
+            "CRITIQUE:\n"
+            "Multiple problems.\n"
+            "\n"
+            "ISSUES:\n"
+            "- [CRITICAL] Circular reasoning\n"
+            "- Missing justification for step 4\n"
+            "- [MINOR] Typo in equation 3\n"
+        )
+        result = _parse_verification(text)
+        assert len(result.issues) == 3
+        assert result.issues[0].severity == IssueSeverity.CRITICAL
+        assert result.issues[1].severity == IssueSeverity.MAJOR  # untagged default
+        assert result.issues[2].severity == IssueSeverity.MINOR
+
+    def test_case_insensitive_tags(self):
+        from alethic.subagents import _parse_verification
+
+        text = (
+            "VERDICT: minor_issues\n"
+            "CONFIDENCE: 0.70\n"
+            "\n"
+            "CRITIQUE:\n"
+            "Issues found.\n"
+            "\n"
+            "ISSUES:\n"
+            "- [critical] Fundamental flaw\n"
+            "- [Minor] Small typo\n"
+        )
+        result = _parse_verification(text)
+        assert len(result.issues) == 2
+        assert result.issues[0].severity == IssueSeverity.CRITICAL
+        assert result.issues[1].severity == IssueSeverity.MINOR
+
+    def test_unknown_tag_defaults_major(self):
+        from alethic.subagents import _parse_verification
+
+        text = (
+            "VERDICT: minor_issues\n"
+            "CONFIDENCE: 0.70\n"
+            "\n"
+            "CRITIQUE:\n"
+            "Issues found.\n"
+            "\n"
+            "ISSUES:\n"
+            "- [WARNING] Some warning\n"
+        )
+        result = _parse_verification(text)
+        assert len(result.issues) == 1
+        assert result.issues[0].severity == IssueSeverity.MAJOR
+        assert result.issues[0].text == "Some warning"
+
+    def test_none_issues_still_empty(self):
+        from alethic.subagents import _parse_verification
+
+        text = (
+            "VERDICT: correct\n"
+            "CONFIDENCE: 0.95\n"
+            "\n"
+            "CRITIQUE:\n"
+            "Perfect solution.\n"
+            "\n"
+            "ISSUES:\n"
+            "None\n"
+        )
+        result = _parse_verification(text)
+        assert result.issues == []
+
+
+# ── Section confidence parsing (Task 3.2) ────────────────────────
+
+
+class TestSectionConfidenceParsing:
+    def test_section_confidences_parsed(self):
+        from alethic.subagents import _parse_verification
+
+        text = (
+            "VERDICT: minor_issues\n"
+            "CONFIDENCE: 0.80\n"
+            "\n"
+            "CRITIQUE:\n"
+            "Mostly good.\n"
+            "\n"
+            "ISSUES:\n"
+            "- [MINOR] Small gap\n"
+            "\n"
+            "SECTION CONFIDENCES:\n"
+            "- Setup: 0.95 Clear and correct\n"
+            "- Main proof: 0.70\n"
+            "- Conclusion: 0.85 Needs minor polish\n"
+        )
+        result = _parse_verification(text)
+        assert len(result.section_confidences) == 3
+        assert result.section_confidences[0].section == "Setup"
+        assert result.section_confidences[0].confidence == 0.95
+        assert result.section_confidences[0].note == "Clear and correct"
+        assert result.section_confidences[1].section == "Main proof"
+        assert result.section_confidences[1].confidence == 0.70
+        assert result.section_confidences[1].note == ""
+        assert result.section_confidences[2].section == "Conclusion"
+        assert result.section_confidences[2].confidence == 0.85
+        assert result.section_confidences[2].note == "Needs minor polish"
+
+    def test_missing_section_confidences(self):
+        from alethic.subagents import _parse_verification
+
+        text = (
+            "VERDICT: correct\n"
+            "CONFIDENCE: 0.95\n"
+            "\n"
+            "CRITIQUE:\n"
+            "All good.\n"
+            "\n"
+            "ISSUES:\n"
+            "None\n"
+        )
+        result = _parse_verification(text)
+        assert result.section_confidences == []
+
+    def test_malformed_section_confidence_skipped(self):
+        from alethic.subagents import _parse_verification
+
+        text = (
+            "VERDICT: minor_issues\n"
+            "CONFIDENCE: 0.80\n"
+            "\n"
+            "CRITIQUE:\n"
+            "Some issues.\n"
+            "\n"
+            "ISSUES:\n"
+            "- [MINOR] Typo\n"
+            "\n"
+            "SECTION CONFIDENCES:\n"
+            "- Setup: 0.90 Looks good\n"
+            "- This line has no colon or number\n"
+            "- Conclusion: 0.85\n"
+        )
+        result = _parse_verification(text)
+        assert len(result.section_confidences) == 2
+        assert result.section_confidences[0].section == "Setup"
+        assert result.section_confidences[1].section == "Conclusion"
+
+
+# ── Reviser section targeting (Task 3.3) ─────────────────────────
+
+
+class TestReviserSectionTargeting:
+    def test_reviser_includes_low_confidence_sections(self):
+        from alethic.subagents import revise
+
+        # Create a mock client
+        client = MagicMock()
+        response = MagicMock()
+        text_block = MagicMock()
+        text_block.text = "CHANGES MADE:\nFixed induction step.\n\nREVISED SOLUTION:\nRevised text."
+        text_block.type = "text"
+        response.content = [text_block]
+        response.stop_reason = "end_turn"
+        client.messages.create.return_value = response
+
+        config = AgentConfig(enable_code_execution=False, verbose=False)
+        solution = MagicMock()
+        solution.solution_text = "Original solution text"
+        solution.iteration = 1
+
+        verification = VerificationResult(
+            verdict=Verdict.MINOR_ISSUES,
+            critique="Induction step is weak.",
+            confidence=0.65,
+            issues=[Issue(text="Induction hypothesis not applied correctly")],
+            section_confidences=[
+                SectionConfidence(section="Setup", confidence=0.95),
+                SectionConfidence(section="Induction step", confidence=0.45, note="Shaky reasoning"),
+            ],
+        )
+
+        revise(
+            client,
+            problem="Prove P(n) for all n",
+            solution=solution,
+            verification=verification,
+            config=config,
+            revision_number=1,
+        )
+
+        call_kwargs = client.messages.create.call_args
+        messages = call_kwargs.kwargs.get("messages") or call_kwargs[1].get("messages")
+        user_msg = messages[0]["content"]
+        assert "Low-confidence sections" in user_msg
+        assert "Induction step" in user_msg
+        assert "0.45" in user_msg

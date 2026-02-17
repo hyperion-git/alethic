@@ -16,7 +16,9 @@ import anthropic
 from alethic.models import (
     AgentConfig,
     Issue,
+    IssueSeverity,
     Revision,
+    SectionConfidence,
     Solution,
     Verdict,
     VerificationResult,
@@ -33,6 +35,12 @@ from alethic.prompts import (
 from alethic.tools import PYTHON_TOOL, process_tool_calls
 
 logger = logging.getLogger("alethic")
+
+_SEVERITY_MAP: dict[str, IssueSeverity] = {
+    "CRITICAL": IssueSeverity.CRITICAL,
+    "MAJOR": IssueSeverity.MAJOR,
+    "MINOR": IssueSeverity.MINOR,
+}
 
 
 def _extract_text(response) -> str:
@@ -218,6 +226,33 @@ _VERDICT_MAP: dict[str, Verdict] = {
 }
 
 
+def _parse_section_confidences(text: str) -> list[SectionConfidence]:
+    """Parse SECTION CONFIDENCES block from verifier output."""
+    match = re.search(
+        r"SECTION CONFIDENCES:\s*\n(.*?)(?=\n[A-Z]+:|\Z)", text, re.DOTALL | re.IGNORECASE
+    )
+    if not match:
+        return []
+
+    results = []
+    for line in match.group(1).strip().split("\n"):
+        cleaned = line.strip().lstrip("- ").strip()
+        if not cleaned:
+            continue
+        # Pattern: "section name: 0.85 optional note"
+        sc_match = re.match(r"(.+?):\s*([\d.]+)\s*(.*)", cleaned)
+        if sc_match:
+            section = sc_match.group(1).strip()
+            try:
+                conf = float(sc_match.group(2))
+                conf = max(0.0, min(1.0, conf))
+            except ValueError:
+                continue
+            note = sc_match.group(3).strip()
+            results.append(SectionConfidence(section=section, confidence=conf, note=note))
+    return results
+
+
 def _parse_verification(text: str) -> VerificationResult:
     """Parse structured verifier output into a VerificationResult."""
     # Extract verdict
@@ -251,9 +286,10 @@ def _parse_verification(text: str) -> VerificationResult:
         logger.warning("Confidence regex failed to match — defaulting to 0.5")
         confidence = 0.5
 
-    # Extract critique (stops at REASON: or ISSUES: whichever comes first)
+    # Extract critique (stops at REASON: or ISSUES: or SECTION CONFIDENCES: whichever comes first)
     critique_match = re.search(
-        r"CRITIQUE:\s*\n(.*?)(?=\nREASON:|\nISSUES:|\Z)", text, re.DOTALL | re.IGNORECASE
+        r"CRITIQUE:\s*\n(.*?)(?=\nREASON:|\nISSUES:|\nSECTION CONFIDENCES:|\Z)",
+        text, re.DOTALL | re.IGNORECASE
     )
     critique = critique_match.group(1).strip() if critique_match else text
 
@@ -263,19 +299,29 @@ def _parse_verification(text: str) -> VerificationResult:
     )
     reason = reason_match.group(1).strip() if reason_match else ""
 
-    # Extract issues (stops at REASON: if it appears after, or end of text)
+    # Extract issues (stops at REASON:, SECTION CONFIDENCES:, or end of text)
     issues_match = re.search(
-        r"ISSUES:\s*\n(.*?)(?=\nREASON:|\Z)", text, re.DOTALL | re.IGNORECASE
+        r"ISSUES:\s*\n(.*?)(?=\nREASON:|\nSECTION CONFIDENCES:|\Z)", text, re.DOTALL | re.IGNORECASE
     )
     issues: list[Issue] = []
     if issues_match:
         raw_issues = issues_match.group(1).strip()
         if raw_issues.lower() != "none":
-            issues = [
-                Issue(text=cleaned)
-                for line in raw_issues.split("\n")
-                if (cleaned := line.strip().lstrip("- ").strip())
-            ]
+            for line in raw_issues.split("\n"):
+                cleaned = line.strip().lstrip("- ").strip()
+                if not cleaned:
+                    continue
+                # Try to parse severity tag: [CRITICAL], [MAJOR], [MINOR]
+                severity_tag_match = re.match(r"\[(\w+)\]\s*(.*)", cleaned)
+                if severity_tag_match:
+                    tag = severity_tag_match.group(1).upper()
+                    issue_text = severity_tag_match.group(2).strip()
+                    severity = _SEVERITY_MAP.get(tag, IssueSeverity.MAJOR)
+                else:
+                    issue_text = cleaned
+                    severity = IssueSeverity.MAJOR
+                if issue_text:
+                    issues.append(Issue(text=issue_text, severity=severity))
 
     if not verdict_match and not conf_match and not critique_match:
         logger.warning(
@@ -284,12 +330,15 @@ def _parse_verification(text: str) -> VerificationResult:
             text[:200],
         )
 
+    section_confidences = _parse_section_confidences(text)
+
     return VerificationResult(
         verdict=verdict,
         critique=critique,
         confidence=confidence,
         issues=issues,
         reason=reason,
+        section_confidences=section_confidences,
     )
 
 
@@ -414,6 +463,19 @@ def revise(
         critique=verification.critique,
         issues=issues_text,
     )
+
+    # Add low-confidence section targeting if available
+    low_conf_sections = [
+        sc for sc in verification.section_confidences if sc.confidence < 0.70
+    ]
+    if low_conf_sections:
+        sections_text = "\n".join(
+            f"- {sc.section}: {sc.confidence:.2f}" + (f" ({sc.note})" if sc.note else "")
+            for sc in low_conf_sections
+        )
+        user_msg += (
+            f"\n\n## Low-confidence sections (focus revision here):\n{sections_text}"
+        )
 
     tools = [PYTHON_TOOL] if config.enable_code_execution else None
 
