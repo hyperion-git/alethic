@@ -103,8 +103,8 @@ A **Python library + CLI** that makes Anthropic API calls directly. Each subagen
 ### Alethic: Decoupled Holistic
 - Verifier receives ONLY problem statement + final solution text
 - Never sees Generator's thinking traces or tool outputs
-- Structured output: VERDICT, CONFIDENCE (0–1), CRITIQUE, REASON, ISSUES
-- Confidence threshold gates acceptance (default 0.90)
+- Structured output: VERDICT, CONFIDENCE (0–1), CRITIQUE, REASON, ISSUES (with severity tags), SECTION CONFIDENCES
+- Confidence threshold + critical-issue guard gates acceptance (default 0.90; CRITICAL issues block regardless)
 - False-premise detection via REASON field → early exit
 
 ### Comparison
@@ -113,7 +113,7 @@ A **Python library + CLI** that makes Anthropic API calls directly. Each subagen
 |--------|-----------|----------|---------|
 | **Granularity** | Per inference step | Per inference step | Whole solution |
 | **Adversarial?** | Yes (challenge/response) | Yes (structured challenges) | No (independent evaluation) |
-| **Blocking mechanism** | Round limits (7/step) | Challenge severity (critical/major block) | Confidence threshold |
+| **Blocking mechanism** | Round limits (7/step) | Challenge severity (critical/major block) | Confidence threshold + CRITICAL issues |
 | **Admits gaps?** | Proof obligations | `admit` command (taint propagates) | `UNSOLVED` verdict |
 | **Catches false premises?** | Theorem audit | Refute command | REASON field |
 
@@ -137,10 +137,10 @@ A **Python library + CLI** that makes Anthropic API calls directly. Each subagen
 - Lock system for multi-agent concurrency (claim/release/extend)
 
 ### Alethic
-- **In-memory dataclasses** (library): `AgentResult` with `Solution`, `VerificationResult`, `Revision` history
+- **In-memory dataclasses** (library): `AgentResult` with `Solution`, `VerificationResult`, `AgentEvent` list, `failed_approaches`
 - **File-based sessions** (skills): `.alethic/{slug}/` with `session.json`, `problem.md`, `solution.md`, worklog
 - **Sessions index**: `.alethic/sessions.jsonl` for cross-session queries
-- No event sourcing, no formal audit trail
+- Structured event log (`AgentEvent` list); no event sourcing
 
 ### Comparison
 
@@ -177,7 +177,7 @@ Both Osborne projects implement taint — Alethic does not.
 | **Candidates per step** | 1 (single prover) | 1 (single prover per claim) | N (best-of-N) |
 | **Diversity source** | Adversarial iteration + Adviser strategy | Adversarial iteration + failed approach registry | Parallel sampling + temperature |
 | **Parallel generation** | No | No (but supports concurrent agents on different nodes) | Yes (ThreadPoolExecutor) |
-| **Strategy tracking** | Adviser evaluates approaches | `approach-tried` + `approach-list` commands | Implicit in Generator temperature |
+| **Strategy tracking** | Adviser evaluates approaches | `approach-tried` + `approach-list` commands | Failed approach tracking + temperature diversity |
 
 Alethic's best-of-N is unique among the three — it generates multiple complete solutions in parallel and picks the best. The Osborne projects get diversity through adversarial refinement instead.
 

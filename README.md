@@ -151,8 +151,14 @@ CRITIQUE:
 REASON: [Why the premise is false, or "N/A"]
 
 ISSUES:
-- [Issue 1]
-- [Issue 2]
+- [CRITICAL] Issue requiring fundamental rework
+- [MAJOR] Serious gap or error
+- [MINOR] Small imprecision or stylistic concern
+(Tag each issue with severity. Write "None" if there are no issues)
+
+SECTION CONFIDENCES:
+- [section name]: [0.0-1.0] [optional note]
+(Omit this section if the solution is too short to decompose into sections)
 ```
 
 ## Design Principles
@@ -204,7 +210,7 @@ claude plugins add hyperion-git/alethic
 
 ```bash
 git clone https://github.com/hyperion-git/alethic.git
-DEST=~/.claude/plugins/cache/local/alethic/1.0.0
+DEST=~/.claude/plugins/cache/local/alethic/2.0.0
 mkdir -p "$DEST"
 cp -r alethic/.claude-plugin alethic/skills "$DEST/"
 ```
@@ -401,10 +407,10 @@ The Python library is organized into the following modules, each with a single c
 
 | Module | Purpose |
 |--------|---------|
-| `agent.py` | `MathAgent` orchestrator — runs the full Generate-Verify-Revise loop with false-premise detection and strategic failure admission |
+| `agent.py` | `MathAgent` orchestrator — runs the full Generate-Verify-Revise loop with false-premise detection, strategic failure admission, `RunState`/`EventLog` tracking, and failed approach tracking |
 | `physics_agent.py` | `PhysicsAgent` — thin subclass of `MathAgent` that injects physics-specific prompt templates |
 | `subagents.py` | `generate()`, `verify()`, `revise()` — each wraps a Claude API call with role-specific prompts, temperature, and tool configuration; accepts optional prompt kwargs for domain specialization; includes the tool-use loop (up to 5 rounds) and structured output parsing |
-| `models.py` | Dataclasses: `AgentConfig` (with `PRESETS` and `from_preset()`), `Solution`, `VerificationResult`, `Revision`, `AgentResult`, and the `Verdict` enum |
+| `models.py` | Dataclasses: `AgentConfig` (with `PRESETS` and `from_preset()`), `Solution`, `VerificationResult`, `Revision`, `AgentResult`, and the `Verdict` enum; also `IssueSeverity`, `Issue`, `SectionConfidence`, `EventType`, and `AgentEvent` types |
 | `prompts.py` | System and user prompt templates for the math subagents, plus the balanced prompting addendum |
 | `physics_prompts.py` | Physics-specific prompt templates: derivation strategies, physics error checklist, dimensional/limiting-case balanced addendum |
 | `tools.py` | `execute_python()` sandbox with restricted builtins and module allowlist, `PYTHON_TOOL` schema for the Anthropic API, and `process_tool_calls()` for the tool-use loop |
@@ -466,6 +472,8 @@ alethic/
 └── tests/
     ├── test_alethic.py             # Core tests (43)
     ├── test_physics.py             # Physics tests (35)
+    ├── test_new_types.py           # IssueSeverity, Issue, SectionConfidence, EventType, AgentEvent tests
+    ├── test_best_of_n.py           # Best-of-N sampling tests
     └── test_adversarial_*.py       # Adversarial tests (185)
 ```
 

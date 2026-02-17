@@ -57,9 +57,14 @@ CRITIQUE:
 REASON: [If verdict is "unsolved" because the problem's premise is false or the problem is ill-posed, explain why here. Otherwise write "N/A".]
 
 ISSUES:
-- [Issue 1, if any]
-- [Issue 2, if any]
-(Write "None" if there are no issues)
+- [CRITICAL] Issue requiring fundamental rework
+- [MAJOR] Serious gap or error
+- [MINOR] Small imprecision or stylistic concern
+(Tag each issue with severity. Write "None" if there are no issues)
+
+SECTION CONFIDENCES:
+- [section name]: [0.0-1.0] [optional note]
+(Omit this section if the solution is too short to decompose into sections)
 ```
 
 After writing the verification file, return ONLY this single line:

@@ -1,7 +1,7 @@
 {
   "name": "alethic",
   "description": "Reasoning agent for mathematics and physics with Generate-Verify-Revise loop (inspired by DeepMind's Aletheia), textbook-style proof/derivation converter, plus publication-quality scientific figure generation",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "author": {
     "name": "Alexander Friedrich"
   },
