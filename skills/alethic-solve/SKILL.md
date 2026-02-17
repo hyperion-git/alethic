@@ -43,6 +43,11 @@ The user's input is: $ARGUMENTS
 - `/alethic-solve -B 3 "Prove the Cayley-Hamilton theorem"` — 3 candidates per iteration
 - `/alethic-solve --textbook "Prove sqrt(2) is irrational"` — textbook-style output
 - `/alethic-solve -p thorough --textbook "Prove the Cayley-Hamilton theorem"` — thorough + textbook
+- `/alethic-solve --no-balanced "Prove sqrt(2) is irrational"` — skip counterexample check
+- `/alethic-solve --file problem.md` — read problem from file
+- `/alethic-solve -q -p thorough "Prove the Cayley-Hamilton theorem"` — quiet mode (no dashboard)
+- `/alethic-solve --json "Is 17 prime?"` — JSON output
+- `/alethic-solve --model sonnet "Prove Fermat's little theorem"` — use Sonnet for sub-agents
 
 ## Load Orchestrator
 
