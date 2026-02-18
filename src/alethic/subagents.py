@@ -158,6 +158,7 @@ def generate(
     balanced: bool = True,
     *,
     failed_approaches: tuple[str, ...] = (),
+    reset_context: str | None = None,
     system_prompt: str | None = None,
     user_template: str | None = None,
     balanced_addendum: str | None = None,
@@ -186,7 +187,9 @@ def generate(
     template = user_template if user_template is not None else GENERATOR_USER
     user_msg = template.format(problem=problem)
 
-    if failed_approaches:
+    if reset_context is not None:
+        user_msg += f"\n\n{reset_context}"
+    elif failed_approaches:
         approaches_text = "\n".join(f"- {a}" for a in failed_approaches)
         user_msg += (
             f"\n\n## Previously attempted strategies that did NOT work:\n"
