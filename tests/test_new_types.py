@@ -111,6 +111,34 @@ class TestEventType:
         assert len(EventType) == 7
 
 
+# ── Stall Reset Config ─────────────────────────────────────────────
+
+
+class TestStallResetConfig:
+    def test_default_values(self):
+        config = AgentConfig()
+        assert config.stall_window == 2
+        assert config.stall_epsilon == 0.03
+        assert config.stall_reset is True
+        assert config.reset_n_boost == 1
+
+    def test_stall_reset_disabled(self):
+        config = AgentConfig(stall_reset=False)
+        assert config.stall_reset is False
+
+    def test_validation_stall_window_positive(self):
+        with pytest.raises(ValueError, match="stall_window must be >= 1"):
+            AgentConfig(stall_window=0)
+
+    def test_validation_stall_epsilon_nonneg(self):
+        with pytest.raises(ValueError, match="stall_epsilon must be >= 0"):
+            AgentConfig(stall_epsilon=-0.01)
+
+    def test_validation_reset_n_boost_nonneg(self):
+        with pytest.raises(ValueError, match="reset_n_boost must be >= 0"):
+            AgentConfig(reset_n_boost=-1)
+
+
 # ── AgentEvent ──────────────────────────────────────────────────────
 
 

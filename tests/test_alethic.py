@@ -167,6 +167,27 @@ class TestPresets:
         assert vr.is_acceptable(0.85)
         assert not vr.needs_revision(0.85)
 
+    def test_preset_stall_reset_values(self):
+        quick = AgentConfig.from_preset("quick")
+        assert quick.stall_reset is False
+        assert quick.reset_n_boost == 0
+
+        default = AgentConfig.from_preset("default")
+        assert default.stall_reset is True
+        assert default.stall_window == 2
+        assert default.stall_epsilon == 0.03
+        assert default.reset_n_boost == 1
+
+        thorough = AgentConfig.from_preset("thorough")
+        assert thorough.stall_window == 3
+        assert thorough.stall_epsilon == 0.02
+        assert thorough.reset_n_boost == 1
+
+        extreme = AgentConfig.from_preset("extreme")
+        assert extreme.stall_window == 3
+        assert extreme.stall_epsilon == 0.02
+        assert extreme.reset_n_boost == 2
+
     def test_cli_preset_flag(self):
         from alethic.cli import _build_config, build_parser
         parser = build_parser()

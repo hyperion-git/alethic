@@ -88,6 +88,10 @@ class AgentConfig:
         best_of_n: Number of candidates to generate per iteration (1 = sequential).
         tool_guidance: Set of tool guidance overlays to include in prompts (sympy, numpy).
         verbose: Print progress to stdout.
+        stall_window: Iterations without meaningful improvement before triggering reset.
+        stall_epsilon: Minimum confidence improvement to count as progress.
+        stall_reset: Enable stall-triggered strategy reset.
+        reset_n_boost: Additional candidates to generate on reset iterations.
     """
 
     model: str = "claude-opus-4-6"
@@ -104,6 +108,10 @@ class AgentConfig:
     best_of_n: int = 1
     tool_guidance: frozenset[str] = frozenset({"sympy", "numpy"})
     verbose: bool = True
+    stall_window: int = 2
+    stall_epsilon: float = 0.03
+    stall_reset: bool = True
+    reset_n_boost: int = 1
 
     def __post_init__(self) -> None:
         if self.best_of_n < 1:
@@ -131,6 +139,12 @@ class AgentConfig:
             raise ValueError(f"max_tokens must be >= 1, got {self.max_tokens}")
         if self.thinking_budget < 0:
             raise ValueError(f"thinking_budget must be >= 0, got {self.thinking_budget}")
+        if self.stall_window < 1:
+            raise ValueError(f"stall_window must be >= 1, got {self.stall_window}")
+        if self.stall_epsilon < 0:
+            raise ValueError(f"stall_epsilon must be >= 0, got {self.stall_epsilon}")
+        if self.reset_n_boost < 0:
+            raise ValueError(f"reset_n_boost must be >= 0, got {self.reset_n_boost}")
 
     PRESETS: ClassVar[dict[str, dict[str, Any]]] = {
         "quick": {
@@ -140,6 +154,8 @@ class AgentConfig:
             "extended_thinking": False,
             "max_tokens": 16384,
             "best_of_n": 1,
+            "stall_reset": False,
+            "reset_n_boost": 0,
         },
         "default": {
             "max_iterations": 5,
@@ -148,6 +164,10 @@ class AgentConfig:
             "extended_thinking": False,
             "max_tokens": 16384,
             "best_of_n": 2,
+            "stall_window": 2,
+            "stall_epsilon": 0.03,
+            "stall_reset": True,
+            "reset_n_boost": 1,
         },
         "thorough": {
             "max_iterations": 8,
@@ -157,6 +177,10 @@ class AgentConfig:
             "thinking_budget": 15000,
             "max_tokens": 32768,
             "best_of_n": 3,
+            "stall_window": 3,
+            "stall_epsilon": 0.02,
+            "stall_reset": True,
+            "reset_n_boost": 1,
         },
         "extreme": {
             "max_iterations": 12,
@@ -166,6 +190,10 @@ class AgentConfig:
             "thinking_budget": 40000,
             "max_tokens": 65536,
             "best_of_n": 5,
+            "stall_window": 3,
+            "stall_epsilon": 0.02,
+            "stall_reset": True,
+            "reset_n_boost": 2,
         },
     }
 
