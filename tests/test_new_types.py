@@ -105,9 +105,10 @@ class TestEventType:
         assert EventType.ERROR.value == "error"
         assert EventType.ACCEPT.value == "accept"
         assert EventType.FAIL.value == "fail"
+        assert EventType.STALL_RESET.value == "stall_reset"
 
-    def test_exactly_six_members(self):
-        assert len(EventType) == 6
+    def test_exactly_seven_members(self):
+        assert len(EventType) == 7
 
 
 # ── AgentEvent ──────────────────────────────────────────────────────

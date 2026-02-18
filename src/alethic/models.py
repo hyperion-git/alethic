@@ -55,6 +55,7 @@ class EventType(enum.Enum):
     ERROR = "error"
     ACCEPT = "accept"
     FAIL = "fail"
+    STALL_RESET = "stall_reset"
 
 
 @dataclass(frozen=True)
