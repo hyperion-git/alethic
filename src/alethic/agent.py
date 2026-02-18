@@ -26,6 +26,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
@@ -62,6 +63,11 @@ class RunState:
     best_confidence: float = 0.0
     failed_approaches: list[str] = field(default_factory=list)
     start_time: float = field(default_factory=time.time)
+    # Stall detection state
+    iterations_since_meaningful_improvement: int = 0
+    iteration_final_verdicts: deque = field(default_factory=lambda: deque(maxlen=3))
+    resets_used: int = 0
+    reset_cooldown_remaining: int = 0
 
 
 @dataclass

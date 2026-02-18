@@ -339,6 +339,11 @@ class TestRunStateAndEventLog:
         assert state.best_confidence == 0.0
         assert state.failed_approaches == []
         assert isinstance(state.start_time, float)
+        # Stall tracking fields
+        assert state.iterations_since_meaningful_improvement == 0
+        assert len(state.iteration_final_verdicts) == 0
+        assert state.resets_used == 0
+        assert state.reset_cooldown_remaining == 0
 
     def test_event_log_emit(self):
         from alethic.agent import EventLog
