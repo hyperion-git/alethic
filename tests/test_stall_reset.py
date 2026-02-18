@@ -184,3 +184,138 @@ class TestBuildResetContext:
         agent = self._make_agent()
         context = agent._build_reset_context([])
         assert "STRATEGY RESET" in context
+
+
+class TestStallResetIntegration:
+    """Integration tests: full solve() loop with mocked confidence trajectories."""
+
+    @patch("alethic.subagents.process_tool_calls", return_value=[])
+    def test_plateau_triggers_reset(self, _mock_tools):
+        """Confidence plateau (0.6, 0.6) should trigger reset on iteration 3.
+
+        Iter 1 always improves from 0.0, so stall_window=1 means one non-improving
+        iteration (iter 2) is enough to trigger on iter 3.
+        """
+        from alethic.agent import MathAgent
+
+        config = AgentConfig(
+            max_iterations=4,
+            max_revisions_per_cycle=1,
+            best_of_n=1,
+            stall_window=1,
+            stall_epsilon=0.03,
+            stall_reset=True,
+            reset_n_boost=1,
+            enable_code_execution=False,
+            verbose=False,
+        )
+
+        responses = [
+            # Iter 1: gen -> verify (0.6 minor) -> revise -> re-verify (0.6 minor)
+            _mock_response("Attempt 1"),
+            _mock_response(MINOR_060),
+            _mock_response("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nV1"),
+            _mock_response(MINOR_060),
+            # Iter 2: gen -> verify (0.6 minor) -> revise -> re-verify (0.6 minor)
+            _mock_response("Attempt 2"),
+            _mock_response(MINOR_060),
+            _mock_response("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nV2"),
+            _mock_response(MINOR_060),
+            # Iter 3 (RESET): gen x2 (N=1+1=2) -> verify x2 -> correct
+            _mock_response("Fresh attempt A"),
+            _mock_response("Fresh attempt B"),
+            _mock_response(MINOR_060),
+            _mock_response(CORRECT_HIGH),  # candidate B nails it
+        ]
+
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = responses
+        agent = MathAgent(config=config)
+        agent.client = mock_client
+
+        result = agent.solve("test problem")
+
+        assert result.solved
+        # Should have a STALL_RESET event
+        reset_events = [e for e in result.events if e.type == EventType.STALL_RESET]
+        assert len(reset_events) == 1
+        assert reset_events[0].iteration == 3
+
+    @patch("alethic.subagents.process_tool_calls", return_value=[])
+    def test_major_flaw_streak_triggers_reset(self, _mock_tools):
+        """Two consecutive MAJOR_FLAW should trigger reset."""
+        from alethic.agent import MathAgent
+
+        config = AgentConfig(
+            max_iterations=4,
+            max_revisions_per_cycle=1,
+            best_of_n=1,
+            stall_window=10,  # High — so only major-flaw detector fires
+            stall_reset=True,
+            reset_n_boost=1,
+            enable_code_execution=False,
+            verbose=False,
+        )
+
+        responses = [
+            # Iter 1: gen -> verify (major) -> revise -> re-verify (major) -> break
+            _mock_response("Bad 1"),
+            _mock_response(MAJOR_020),
+            _mock_response("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nStill bad"),
+            _mock_response(MAJOR_020),
+            # Iter 2: gen -> verify (major) -> revise -> re-verify (major) -> break
+            _mock_response("Bad 2"),
+            _mock_response(MAJOR_020),
+            _mock_response("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nStill bad"),
+            _mock_response(MAJOR_020),
+            # Iter 3 (RESET — major flaw streak): gen x2 -> verify x2 -> correct
+            _mock_response("Fresh A"),
+            _mock_response("Fresh B"),
+            _mock_response(CORRECT_HIGH),
+            _mock_response(MINOR_060),
+        ]
+
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = responses
+        agent = MathAgent(config=config)
+        agent.client = mock_client
+
+        result = agent.solve("test problem")
+
+        assert result.solved
+        reset_events = [e for e in result.events if e.type == EventType.STALL_RESET]
+        assert len(reset_events) == 1
+        assert reset_events[0].data["reason"] == "major_flaw_streak"
+
+    @patch("alethic.subagents.process_tool_calls", return_value=[])
+    def test_disabled_stall_reset_no_trigger(self, _mock_tools):
+        """With stall_reset=False, no STALL_RESET events should appear."""
+        from alethic.agent import MathAgent
+
+        config = AgentConfig(
+            max_iterations=3,
+            max_revisions_per_cycle=1,
+            best_of_n=1,
+            stall_reset=False,
+            enable_code_execution=False,
+            verbose=False,
+        )
+
+        responses = [
+            _mock_response("A1"), _mock_response(MINOR_060),
+            _mock_response("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nV1"), _mock_response(MINOR_060),
+            _mock_response("A2"), _mock_response(MINOR_060),
+            _mock_response("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nV2"), _mock_response(MINOR_060),
+            _mock_response("A3"), _mock_response(MINOR_060),
+            _mock_response("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nV3"), _mock_response(MINOR_060),
+        ]
+
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = responses
+        agent = MathAgent(config=config)
+        agent.client = mock_client
+
+        result = agent.solve("test")
+
+        reset_events = [e for e in result.events if e.type == EventType.STALL_RESET]
+        assert len(reset_events) == 0

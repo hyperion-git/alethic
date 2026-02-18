@@ -263,6 +263,7 @@ class MathAgent:
         prompts: dict[str, str],
         n: int,
         failed_approaches: tuple[str, ...] = (),
+        reset_context: str | None = None,
     ) -> list[tuple[Solution, float]]:
         """Generate N candidates. Parallel (ThreadPoolExecutor) when N>1, sequential when N=1."""
 
@@ -275,6 +276,7 @@ class MathAgent:
                 iteration=iteration,
                 balanced=balanced,
                 failed_approaches=failed_approaches,
+                reset_context=reset_context,
                 system_prompt=prompts.get("generator_system"),
                 user_template=prompts.get("generator_user"),
                 balanced_addendum=prompts.get("balanced_addendum"),
@@ -466,16 +468,17 @@ class MathAgent:
         ver_base = prompts.get("verifier_system") or VERIFIER_SYSTEM
         prompts["verifier_system"] = self._build_system_prompt("verifier", ver_base)
 
-        n = self.config.best_of_n
-
         self._log(f"{'=' * 60}")
         self._log(self._log_header())
         self._log(f"Model: {self.config.model}")
         self._log(f"Max iterations: {self.config.max_iterations}")
         self._log(f"Confidence threshold: {threshold:.0%}")
         self._log(f"Code execution: {'enabled' if self.config.enable_code_execution else 'disabled'}")
-        if n > 1:
-            self._log(f"Best-of-N: {n} candidates per iteration (parallel)")
+        if self.config.best_of_n > 1:
+            self._log(f"Best-of-N: {self.config.best_of_n} candidates per iteration (parallel)")
+        if self.config.stall_reset:
+            self._log(f"Stall reset: enabled (window={self.config.stall_window}, "
+                       f"epsilon={self.config.stall_epsilon})")
         self._log(f"{'=' * 60}")
         self._log(f"Problem: {problem[:200]}{'...' if len(problem) > 200 else ''}")
         self._log("")
@@ -486,9 +489,40 @@ class MathAgent:
             self._log(f"{'─' * 40}")
 
             try:
+                pre_iter_best = state.best_confidence
+
+                # ── STALL CHECK ──
+                is_reset = self._check_stall(state)
+                if is_reset:
+                    reason = "major_flaw_streak" if (
+                        len(state.iteration_final_verdicts) >= 2
+                        and state.iteration_final_verdicts[-1] == Verdict.MAJOR_FLAW
+                        and state.iteration_final_verdicts[-2] == Verdict.MAJOR_FLAW
+                    ) else "no_progress"
+                    state.resets_used += 1
+                    state.reset_cooldown_remaining = 1
+                    n_this_iter = self.config.best_of_n + self.config.reset_n_boost
+                    reset_context = self._build_reset_context(state.failed_approaches)
+                    self._log(f"[STALL RESET] Triggered (reason: {reason}) — "
+                              f"N={n_this_iter}, max_revisions=1")
+                    log.emit(
+                        EventType.STALL_RESET,
+                        iteration,
+                        reason=reason,
+                        n_override=n_this_iter,
+                        max_revisions_override=1,
+                        resets_used=state.resets_used,
+                        stall_counter=state.iterations_since_meaningful_improvement,
+                    )
+                else:
+                    n_this_iter = self.config.best_of_n
+                    reset_context = None
+                    if state.reset_cooldown_remaining > 0:
+                        state.reset_cooldown_remaining -= 1
+
                 # ── GENERATE ──
-                if n > 1:
-                    self._log(f"[GENERATE] Producing {n} candidates (parallel)...")
+                if n_this_iter > 1:
+                    self._log(f"[GENERATE] Producing {n_this_iter} candidates (parallel)...")
                 else:
                     self._log("[GENERATE] Producing candidate solution...")
 
@@ -498,8 +532,9 @@ class MathAgent:
                     iteration=iteration,
                     balanced=balanced,
                     prompts=prompts,
-                    n=n,
+                    n=n_this_iter,
                     failed_approaches=tuple(state.failed_approaches),
+                    reset_context=reset_context,
                 )
                 gen_wall_time = time.time() - gen_t0
 
@@ -508,13 +543,13 @@ class MathAgent:
                     log.emit(EventType.ERROR, iteration, error="all candidates failed")
                     continue
 
-                if len(candidates) < n:
-                    failures = n - len(candidates)
+                if len(candidates) < n_this_iter:
+                    failures = n_this_iter - len(candidates)
                     logger.info(
                         "Generated %d/%d candidates (%d failed)",
-                        len(candidates), n, failures,
+                        len(candidates), n_this_iter, failures,
                     )
-                    self._log(f"[GENERATE] Warning: {len(candidates)}/{n} candidates "
+                    self._log(f"[GENERATE] Warning: {len(candidates)}/{n_this_iter} candidates "
                                f"succeeded ({failures} failed)")
 
                 for idx, (sol, gen_t) in enumerate(candidates, 1):
@@ -536,7 +571,7 @@ class MathAgent:
                 )
 
                 # Log rankings for N>1
-                if n > 1:
+                if n_this_iter > 1:
                     self._log_candidates(verified, gen_wall_time)
 
                 # Record all in log (use original generation-order index)
@@ -604,11 +639,19 @@ class MathAgent:
                         state=state,
                         log=log,
                         threshold=threshold,
+                        max_revisions=1 if is_reset else None,
                     )
                     if result is not None:
                         return result
                 else:
                     self._log("[GENERATE] Solution unsolvable in this attempt — will retry from scratch")
+
+                # ── UPDATE STALL TRACKING ──
+                state.iteration_final_verdicts.append(verification.verdict)
+                if state.best_confidence > pre_iter_best + self.config.stall_epsilon:
+                    state.iterations_since_meaningful_improvement = 0
+                else:
+                    state.iterations_since_meaningful_improvement += 1
 
                 # ── ACCUMULATE FAILED APPROACH ──
                 summary = _summarize_failed_approach(verification)
