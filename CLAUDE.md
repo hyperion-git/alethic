@@ -45,6 +45,8 @@ alethic derive -B 3 "Derive the hydrogen atom energy spectrum"
 alethic --tools sympy "Prove the Basel problem"             # SymPy only (no NumPy)
 alethic --tools none "Is 17 prime?"                         # no tool guidance
 alethic derive --tools sympy,numpy "Derive the Lamb shift"  # both (default)
+alethic --no-stall-reset "Is 17 prime?"                     # disable stall detection
+alethic --stall-window 3 --stall-epsilon 0.05 "..."         # custom stall parameters
 
 # Textbook-style output (skills only)
 # /alethic-solve --textbook "Prove sqrt(2) is irrational"
@@ -116,12 +118,12 @@ Each iteration generates N candidates (best-of-N sampling), verifies all indepen
 
 Both the CLI (`--preset`) and the Python API (`AgentConfig.from_preset()`) support named presets. Explicit flags/kwargs override preset values.
 
-| Preset | Iters | Revs | Threshold | Best-of | Thinking | Think budget | Max tokens |
-|--------|-------|------|-----------|---------|----------|-------------|------------|
-| `quick` | 2 | 1 | 0.85 | 1 | off | — | 16,384 |
-| `default` | 5 | 3 | 0.90 | 2 | off | — | 16,384 |
-| `thorough` | 8 | 5 | 0.95 | 3 | on | 15,000 | 32,768 |
-| `extreme` | 12 | 5 | 0.97 | 5 | on | 40,000 | 65,536 |
+| Preset | Iters | Revs | Threshold | Best-of | Thinking | Think budget | Max tokens | Stall reset | Window | Epsilon | N boost |
+|--------|-------|------|-----------|---------|----------|-------------|------------|-------------|--------|---------|---------|
+| `quick` | 2 | 1 | 0.85 | 1 | off | — | 16,384 | off | — | — | 0 |
+| `default` | 5 | 3 | 0.90 | 2 | off | — | 16,384 | on | 2 | 0.03 | 1 |
+| `thorough` | 8 | 5 | 0.95 | 3 | on | 15,000 | 32,768 | on | 3 | 0.02 | 1 |
+| `extreme` | 12 | 5 | 0.97 | 5 | on | 40,000 | 65,536 | on | 3 | 0.02 | 2 |
 
 Both `/alethic-solve` and `/alethic-derive` support presets via `-p`/`--preset`, controlling iterations, revisions, budget, confidence threshold, and best-of-N candidates. Temperature and extended thinking are API-only (Task sub-agent limitation). Explicit flags (e.g., `-B 5`) override preset values.
 
@@ -129,14 +131,14 @@ Both `/alethic-solve` and `/alethic-derive` support presets via `-p`/`--preset`,
 
 | Module | Purpose |
 |--------|---------|
-| `agent.py` | `MathAgent` orchestrator — runs the Generate N → Verify all → Select best → Revise loop with best-of-N sampling (parallel via `ThreadPoolExecutor`), false-premise detection, candidate ranking, failed approach tracking via `RunState`, structured event logging via `EventLog`, and switchable tool guidance via `_build_system_prompt()`/`_get_tool_guidance_map()` |
-| `physics_agent.py` | `PhysicsAgent` — thin subclass of `MathAgent` that injects physics-specific prompt templates and overrides `_get_tool_guidance_map()` to return `PHYSICS_TOOL_GUIDANCE` |
+| `agent.py` | `MathAgent` orchestrator — runs the Generate N → Verify all → Select best → Revise loop with best-of-N sampling (parallel via `ThreadPoolExecutor`), false-premise detection, candidate ranking, failed approach tracking via `RunState`, structured event logging via `EventLog`, switchable tool guidance via `_build_system_prompt()`/`_get_tool_guidance_map()`, and stall detection with strategy reset via `_check_stall()`/`_build_reset_context()` |
+| `physics_agent.py` | `PhysicsAgent` — thin subclass of `MathAgent` that injects physics-specific prompt templates and overrides `_get_tool_guidance_map()` to return `PHYSICS_TOOL_GUIDANCE` and `_reset_addendum()` to return `PHYSICS_STRATEGY_RESET_ADDENDUM` |
 | `subagents.py` | `generate()`, `verify()`, `revise()` — each wraps a Claude API call with role-specific prompts; accepts optional prompt kwargs for domain specialization; supports extended thinking |
-| `models.py` | Dataclasses: `AgentConfig` (with `PRESETS`, `from_preset()`, `best_of_n`, and `tool_guidance: frozenset[str]` fields), `Solution`, `VerificationResult` (with `Issue`, `SectionConfidence`, severity-aware `is_acceptable()`), `Revision`, `AgentResult` (with `AgentEvent` list, `failed_approaches`), `Verdict` enum, `IssueSeverity` enum, `EventType` enum |
-| `prompts.py` | Math system/user prompt templates for all three subagents + balanced prompting addendum + `TOOL_GUIDANCE` map (SymPy/NumPy generator/verifier guidance strings) |
-| `physics_prompts.py` | Physics-specific prompt templates: derivation strategies, physics error checklist, dimensional/limiting-case balanced addendum + `PHYSICS_TOOL_GUIDANCE` map (physics-specific SymPy/NumPy guidance) |
+| `models.py` | Dataclasses: `AgentConfig` (with `PRESETS`, `from_preset()`, `best_of_n`, `tool_guidance: frozenset[str]`, `stall_window`, `stall_epsilon`, `stall_reset`, `reset_n_boost` fields), `Solution`, `VerificationResult` (with `Issue`, `SectionConfidence`, severity-aware `is_acceptable()`), `Revision`, `AgentResult` (with `AgentEvent` list, `failed_approaches`), `Verdict` enum, `IssueSeverity` enum, `EventType` enum (incl. `STALL_RESET`) |
+| `prompts.py` | Math system/user prompt templates for all three subagents + balanced prompting addendum + `STRATEGY_RESET_ADDENDUM` + `TOOL_GUIDANCE` map (SymPy/NumPy generator/verifier guidance strings) |
+| `physics_prompts.py` | Physics-specific prompt templates: derivation strategies, physics error checklist, dimensional/limiting-case balanced addendum + `PHYSICS_STRATEGY_RESET_ADDENDUM` + `PHYSICS_TOOL_GUIDANCE` map (physics-specific SymPy/NumPy guidance) |
 | `tools.py` | `execute_python()` sandbox, `PYTHON_TOOL` schema (highlights SymPy as `sp` and NumPy as `np`), `process_tool_calls()` for tool-use loop |
-| `cli.py` | `argparse`-based CLI (`alethic` entry point) with `solve`/`derive` subcommands, `--preset`, `--thinking`, `--best-of`/`-B`, and `--tools` support |
+| `cli.py` | `argparse`-based CLI (`alethic` entry point) with `solve`/`derive` subcommands, `--preset`, `--thinking`, `--best-of`/`-B`, `--tools`, `--no-stall-reset`, `--stall-window`, and `--stall-epsilon` support |
 | `examples.py` | Bundled example problems (`python -m alethic.examples`) |
 
 | Skill file | Purpose |
@@ -169,6 +171,8 @@ Both `/alethic-solve` and `/alethic-derive` support presets via `-p`/`--preset`,
 9. **File-based state** (skill only): Session directories in `.alethic/` (project-local) prevent context window exhaustion — the orchestrator tracks only verdicts and confidence, full text lives in files. Falls back to `/tmp/alethic-*/` outside git repositories.
 10. **Best-of-N sampling**: Each iteration generates N candidates (configurable via `--best-of` / `-B`), verifies all, selects the highest-confidence candidate, and revises only the winner. The Python library uses `ThreadPoolExecutor` for parallel generation when N>1; skills generate sequentially and display a monitoring dashboard with candidate rankings and cumulative iteration history. When N=1, behavior is identical to the pre-best-of-N code path (no thread pool, same log messages, same history shape). `AgentResult` includes `candidates_per_iteration` metadata. Preset defaults: quick=1, default=2, thorough=3, extreme=5.
 11. **Textbook-style converter** (skill only): The `--textbook` flag on `/alethic-solve` and `/alethic-derive` (or standalone `/alethic-textbook`) runs a staged sub-agent pipeline — Planner → Writer × N → Fidelity Verifier — that converts raw solutions into textbook-quality documents with theorem/definition/lemma environments (math) or setup/derivation/result environments (physics), pedagogical motivation, numbered equations with back-references, and connecting prose. The Planner adaptively decides section count based on solution length (1–8 sections), keeping each Writer's context bounded. The Fidelity Verifier compares the textbook version against the original on a 6-point checklist; MAJOR_ALTERATION triggers fallback to the simple beautifier. The orchestrator never reads solution text — only file paths and one-line summaries.
+
+12. **Stall detection with strategy reset**: A lightweight monitoring layer in `solve()` detects when confidence stops improving (plateau: `iterations_since_meaningful_improvement >= stall_window`) or when `MAJOR_FLAW` verdicts repeat consecutively. On trigger, the next iteration widens best-of-N by `reset_n_boost`, injects a `STRATEGY_RESET_ADDENDUM` prompt (forcing a categorically different approach), and reduces revision budget to 1. All overrides are iteration-scoped (auto-revert). A cooldown of 1 iteration prevents back-to-back resets; total resets capped at `max(1, max_iterations // 4)`. Detection is deterministic; stochasticity comes from the LLM response. Disabled in the `quick` preset (too few iterations). Configurable via `--no-stall-reset`, `--stall-window`, `--stall-epsilon` (CLI) or `AgentConfig` fields (Python API). `STALL_RESET` events are logged for post-hoc analysis.
 
 ### Session Directory Layout (skills only)
 
