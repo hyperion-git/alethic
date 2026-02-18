@@ -310,12 +310,14 @@ class MathAgent:
         state: RunState,
         log: EventLog,
         threshold: float,
+        max_revisions: int | None = None,
     ) -> AgentResult | None:
         """Run revision sub-loop. Returns AgentResult if solved, else None (mutates state)."""
+        effective_max_revisions = max_revisions if max_revisions is not None else self.config.max_revisions_per_cycle
         current_solution = solution
 
-        for rev_num in range(1, self.config.max_revisions_per_cycle + 1):
-            self._log(f"[REVISE] Revision {rev_num}/{self.config.max_revisions_per_cycle}...")
+        for rev_num in range(1, effective_max_revisions + 1):
+            self._log(f"[REVISE] Revision {rev_num}/{effective_max_revisions}...")
             current_solution = revise(
                 self.client,
                 problem=problem,
