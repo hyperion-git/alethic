@@ -226,6 +226,25 @@ Otherwise, proceed with the derivation.
 """
 
 # ---------------------------------------------------------------------------
+# Strategy reset prompt (stall detection)
+# ---------------------------------------------------------------------------
+
+PHYSICS_STRATEGY_RESET_ADDENDUM = """
+
+## STRATEGY RESET — Previous approaches exhausted
+
+The following high-level derivation strategies have been tried and failed:
+{failed_approaches}
+
+You MUST use a categorically different derivation technique.
+Do NOT refine, extend, or repair any previous approach.
+Start from a completely different physical or mathematical foundation.
+Consider approaches from a different formalism entirely (e.g., if \
+Lagrangian methods failed, try Hamiltonian; if perturbation theory \
+failed, try exact methods or symmetry arguments).
+"""
+
+# ---------------------------------------------------------------------------
 # Tool guidance (conditionally appended based on AgentConfig.tool_guidance)
 # ---------------------------------------------------------------------------
 

@@ -464,6 +464,70 @@ class TestFailedApproachInGenerate:
         user_msg = messages[0]["content"]
         assert "Previously attempted" not in user_msg
 
+    def test_generate_with_reset_context(self):
+        from alethic.subagents import generate
+
+        client = self._make_mock_client()
+        config = AgentConfig(enable_code_execution=False, verbose=False)
+
+        generate(
+            client,
+            problem="Prove sqrt(2) is irrational",
+            config=config,
+            iteration=3,
+            balanced=False,
+            failed_approaches=("Tried induction", "Tried contradiction"),
+            reset_context="## STRATEGY RESET\nUse a different approach.",
+        )
+
+        call_kwargs = client.messages.create.call_args
+        messages = call_kwargs.kwargs.get("messages") or call_kwargs[1].get("messages")
+        user_msg = messages[0]["content"]
+        # Reset context should appear instead of standard failed_approaches
+        assert "STRATEGY RESET" in user_msg
+        # Standard "Previously attempted" block should NOT appear
+        assert "Previously attempted" not in user_msg
+
+    def test_generate_reset_context_none_uses_standard(self):
+        from alethic.subagents import generate
+
+        client = self._make_mock_client()
+        config = AgentConfig(enable_code_execution=False, verbose=False)
+
+        generate(
+            client,
+            problem="Prove sqrt(2) is irrational",
+            config=config,
+            iteration=2,
+            balanced=False,
+            failed_approaches=("Tried induction",),
+            reset_context=None,
+        )
+
+        call_kwargs = client.messages.create.call_args
+        messages = call_kwargs.kwargs.get("messages") or call_kwargs[1].get("messages")
+        user_msg = messages[0]["content"]
+        assert "Previously attempted" in user_msg
+
+
+# ── Strategy reset prompts ────────────────────────────────────────
+
+
+class TestStrategyResetPrompts:
+    def test_math_reset_addendum_exists(self):
+        from alethic.prompts import STRATEGY_RESET_ADDENDUM
+
+        assert "STRATEGY RESET" in STRATEGY_RESET_ADDENDUM
+        assert "MUST" in STRATEGY_RESET_ADDENDUM
+        assert "{failed_approaches}" in STRATEGY_RESET_ADDENDUM
+
+    def test_physics_reset_addendum_exists(self):
+        from alethic.physics_prompts import PHYSICS_STRATEGY_RESET_ADDENDUM
+
+        assert "STRATEGY RESET" in PHYSICS_STRATEGY_RESET_ADDENDUM
+        assert "MUST" in PHYSICS_STRATEGY_RESET_ADDENDUM
+        assert "{failed_approaches}" in PHYSICS_STRATEGY_RESET_ADDENDUM
+
 
 # ── Verifier prompt severity tags (Task 3.1) ─────────────────────
 

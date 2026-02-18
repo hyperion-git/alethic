@@ -189,6 +189,23 @@ approach prevents confirmation bias.
 """
 
 # ---------------------------------------------------------------------------
+# Strategy reset prompt (stall detection)
+# ---------------------------------------------------------------------------
+
+STRATEGY_RESET_ADDENDUM = """
+
+## STRATEGY RESET — Previous approaches exhausted
+
+The following high-level strategies have been tried and failed:
+{failed_approaches}
+
+You MUST use a categorically different proof technique.
+Do NOT refine, extend, or repair any previous approach.
+Start from a completely different mathematical foundation.
+Consider approaches from a different branch of mathematics entirely.
+"""
+
+# ---------------------------------------------------------------------------
 # Tool guidance (conditionally appended based on AgentConfig.tool_guidance)
 # ---------------------------------------------------------------------------
 
