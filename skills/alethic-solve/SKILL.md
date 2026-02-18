@@ -25,12 +25,27 @@ The user's input is: $ARGUMENTS
 | verb | solve |
 | agent_title | Mathematical Reasoning |
 | session_skill | alethic-solve |
+| strategy_reset_addendum | (from "Strategy Reset Addendum" section below) |
 
 ## Balanced Approach Addendum
 
 > Append this to the Generator's user message (unless `--no-balanced` is set):
 
 7. **Explore counterexamples first (balanced approach).** Before committing to a proof strategy, spend at least a few sentences considering whether the statement might be FALSE. Try small cases (n = 0, 1, 2, 3), constant/linear functions, boundary conditions, and degenerate cases (empty sets, zero vectors, identity matrices). If you find a counterexample, present it as your solution. If you cannot find one, explain why and then proceed with the proof.
+
+## Strategy Reset Addendum
+
+> Injected into the Generator prompt (replacing the standard failed_approaches block) when a stall reset is triggered. The `{failed_approaches}` placeholder is filled by the orchestrator.
+
+## STRATEGY RESET — Previous approaches exhausted
+
+The following high-level strategies have been tried and failed:
+{failed_approaches}
+
+You MUST use a categorically different proof technique.
+Do NOT refine, extend, or repair any previous approach.
+Start from a completely different mathematical foundation.
+Consider approaches from a different branch of mathematics entirely.
 
 ## Examples
 

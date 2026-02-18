@@ -25,12 +25,27 @@ The user's input is: $ARGUMENTS
 | verb | derive |
 | agent_title | Physics Derivation |
 | session_skill | alethic-derive |
+| strategy_reset_addendum | (from "Strategy Reset Addendum" section below) |
 
 ## Balanced Approach Addendum
 
 > Append this to the Generator's user message (unless `--no-balanced` is set):
 
 7. **Check limiting cases and dimensions (balanced approach).** Before committing to a derivation approach, check dimensional consistency of the expected result and verify at least one known limiting case (e.g., ħ→0 classical limit, c→∞ non-relativistic limit, weak-coupling limit). Also consider whether the problem's premise might be flawed — does it contradict known physical principles? If so, present the contradiction. Otherwise, proceed with the derivation.
+
+## Strategy Reset Addendum
+
+> Injected into the Generator prompt (replacing the standard failed_approaches block) when a stall reset is triggered. The `{failed_approaches}` placeholder is filled by the orchestrator.
+
+## STRATEGY RESET — Previous approaches exhausted
+
+The following high-level derivation strategies have been tried and failed:
+{failed_approaches}
+
+You MUST use a categorically different derivation technique.
+Do NOT refine, extend, or repair any previous approach.
+Start from a completely different physical or mathematical foundation.
+Consider approaches from a different formalism entirely (e.g., if Lagrangian methods failed, try Hamiltonian; if perturbation theory failed, try exact methods or symmetry arguments).
 
 ## Examples
 

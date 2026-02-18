@@ -18,6 +18,7 @@ The following variables are defined by the thin SKILL.md that loaded this file. 
 | `{session_skill}` | Skill identifier | alethic-solve | alethic-derive |
 | `{references_dir}` | Absolute path to skill's `references/` directory | (resolved at runtime) | (resolved at runtime) |
 | `{balanced_addendum}` | Domain-specific balanced approach text | (from thin SKILL.md) | (from thin SKILL.md) |
+| `{strategy_reset_addendum}` | Domain-specific strategy reset text | (from thin SKILL.md) | (from thin SKILL.md) |
 
 **Note on filenames**: Worklog files use fixed names (`solution.md`, `best_solution.md`, `best_solution_path`) regardless of domain. Only user-facing text and sub-agent instructions use `{noun}`.
 
@@ -42,21 +43,24 @@ Parse the user's input for optional flags and the problem statement.
 | `--json` | `-j` | off | Output structured JSON summary |
 | `--model` | `-m` | opus | Model tier for sub-agents (haiku/sonnet/opus) |
 | `--tools` | — | `sympy,numpy` | Comma-separated list of tool guidance to include (`sympy`, `numpy`, or `none`) |
+| `--no-stall-reset` | — | off | Disable stall detection and strategy resets |
+| `--stall-window` | — | (from preset) | Iterations without meaningful improvement before triggering reset |
+| `--stall-epsilon` | — | (from preset) | Minimum confidence improvement to count as meaningful |
 
 ### Presets
 
 If `--preset` is given, apply these values first, then let explicit flags override:
 
-| Preset | Iters | Revs | Threshold | Budget | Best-of |
-|--------|-------|------|-----------|--------|---------|
-| `quick` | 2 | 1 | 0.85 | 20 | 1 |
-| `default` | 5 | 3 | 0.90 | 50 | 2 |
-| `thorough` | 8 | 5 | 0.95 | 80 | 3 |
-| `extreme` | 12 | 5 | 0.97 | 120 | 5 |
+| Preset | Iters | Revs | Threshold | Budget | Best-of | Stall | Window | Epsilon | N-Boost |
+|--------|-------|------|-----------|--------|---------|-------|--------|---------|---------|
+| `quick` | 2 | 1 | 0.85 | 20 | 1 | off | 2 | 0.03 | 0 |
+| `default` | 5 | 3 | 0.90 | 50 | 2 | on | 2 | 0.03 | 1 |
+| `thorough` | 8 | 5 | 0.95 | 80 | 3 | on | 3 | 0.02 | 1 |
+| `extreme` | 12 | 5 | 0.97 | 120 | 5 | on | 3 | 0.02 | 2 |
 
-Extract `max_iterations`, `max_revisions`, `max_budget`, `confidence_threshold`, `best_of_n`, and `textbook` from flags (or defaults/preset). The remaining text is the problem statement.
+Extract `max_iterations`, `max_revisions`, `max_budget`, `confidence_threshold`, `best_of_n`, `stall_reset`, `stall_window`, `stall_epsilon`, `reset_n_boost`, and `textbook` from flags (or defaults/preset). The remaining text is the problem statement.
 
-**Validation:** If `max_iterations` < 1, set to 1 and warn the user. If `max_revisions` < 0, set to 0. If `max_budget` < 3, set to 3. If `confidence_threshold` is outside (0, 1], clamp to [0.50, 1.0]. If `best_of_n` < 1, set to 1. If no problem statement is found, ask the user to provide one. If `--textbook` is set, increase `max_budget` by the textbook budget supplement: quick -> +5, default -> +7, thorough -> +10, extreme -> +12 (or +7 if no preset). If `--model` is not one of "haiku", "sonnet", "opus", default to "opus" and warn. If `--file` is set, Read the file. If it doesn't exist, ask the user to provide a valid path.
+**Validation:** If `max_iterations` < 1, set to 1 and warn the user. If `max_revisions` < 0, set to 0. If `max_budget` < 3, set to 3. If `confidence_threshold` is outside (0, 1], clamp to [0.50, 1.0]. If `best_of_n` < 1, set to 1. If `stall_window` < 1, set to 1. If `stall_epsilon` < 0.0, set to 0.0. If `--no-stall-reset` is set, set `stall_reset` to false (overrides preset). If no problem statement is found, ask the user to provide one. If `--textbook` is set, increase `max_budget` by the textbook budget supplement: quick -> +5, default -> +7, thorough -> +10, extreme -> +12 (or +7 if no preset). If `--model` is not one of "haiku", "sonnet", "opus", default to "opus" and warn. If `--file` is set, Read the file. If it doesn't exist, ask the user to provide a valid path.
 
 ---
 
@@ -156,6 +160,7 @@ Event types and their fields:
 | `write_textbook` | `"section": {K}, "total": {N}` |
 | `verify_fidelity` | `"fidelity": "{verdict}"` |
 | `accept` | `"iteration": {N}, "confidence": {confidence}` |
+| `stall_reset` | `"iteration": {N}, "reason": "{no_progress\|major_flaw_streak}", "n_override": {N_total}, "resets_used": {count}, "stall_counter": {counter}` |
 | `fail` | `"reason": "iterations_exhausted" or "budget_exhausted"` |
 
 Log each event immediately after the corresponding Task call completes (or fails). This enables post-hoc analysis of session dynamics.
@@ -209,7 +214,11 @@ Log each event immediately after the corresponding Task call completes (or fails
        "max_budget": {max_budget},
        "confidence_threshold": {confidence_threshold},
        "best_of_n": {best_of_n},
-       "textbook": {textbook}
+       "textbook": {textbook},
+       "stall_reset": {stall_reset},
+       "stall_window": {stall_window},
+       "stall_epsilon": {stall_epsilon},
+       "reset_n_boost": {reset_n_boost}
      },
      "status": "running",
      "current_iteration": 0,
@@ -220,6 +229,12 @@ Log each event immediately after the corresponding Task call completes (or fails
      "verdict": null,
      "output_file": null,
      "failed_approaches": [],
+     "stall_state": {
+       "iterations_since_meaningful_improvement": 0,
+       "iteration_final_verdicts": [],
+       "resets_used": 0,
+       "reset_cooldown_remaining": 0
+     },
      "elapsed_seconds": null,
      "created_at": "{ISO 8601 timestamp}",
      "completed_at": null
@@ -240,7 +255,9 @@ Log each event immediately after the corresponding Task call completes (or fails
    Problem: {first 200 chars of problem}...
    Config: {max_iterations} iterations, {max_revisions} revisions/iter, threshold {confidence_threshold}, budget {max_budget} calls, best-of-{best_of_n}
    Worst-case API calls: {estimate} (budget cap: {max_budget})
+   Stall reset: enabled (window={stall_window}, epsilon={stall_epsilon}, boost=+{reset_n_boost})
    ```
+   When `stall_reset` is off, replace the stall reset line with: `Stall reset: disabled`
    When `--textbook` is set, also print:
    ```
    Textbook pipeline: +{budget_supplement} budget ({supplement_detail})
@@ -255,13 +272,40 @@ Loop for iterations 1 through `max_iterations`. For each iteration N:
 
 **Budget check**: Before each sub-agent call, check `task_calls < max_budget`. If budget is exhausted, break the loop immediately and go to Step 3.
 
+**Capture pre-iteration best**: At the start of each iteration, record `pre_iter_best = best_confidence` (needed for stall tracking in Step 2e).
+
+### Step 2-pre: Stall Check
+
+Before generating candidates, check whether a stall-triggered strategy reset should fire.
+
+**Skip this step** if `stall_reset` is off (or `--no-stall-reset` was set).
+
+1. **Guard conditions** — do NOT trigger if:
+   - `reset_cooldown_remaining > 0` (decrement it and skip)
+   - `resets_used >= max(1, max_iterations // 4)` (reset budget exhausted)
+
+2. **Detector 1 — Confidence plateau**: If `iterations_since_meaningful_improvement >= stall_window`, trigger.
+
+3. **Detector 2 — Major-flaw streak**: If the last 2 entries in `iteration_final_verdicts` are both `"major_flaw"`, trigger.
+
+4. **If triggered**:
+   - Determine reason: `"major_flaw_streak"` if detector 2 matched, else `"no_progress"`
+   - Set `n_this_iter = best_of_n + reset_n_boost` (override candidate count for this iteration)
+   - Set `max_revisions_this_iter = 1` (cap revisions to minimize wasted budget)
+   - Build `reset_context`: format the `{strategy_reset_addendum}` text, replacing `{failed_approaches}` with the last 2 entries from the `failed_approaches` list (formatted as bullet points: `- Iter {N}: {strategy} -> {verdict} ({confidence}): {top_issue}`). If fewer than 2 entries exist, use all available. If none, use `- (none recorded)`.
+   - Increment `resets_used`, set `reset_cooldown_remaining = 1`
+   - **Log event**: `{"type":"stall_reset","iteration":{N},"reason":"{reason}","n_override":{n_this_iter},"resets_used":{resets_used},"stall_counter":{iterations_since_meaningful_improvement},"timestamp":"..."}`
+   - Print: `[STALL RESET] Triggered (reason: {reason}) — N={n_this_iter}, max_revisions=1`
+
+5. **If NOT triggered**: Set `n_this_iter = best_of_n`, `max_revisions_this_iter = max_revisions`, `reset_context = null`. If `reset_cooldown_remaining > 0`, decrement it.
+
 ### Step 2a: Generate
 
 1. Use Bash: `mkdir -p {session_dir}/worklog/iter{N}/`
 
 2. **Read the Generator prompt** from `{references_dir}/generator.md`. If `--no-balanced` is NOT set, append the `{balanced_addendum}` text to the prompt. Then, for each tool in the `--tools` list, read `{references_dir}/tools/{tool}-generator.md` (if it exists) and append its contents to the prompt.
 
-3. **Generate `best_of_n` candidates.** For each candidate C = 1 to `best_of_n`:
+3. **Generate `n_this_iter` candidates.** For each candidate C = 1 to `n_this_iter` (which equals `best_of_n` normally, or `best_of_n + reset_n_boost` during a stall reset):
 
    **Budget check**: If `task_calls >= max_budget`, stop generating more candidates and proceed with whatever candidates have been produced.
 
@@ -279,7 +323,8 @@ Loop for iterations 1 through `max_iterations`. For each iteration N:
    - "Read the problem from `{session_dir}/problem.md`."
    - When `best_of_n == 1`: "Write your complete {noun} to `{session_dir}/worklog/iter{N}/solution.md`."
    - When `best_of_n > 1`: "Write your complete {noun} to `{session_dir}/worklog/iter{N}/candidate_{C}.md`."
-   - If iteration 2+: include the strategy history from `failed_approaches` — "Previous attempts:\n- Iter 1: {strategy} -> {verdict} ({confidence}): {top_issue}\n- Iter 2: {strategy} -> {verdict} ({confidence}): {top_issue}\nTry a DIFFERENT approach."
+   - If iteration 2+ AND `reset_context` is NOT null (stall reset active): Replace the standard "Previous attempts:" block with the `reset_context` text. Do not include the normal failed_approaches history — the reset addendum already contains the relevant recent failures.
+   - If iteration 2+ AND `reset_context` IS null: include the strategy history from `failed_approaches` — "Previous attempts:\n- Iter 1: {strategy} -> {verdict} ({confidence}): {top_issue}\n- Iter 2: {strategy} -> {verdict} ({confidence}): {top_issue}\nTry a DIFFERENT approach."
    - When `best_of_n > 1` and C > 1: "Other candidates are being generated in parallel. Use a DIFFERENT strategy from your default approach to maximize diversity."
    - "After writing the {noun} file, return a ONE-LINE summary of your strategy and approach (e.g., 'Proof by contradiction using infinite descent' or 'Lagrangian mechanics with small-angle approximation')."
 
@@ -348,11 +393,14 @@ When `best_of_n == 1`, print: `[Iter {N}] Verifier: VERDICT: {verdict} | CONFIDE
 **Also print cumulative iteration history table** (accumulates across iterations; skip if `--quiet` is set):
 
 ```markdown
-| Iter | Candidates | Best Verdict   | Confidence |
-|------|-----------|----------------|------------|
-| 1    | 3/3       | MINOR_ISSUES   | 0.87       |
-| 2    | 3/3       | CORRECT        | 0.94       |
+| Iter | Candidates | Best Verdict   | Confidence | Reset |
+|------|-----------|----------------|------------|-------|
+| 1    | 3/3       | MINOR_ISSUES   | 0.87       |       |
+| 2    | 3/3       | CORRECT        | 0.94       |       |
+| 3    | 4/3       | MINOR_ISSUES   | 0.88       | STALL |
 ```
+
+The "Reset" column shows "STALL" when a stall reset was triggered for that iteration (Step 2-pre fired), empty otherwise. The "Candidates" column shows `n_this_iter/best_of_n` — the actual/default count, which may differ during a stall reset.
 
 ### Step 2c: Check Verdict and Update Best
 
@@ -385,7 +433,7 @@ When `best_of_n == 1`, print: `[Iter {N}] Verifier: VERDICT: {verdict} | CONFIDE
 
 **Read the Reviser prompt** from `{references_dir}/reviser.md`.
 
-For revision M = 1 to `max_revisions`:
+For revision M = 1 to `max_revisions_this_iter` (which equals `max_revisions` normally, or 1 during a stall reset — set in Step 2-pre):
 
 **Budget check**: If `task_calls >= max_budget`, break out of revision loop.
 
@@ -455,6 +503,12 @@ After each iteration (whether solved or not):
    - `"best_verification_path": "{path to corresponding verification file}"`
    - `"verdict": "{latest verdict}"`
    - `"failed_approaches": [{accumulated list}]`
+
+3. **Update stall tracking** (skip if `stall_reset` is off):
+   - Append the iteration's final verdict (the best candidate's verdict after all revisions) to `iteration_final_verdicts` (keep only the last 3 entries).
+   - If `best_confidence > pre_iter_best + stall_epsilon`: reset `iterations_since_meaningful_improvement` to 0.
+   - Otherwise: increment `iterations_since_meaningful_improvement`.
+   - Update `stall_state` in `session.json` with the new values of `iterations_since_meaningful_improvement`, `iteration_final_verdicts`, `resets_used`, and `reset_cooldown_remaining`.
 
 ---
 
@@ -727,7 +781,7 @@ After presenting results, finalize the session state for future reference.
 
 ## Orchestrator Context Management
 
-- **DO** track: iteration number, verdict string, confidence float, file paths, task_calls counter
+- **DO** track: iteration number, verdict string, confidence float, file paths, task_calls counter, stall state (iterations_since_meaningful_improvement, iteration_final_verdicts, resets_used, reset_cooldown_remaining)
 - **DO NOT** read {noun}/verification files into your context unless presenting the final result
 - Let the sub-agents do all {domain} reasoning — you are a coordinator
 - Only read `best_solution.md` at the very end when presenting results
@@ -747,3 +801,4 @@ After presenting results, finalize the session state for future reference.
 - **Session storage**: Sessions are stored in `.alethic/` in the project directory (falls back to `/tmp/alethic-*` outside git repos). Intermediate files live in `worklog/` subdirectories and can be pruned with `rm -rf .alethic/*/worklog/`. Add `.alethic/` to your `.gitignore`.
 - **Textbook conversion**: The `--textbook` flag adds a multi-stage pipeline (Planner -> Writer x N -> Fidelity Verifier) after the main loop. This increases Task calls by 3-10 depending on {noun} length. Budget is auto-adjusted. If the Fidelity Verifier detects MAJOR_ALTERATION (content changed), it falls back to the simple beautifier.
 - **Textbook fidelity**: The Fidelity Verifier checks that the textbook conversion preserved all content. However, it uses the same model (Claude Opus) as the Writer, so shared blind spots are possible. The original verified {noun} is always preserved at `worklog/best_solution.md`.
+- **Stall detection**: The `--no-stall-reset`, `--stall-window`, and `--stall-epsilon` flags control stall detection behavior. When the loop stalls (no confidence improvement for `stall_window` iterations, or 2 consecutive MAJOR_FLAW verdicts), the orchestrator triggers a strategy reset: widens best-of-N by `reset_n_boost`, injects a domain-specific reset addendum into the Generator prompt, and caps revisions at 1. Resets are budget-limited to `max(1, max_iterations // 4)` with a 1-iteration cooldown. Disabled in the `quick` preset (too few iterations). Mirrors the Python library's `_check_stall()` and `_build_reset_context()` behavior.
