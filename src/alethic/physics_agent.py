@@ -46,5 +46,10 @@ class PhysicsAgent(MathAgent):
     def _get_tool_guidance_map(self) -> dict:
         return PHYSICS_TOOL_GUIDANCE
 
+    def _reset_addendum(self) -> str:
+        from alethic.physics_prompts import PHYSICS_STRATEGY_RESET_ADDENDUM
+
+        return PHYSICS_STRATEGY_RESET_ADDENDUM
+
     def _log_header(self) -> str:
         return "ALETHIC PHYSICS DERIVATION AGENT"

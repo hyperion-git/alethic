@@ -155,6 +155,46 @@ class MathAgent:
                 system += guide_map[tool][role]
         return system
 
+    def _reset_addendum(self) -> str:
+        """Return the strategy reset prompt template for this domain.
+
+        Override in subclasses to use domain-specific reset prompts.
+        """
+        from alethic.prompts import STRATEGY_RESET_ADDENDUM
+
+        return STRATEGY_RESET_ADDENDUM
+
+    def _check_stall(self, state: RunState) -> bool:
+        """Check whether a stall-triggered reset should fire this iteration."""
+        if not self.config.stall_reset:
+            return False
+        if state.reset_cooldown_remaining > 0:
+            return False
+        max_resets = max(1, self.config.max_iterations // 4)
+        if state.resets_used >= max_resets:
+            return False
+
+        # Detector 1: no meaningful progress for stall_window iterations
+        if state.iterations_since_meaningful_improvement >= self.config.stall_window:
+            return True
+
+        # Detector 2: last 2 iteration-final verdicts are both MAJOR_FLAW
+        verdicts = state.iteration_final_verdicts
+        if (
+            len(verdicts) >= 2
+            and verdicts[-1] == Verdict.MAJOR_FLAW
+            and verdicts[-2] == Verdict.MAJOR_FLAW
+        ):
+            return True
+
+        return False
+
+    def _build_reset_context(self, failed_approaches: list[str]) -> str:
+        """Build the strategy-reset prompt overlay for a reset iteration."""
+        recent = failed_approaches[-2:] if len(failed_approaches) > 2 else failed_approaches
+        approaches_text = "\n".join(f"- {a}" for a in recent) if recent else "- (none recorded)"
+        return self._reset_addendum().format(failed_approaches=approaches_text)
+
     def _log_header(self) -> str:
         return "ALETHIC MATH AGENT"
 
