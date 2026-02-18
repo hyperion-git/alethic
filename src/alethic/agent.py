@@ -180,14 +180,11 @@ class MathAgent:
 
         # Detector 2: last 2 iteration-final verdicts are both MAJOR_FLAW
         verdicts = state.iteration_final_verdicts
-        if (
+        return (
             len(verdicts) >= 2
             and verdicts[-1] == Verdict.MAJOR_FLAW
             and verdicts[-2] == Verdict.MAJOR_FLAW
-        ):
-            return True
-
-        return False
+        )
 
     def _build_reset_context(self, failed_approaches: list[str]) -> str:
         """Build the strategy-reset prompt overlay for a reset iteration."""
