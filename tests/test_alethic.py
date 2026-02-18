@@ -436,6 +436,27 @@ class TestCLI:
         args = parser.parse_args(["--json", "test"])
         assert args.json_output is True
 
+    def test_cli_no_stall_reset_flag(self):
+        from alethic.cli import _build_config, build_parser
+        parser = build_parser()
+        args = parser.parse_args(["--no-stall-reset", "test"])
+        config = _build_config(args)
+        assert config.stall_reset is False
+
+    def test_cli_stall_window_flag(self):
+        from alethic.cli import _build_config, build_parser
+        parser = build_parser()
+        args = parser.parse_args(["--stall-window", "4", "test"])
+        config = _build_config(args)
+        assert config.stall_window == 4
+
+    def test_cli_stall_epsilon_flag(self):
+        from alethic.cli import _build_config, build_parser
+        parser = build_parser()
+        args = parser.parse_args(["--stall-epsilon", "0.05", "test"])
+        config = _build_config(args)
+        assert config.stall_epsilon == 0.05
+
 
 # ── Integration test with mocked API ──────────────────────────────────
 

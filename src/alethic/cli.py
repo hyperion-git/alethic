@@ -156,6 +156,23 @@ Examples:
         default="sympy,numpy",
         help="Comma-separated tool guidance to include (sympy, numpy, none). Default: sympy,numpy",
     )
+    parser.add_argument(
+        "--no-stall-reset",
+        action="store_true",
+        help="Disable stall-triggered strategy reset",
+    )
+    parser.add_argument(
+        "--stall-window",
+        type=int,
+        default=None,
+        help="Iterations without improvement before triggering reset (default: 2)",
+    )
+    parser.add_argument(
+        "--stall-epsilon",
+        type=float,
+        default=None,
+        help="Minimum confidence improvement to count as progress (default: 0.03)",
+    )
 
     return parser
 
@@ -171,6 +188,8 @@ _FLAG_TO_CONFIG = {
     "max_tokens": "max_tokens",
     "thinking_budget": "thinking_budget",
     "best_of_n": "best_of_n",
+    "stall_window": "stall_window",
+    "stall_epsilon": "stall_epsilon",
 }
 
 
@@ -192,6 +211,9 @@ def _build_config(args: argparse.Namespace) -> AgentConfig:
 
     tool_guidance = frozenset() if args.tools == "none" else frozenset(args.tools.split(","))
     overrides["tool_guidance"] = tool_guidance
+
+    if args.no_stall_reset:
+        overrides["stall_reset"] = False
 
     # Auto-bump max_tokens for extended thinking when not explicitly set.
     # Resolve thinking state and budget *before* constructing the config so we
@@ -224,6 +246,8 @@ _FLAGS_WITH_VALUE = frozenset({
     "--thinking-budget",
     "-B", "--best-of",
     "--tools",
+    "--stall-window",
+    "--stall-epsilon",
 })
 
 
