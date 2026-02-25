@@ -15,7 +15,9 @@ import json
 import sys
 from typing import TYPE_CHECKING, Any
 
-from alethic.models import AgentConfig
+from alethic.models import AgentConfig, Verdict, VerifierConfig
+from alethic.output import format_consensus
+from alethic.verifier_agent import CheckerAgent, VerifierAgent
 
 if TYPE_CHECKING:
     from alethic.agent import MathAgent  # noqa: TC004
@@ -44,6 +46,10 @@ Examples:
   %(prog)s --no-code "Prove the AM-GM inequality"
   %(prog)s --json "Solve x^2 - 5x + 6 = 0"
   %(prog)s --thinking "Prove the Basel problem"
+  %(prog)s verify solution.md --problem-text "Is 1+1=2?"
+  %(prog)s verify .alethic/session-dir/ --verifiers 5
+  %(prog)s check derivation.md --domain physics
+  %(prog)s check solution.md --json
 """,
     )
 
@@ -174,6 +180,30 @@ Examples:
         help="Minimum confidence improvement to count as progress (default: 0.03)",
     )
 
+    # verify/check specific arguments
+    parser.add_argument(
+        "--problem-text",
+        default=None,
+        help="Problem statement text (verify only)",
+    )
+    parser.add_argument(
+        "--problem-file", "-P",
+        default=None,
+        help="Read problem from file (verify only)",
+    )
+    parser.add_argument(
+        "--domain",
+        choices=["math", "physics"],
+        default=None,
+        help="Override domain auto-detection (verify/check only)",
+    )
+    parser.add_argument(
+        "--verifiers", "-K",
+        type=int,
+        default=None,
+        help="Number of independent verifiers (verify/check only, default: 3)",
+    )
+
     return parser
 
 
@@ -248,6 +278,10 @@ _FLAGS_WITH_VALUE = frozenset({
     "--tools",
     "--stall-window",
     "--stall-epsilon",
+    "--problem-text",
+    "-P", "--problem-file",
+    "--domain",
+    "-K", "--verifiers",
 })
 
 
@@ -274,10 +308,110 @@ def _detect_subcommand(argv: list[str]) -> tuple[str | None, list[str]]:
                 skip_next = True
             continue
         # First positional argument found
-        if arg in ("solve", "derive"):
+        if arg in ("solve", "derive", "verify", "check"):
             return arg, argv[:i] + argv[i + 1:]
         break
     return None, argv
+
+
+def _build_verifier_config(args: argparse.Namespace) -> VerifierConfig:
+    """Build VerifierConfig from parsed CLI args."""
+    overrides: dict[str, Any] = {}
+
+    if args.model is not None:
+        overrides["model"] = args.model
+    if args.verifiers is not None:
+        overrides["num_verifiers"] = args.verifiers
+    if args.domain is not None:
+        overrides["domain"] = args.domain
+    if args.max_tokens is not None:
+        overrides["max_tokens"] = args.max_tokens
+    if args.thinking:
+        overrides["extended_thinking"] = True
+    if args.thinking_budget is not None:
+        overrides["thinking_budget"] = args.thinking_budget
+
+    overrides["enable_code_execution"] = not args.no_code
+    overrides["verbose"] = not args.quiet
+
+    tool_guidance = frozenset() if args.tools == "none" else frozenset(args.tools.split(","))
+    # Expand default for verify/check to include scipy, matplotlib
+    if args.tools == "sympy,numpy":
+        tool_guidance = frozenset({"sympy", "numpy", "scipy", "matplotlib"})
+    overrides["tool_guidance"] = tool_guidance
+
+    if args.preset:
+        return VerifierConfig.from_preset(args.preset, **overrides)
+    return VerifierConfig(**overrides)
+
+
+def _verify_check_handler(args: argparse.Namespace, command: str) -> int:
+    """Handle verify and check subcommands."""
+    from pathlib import Path
+
+    from alethic.session_reader import resolve_session_input
+
+    config = _build_verifier_config(args)
+
+    # Resolve input: positional arg is a file or session dir
+    input_path = args.problem  # reuses the positional "problem" slot
+    if not input_path:
+        print("Error: provide a solution file or session directory", file=sys.stderr)
+        return 2
+
+    problem: str | None = None
+    solution: str | None = None
+    p = Path(input_path)
+
+    if p.is_dir():
+        # Session directory
+        try:
+            problem, solution = resolve_session_input(str(p))
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 2
+    elif p.is_file():
+        solution = p.read_text(encoding="utf-8").strip()
+    else:
+        print(f"Error: path does not exist: {input_path}", file=sys.stderr)
+        return 2
+
+    if not solution:
+        print("Error: solution is empty", file=sys.stderr)
+        return 2
+
+    # For verify: resolve problem from flags or session
+    if command == "verify":
+        if args.problem_text:
+            problem = args.problem_text
+        elif args.problem_file:
+            try:
+                problem = Path(args.problem_file).read_text(encoding="utf-8").strip()
+            except OSError as e:
+                print(f"Error: cannot read problem file: {e}", file=sys.stderr)
+                return 2
+
+        if not problem:
+            print("Error: verify requires a problem statement (--problem-text or --problem-file)", file=sys.stderr)
+            return 2
+
+    # Run
+    try:
+        if command == "verify":
+            agent = VerifierAgent(config=config, api_key=args.api_key)
+            result = agent.verify(problem=problem, solution=solution)  # type: ignore[arg-type]
+        else:
+            agent = CheckerAgent(config=config, api_key=args.api_key)  # type: ignore[assignment]
+            result = agent.check(solution=solution)
+    except KeyboardInterrupt:
+        print("\n[Interrupted by user]")
+        return 130
+
+    # Output
+    mode = "json" if args.json_output else ("quiet" if args.quiet else "text")
+    print(format_consensus(result, mode=mode, command=command))
+
+    return 0 if result.verdict == Verdict.CORRECT else 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -288,6 +422,10 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    # Dispatch verify/check to dedicated handler
+    if command in ("verify", "check"):
+        return _verify_check_handler(args, command)
 
     # Get problem text
     if args.file:

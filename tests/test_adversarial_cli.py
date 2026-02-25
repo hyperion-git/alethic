@@ -319,3 +319,83 @@ class TestDetectSubcommandCombinations:
         cmd, remaining = _detect_subcommand(["SOLVE", "problem"])
         assert cmd is None
         assert remaining == ["SOLVE", "problem"]
+
+    def test_detect_verify_subcommand(self):
+        cmd, argv = _detect_subcommand(["verify", "--problem-text", "test", "solution.md"])
+        assert cmd == "verify"
+        assert "solution.md" in argv
+
+    def test_detect_check_subcommand(self):
+        cmd, argv = _detect_subcommand(["check", "solution.md"])
+        assert cmd == "check"
+        assert argv == ["solution.md"]
+
+
+# ── verify/check CLI handler tests ────────────────────────────────────
+
+
+class TestVerifyCheckCLI:
+    @patch("alethic.cli.CheckerAgent")
+    def test_check_handler_basic(self, mock_checker_cls, tmp_path):
+        """main() with check subcommand should create CheckerAgent and call check()."""
+        from alethic.models import ConsensusResult, Verdict, VerificationResult
+
+        mock_result = ConsensusResult(
+            verdict=Verdict.CORRECT,
+            confidence=0.90,
+            confidence_range=(0.90, 0.90),
+            critique="ok",
+            issues=[],
+            individual_results=[
+                VerificationResult(verdict=Verdict.CORRECT, critique="ok", confidence=0.90),
+            ],
+            domain_detected="math",
+            num_verifiers=1,
+            elapsed_seconds=1.0,
+        )
+        mock_agent = MagicMock()
+        mock_agent.check.return_value = mock_result
+        mock_checker_cls.return_value = mock_agent
+
+        sol_file = tmp_path / "solution.md"
+        sol_file.write_text("2+2=4 by axioms")
+
+        ret = main(["check", str(sol_file)])
+        assert ret == 0
+        mock_agent.check.assert_called_once()
+
+    @patch("alethic.cli.VerifierAgent")
+    def test_verify_handler_basic(self, mock_verifier_cls, tmp_path):
+        """main() with verify subcommand should create VerifierAgent and call verify()."""
+        from alethic.models import ConsensusResult, Verdict, VerificationResult
+
+        mock_result = ConsensusResult(
+            verdict=Verdict.CORRECT,
+            confidence=0.91,
+            confidence_range=(0.91, 0.91),
+            critique="ok",
+            issues=[],
+            individual_results=[
+                VerificationResult(verdict=Verdict.CORRECT, critique="ok", confidence=0.91),
+            ],
+            domain_detected="math",
+            num_verifiers=1,
+            elapsed_seconds=1.0,
+        )
+        mock_agent = MagicMock()
+        mock_agent.verify.return_value = mock_result
+        mock_verifier_cls.return_value = mock_agent
+
+        sol_file = tmp_path / "solution.md"
+        sol_file.write_text("1+1=2")
+
+        ret = main(["verify", str(sol_file), "--problem-text", "Is 1+1=2?"])
+        assert ret == 0
+        mock_agent.verify.assert_called_once()
+
+    def test_verify_without_problem_errors(self, tmp_path):
+        """verify without --problem-text or --problem-file should return error code."""
+        sol_file = tmp_path / "solution.md"
+        sol_file.write_text("answer")
+        ret = main(["verify", str(sol_file)])
+        assert ret == 2
