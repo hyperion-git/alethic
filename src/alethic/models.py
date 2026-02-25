@@ -221,6 +221,67 @@ class AgentConfig:
         return cls(**params)
 
 
+@dataclass(frozen=True)
+class VerifierConfig:
+    """Configuration for standalone verify and check commands.
+
+    Controls multi-verifier consensus: K independent verifiers run in parallel,
+    results are mechanically aggregated, then a lightweight LLM pass cleans up
+    the merged critique.
+    """
+
+    model: str = "claude-opus-4-6"
+    num_verifiers: int = 3
+    tool_guidance: frozenset[str] = frozenset({"sympy", "numpy", "scipy", "matplotlib"})
+    domain: str | None = None  # None = auto-detect
+    enable_code_execution: bool = True
+    temperature: float = 0.2
+    max_tokens: int = 16384
+    extended_thinking: bool = False
+    thinking_budget: int = 15000
+    verbose: bool = True
+
+    def __post_init__(self) -> None:
+        if self.num_verifiers < 1:
+            raise ValueError(f"num_verifiers must be >= 1, got {self.num_verifiers}")
+        valid_tools = {"sympy", "numpy", "scipy", "matplotlib"}
+        invalid = self.tool_guidance - valid_tools
+        if invalid:
+            raise ValueError(f"Unknown tool_guidance values: {invalid}. Valid: {valid_tools}")
+        if self.max_tokens < 1:
+            raise ValueError(f"max_tokens must be >= 1, got {self.max_tokens}")
+
+    PRESETS: ClassVar[dict[str, dict[str, Any]]] = {
+        "quick": {"num_verifiers": 2, "extended_thinking": False, "max_tokens": 16384},
+        "default": {"num_verifiers": 3, "extended_thinking": False, "max_tokens": 16384},
+        "thorough": {"num_verifiers": 5, "extended_thinking": True, "thinking_budget": 15000, "max_tokens": 32768},
+        "extreme": {"num_verifiers": 7, "extended_thinking": True, "thinking_budget": 40000, "max_tokens": 65536},
+    }
+
+    @classmethod
+    def from_preset(cls, name: str, **overrides: Any) -> VerifierConfig:
+        """Create a VerifierConfig from a named preset with optional overrides.
+
+        Args:
+            name: Preset name (quick, default, thorough, extreme).
+            **overrides: Field values that override the preset.
+
+        Returns:
+            VerifierConfig with preset values, overridden by any explicit kwargs.
+
+        Raises:
+            ValueError: If the preset name is unknown.
+        """
+        if name not in cls.PRESETS:
+            raise ValueError(
+                f"Unknown preset '{name}'. "
+                f"Available presets: {', '.join(cls.PRESETS)}"
+            )
+        params = dict(cls.PRESETS[name])
+        params.update(overrides)
+        return cls(**params)
+
+
 @dataclass
 class Solution:
     """A candidate solution produced by the Generator."""
@@ -271,6 +332,38 @@ class VerificationResult:
             for issue in self.issues:
                 lines.append(f"  - {issue}")
         return "\n".join(lines)
+
+
+@dataclass(frozen=True)
+class ConsensusIssue:
+    """An issue flagged by one or more independent verifiers."""
+
+    text: str
+    severity: IssueSeverity = IssueSeverity.MAJOR
+    flagged_by: int = 1  # how many of K verifiers flagged this
+
+
+@dataclass
+class ConsensusResult:
+    """Synthesized result from K independent verifications."""
+
+    verdict: Verdict
+    confidence: float
+    confidence_range: tuple[float, float]
+    critique: str
+    issues: list[ConsensusIssue]
+    individual_results: list[VerificationResult]
+    domain_detected: str
+    num_verifiers: int
+    elapsed_seconds: float = 0.0
+
+    @property
+    def consensus_ratio(self) -> str:
+        """E.g. '3/3' or '2/3' -- how many verifiers agree with the majority verdict."""
+        if not self.individual_results:
+            return "0/0"
+        agree = sum(1 for r in self.individual_results if r.verdict == self.verdict)
+        return f"{agree}/{len(self.individual_results)}"
 
 
 @dataclass
