@@ -46,10 +46,13 @@ from alethic.models import (
     VerifierConfig,
 )
 from alethic.physics_agent import PhysicsAgent
+from alethic.verifier_agent import CheckerAgent, VerifierAgent
 
 __all__ = [
+    "CheckerAgent",
     "MathAgent",
     "PhysicsAgent",
+    "VerifierAgent",
     "AgentConfig",
     "AgentEvent",
     "AgentResult",
