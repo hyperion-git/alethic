@@ -120,12 +120,12 @@ class AgentConfig:
             raise ValueError(f"max_iterations must be >= 1, got {self.max_iterations}")
         if self.max_revisions_per_cycle < 0:
             raise ValueError(f"max_revisions_per_cycle must be >= 0, got {self.max_revisions_per_cycle}")
-        _VALID_TOOLS = {"sympy", "numpy"}
-        invalid = self.tool_guidance - _VALID_TOOLS
+        valid_tools = {"sympy", "numpy"}
+        invalid = self.tool_guidance - valid_tools
         if invalid:
             raise ValueError(
                 f"Unknown tool_guidance values: {invalid}. "
-                f"Valid values: {_VALID_TOOLS}"
+                f"Valid values: {valid_tools}"
             )
         if not 0.0 <= self.confidence_threshold <= 1.0:
             raise ValueError(f"confidence_threshold must be in [0.0, 1.0], got {self.confidence_threshold}")
@@ -250,6 +250,10 @@ class VerifierConfig:
             raise ValueError(f"Unknown tool_guidance values: {invalid}. Valid: {valid_tools}")
         if self.max_tokens < 1:
             raise ValueError(f"max_tokens must be >= 1, got {self.max_tokens}")
+        if self.temperature < 0:
+            raise ValueError(f"temperature must be >= 0, got {self.temperature}")
+        if self.thinking_budget < 0:
+            raise ValueError(f"thinking_budget must be >= 0, got {self.thinking_budget}")
 
     PRESETS: ClassVar[dict[str, dict[str, Any]]] = {
         "quick": {"num_verifiers": 2, "extended_thinking": False, "max_tokens": 16384},
