@@ -28,6 +28,8 @@ def detect_domain(text: str, *, override: str | None = None) -> str:
         "math" or "physics".
     """
     if override is not None:
+        if override not in ("math", "physics"):
+            raise ValueError(f"override must be 'math' or 'physics', got {override!r}")
         return override
 
     if not text.strip():
