@@ -42,7 +42,6 @@ from alethic.models import (
     VerificationResult,
 )
 from alethic.prompts import (
-    BALANCED_GENERATOR_ADDENDUM,
     GENERATOR_SYSTEM,
     TOOL_GUIDANCE,
     VERIFIER_SYSTEM,

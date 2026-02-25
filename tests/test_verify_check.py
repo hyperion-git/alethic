@@ -124,9 +124,8 @@ class TestCheckerAgent:
         agent = CheckerAgent(config=config, api_key="test-key")
         agent.check(solution="Some derivation...")
 
-        # Inspect the system_prompt kwarg passed to verify_subagent
-        call_kwargs = mock_verify.call_args
-        system_used = call_kwargs.kwargs.get("system_prompt", call_kwargs[1].get("system_prompt", ""))
+        # verify_subagent is always called with keyword arguments
+        system_used = mock_verify.call_args.kwargs["system_prompt"]
         assert "proof auditor" in system_used.lower() or "internally valid" in system_used.lower()
 
     def test_checker_verify_raises_not_implemented(self):

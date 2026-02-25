@@ -73,15 +73,24 @@ class VerifierAgent:
             user_template=user_template,
         )
 
-    def verify(self, problem: str, solution: str) -> ConsensusResult:
-        """Verify a solution against a stated problem with K-verifier consensus."""
+    def _run_consensus(
+        self, problem: str, solution: str, detection_text: str, label: str
+    ) -> ConsensusResult:
+        """Shared pipeline: detect domain, run K verifiers in parallel, synthesize.
+
+        Args:
+            problem: Problem statement (empty string for check mode).
+            solution: Solution text to verify/check.
+            detection_text: Text passed to domain auto-detection.
+            label: Human-readable label for verbose output ("verifiers" or "checkers").
+        """
         start = time.time()
-        domain = detect_domain(f"{problem}\n{solution}", override=self.config.domain)
+        domain = detect_domain(detection_text, override=self.config.domain)
         system, user_template = self._select_prompts(domain)
         k = self.config.num_verifiers
 
         if self.config.verbose:
-            print(f"Running {k} independent verifiers (domain: {domain})...")
+            print(f"Running {k} independent {label} (domain: {domain})...")
 
         results: list[VerificationResult] = []
         with ThreadPoolExecutor(max_workers=k) as executor:
@@ -92,16 +101,6 @@ class VerifierAgent:
             for future in as_completed(futures):
                 results.append(future.result())
 
-        return self._synthesize(results, domain, start)
-
-    def check(self, solution: str) -> ConsensusResult:
-        """Check internal consistency of a solution (no problem statement)."""
-        raise NotImplementedError("Use CheckerAgent for check()")
-
-    def _synthesize(
-        self, results: list[VerificationResult], domain: str, start: float
-    ) -> ConsensusResult:
-        """Mechanical aggregation + LLM critique cleanup."""
         aggregation = aggregate_mechanical(results)
 
         if self.config.verbose:
@@ -124,6 +123,19 @@ class VerifierAgent:
             elapsed_seconds=time.time() - start,
         )
 
+    def verify(self, problem: str, solution: str) -> ConsensusResult:
+        """Verify a solution against a stated problem with K-verifier consensus."""
+        return self._run_consensus(
+            problem=problem,
+            solution=solution,
+            detection_text=f"{problem}\n{solution}",
+            label="verifiers",
+        )
+
+    def check(self, solution: str) -> ConsensusResult:
+        """Check internal consistency of a solution (no problem statement)."""
+        raise NotImplementedError("Use CheckerAgent for check()")
+
 
 class CheckerAgent(VerifierAgent):
     """Internal consistency checker — solution only, no problem statement."""
@@ -133,24 +145,12 @@ class CheckerAgent(VerifierAgent):
 
     def check(self, solution: str) -> ConsensusResult:
         """Check internal consistency with K-verifier consensus."""
-        start = time.time()
-        domain = detect_domain(solution, override=self.config.domain)
-        system, user_template = self._select_prompts(domain)
-        k = self.config.num_verifiers
-
-        if self.config.verbose:
-            print(f"Running {k} independent checkers (domain: {domain})...")
-
-        results: list[VerificationResult] = []
-        with ThreadPoolExecutor(max_workers=k) as executor:
-            futures = [
-                executor.submit(self._run_single_verify, "", solution, system, user_template)
-                for _ in range(k)
-            ]
-            for future in as_completed(futures):
-                results.append(future.result())
-
-        return self._synthesize(results, domain, start)
+        return self._run_consensus(
+            problem="",
+            solution=solution,
+            detection_text=solution,
+            label="checkers",
+        )
 
     def verify(self, problem: str, solution: str) -> ConsensusResult:
         """Not supported — use VerifierAgent for verify()."""

@@ -314,31 +314,39 @@ def _detect_subcommand(argv: list[str]) -> tuple[str | None, list[str]]:
     return None, argv
 
 
+_VERIFIER_FLAG_TO_CONFIG = {
+    "model": "model",
+    "verifiers": "num_verifiers",
+    "domain": "domain",
+    "max_tokens": "max_tokens",
+    "thinking_budget": "thinking_budget",
+}
+
+# Default tools for verify/check expand to the full set (including scipy, matplotlib)
+_VERIFIER_DEFAULT_TOOLS = frozenset({"sympy", "numpy", "scipy", "matplotlib"})
+
+
 def _build_verifier_config(args: argparse.Namespace) -> VerifierConfig:
     """Build VerifierConfig from parsed CLI args."""
     overrides: dict[str, Any] = {}
 
-    if args.model is not None:
-        overrides["model"] = args.model
-    if args.verifiers is not None:
-        overrides["num_verifiers"] = args.verifiers
-    if args.domain is not None:
-        overrides["domain"] = args.domain
-    if args.max_tokens is not None:
-        overrides["max_tokens"] = args.max_tokens
+    for arg_name, config_name in _VERIFIER_FLAG_TO_CONFIG.items():
+        val = getattr(args, arg_name, None)
+        if val is not None:
+            overrides[config_name] = val
+
     if args.thinking:
         overrides["extended_thinking"] = True
-    if args.thinking_budget is not None:
-        overrides["thinking_budget"] = args.thinking_budget
 
     overrides["enable_code_execution"] = not args.no_code
     overrides["verbose"] = not args.quiet
 
-    tool_guidance = frozenset() if args.tools == "none" else frozenset(args.tools.split(","))
-    # Expand default for verify/check to include scipy, matplotlib
-    if args.tools == "sympy,numpy":
-        tool_guidance = frozenset({"sympy", "numpy", "scipy", "matplotlib"})
-    overrides["tool_guidance"] = tool_guidance
+    if args.tools == "none":
+        overrides["tool_guidance"] = frozenset()
+    elif args.tools == "sympy,numpy":
+        overrides["tool_guidance"] = _VERIFIER_DEFAULT_TOOLS
+    else:
+        overrides["tool_guidance"] = frozenset(args.tools.split(","))
 
     if args.preset:
         return VerifierConfig.from_preset(args.preset, **overrides)
@@ -408,7 +416,12 @@ def _verify_check_handler(args: argparse.Namespace, command: str) -> int:
         return 130
 
     # Output
-    mode = "json" if args.json_output else ("quiet" if args.quiet else "text")
+    if args.json_output:
+        mode = "json"
+    elif args.quiet:
+        mode = "quiet"
+    else:
+        mode = "text"
     print(format_consensus(result, mode=mode, command=command))
 
     return 0 if result.verdict == Verdict.CORRECT else 1

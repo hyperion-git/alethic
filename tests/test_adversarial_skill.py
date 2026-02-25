@@ -272,7 +272,6 @@ class TestOrchestratorStructure:
         """Orchestrator should not hardcode 'mathematical' in instructions (only in docs table)."""
         # Remove the domain variables table (first ~20 lines) to check only instructions
         lines = orchestrator.split("\n")
-        body = "\n".join(lines[20:])
         # Allow "mathematical" only in the balanced addendum reference or examples
         occurrences = [
             i for i, line in enumerate(lines[20:], start=21)
