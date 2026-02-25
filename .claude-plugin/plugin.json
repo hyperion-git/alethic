@@ -8,5 +8,5 @@
   "homepage": "https://github.com/hyperion-git/alethic",
   "repository": "https://github.com/hyperion-git/alethic",
   "license": "MIT",
-  "keywords": ["math", "physics", "reasoning", "verification", "theorem-proving", "aletheia", "figures", "plotting"]
+  "keywords": ["math", "physics", "reasoning", "verification", "theorem-proving", "aletheia", "figures", "plotting", "proof-audit", "multi-verifier"]
 }
