@@ -49,6 +49,8 @@ alethic --tools none "Is 17 prime?"                         # no tool guidance
 alethic derive --tools sympy,numpy "Derive the Lamb shift"  # both (default)
 alethic --no-stall-reset "Is 17 prime?"                     # disable stall detection
 alethic --stall-window 3 --stall-epsilon 0.05 "..."         # custom stall parameters
+alethic --variant-b-model claude-sonnet-4-6 "..."           # explicit variant B model
+alethic --no-variant-b "..."                                # disable variant B diversity
 
 # Verify/check (standalone consensus verification)
 alethic verify solution.md --problem-text "Is 1+1=2?"      # verify solution against problem
@@ -93,7 +95,7 @@ claude plugins add hyperion-git/alethic
 ### Manual installation (development)
 
 ```bash
-DEST=~/.claude/plugins/cache/local/alethic/3.0.0
+DEST=~/.claude/plugins/cache/local/alethic/3.0.1
 mkdir -p "$DEST"
 cp -r .claude-plugin skills "$DEST/"
 
@@ -131,12 +133,12 @@ Each iteration generates N candidates (best-of-N sampling), verifies all indepen
 
 Both the CLI (`--preset`) and the Python API (`AgentConfig.from_preset()`) support named presets. Explicit flags/kwargs override preset values.
 
-| Preset | Iters | Revs | Threshold | Best-of | Thinking | Think budget | Max tokens | Stall reset | Window | Epsilon | N boost |
-|--------|-------|------|-----------|---------|----------|-------------|------------|-------------|--------|---------|---------|
-| `quick` | 2 | 1 | 0.85 | 1 | off | — | 16,384 | off | — | — | 0 |
-| `default` | 5 | 3 | 0.90 | 2 | off | — | 16,384 | on | 2 | 0.03 | 1 |
-| `thorough` | 8 | 5 | 0.95 | 3 | on | 15,000 | 32,768 | on | 3 | 0.02 | 1 |
-| `extreme` | 12 | 5 | 0.97 | 5 | on | 40,000 | 65,536 | on | 3 | 0.02 | 2 |
+| Preset | Iters | Revs | Threshold | Best-of | Thinking | Think budget | Max tokens | Stall reset | Window | Epsilon | N boost | Variant B |
+|--------|-------|------|-----------|---------|----------|-------------|------------|-------------|--------|---------|---------|-----------|
+| `quick` | 2 | 1 | 0.85 | 1 | off | — | 16,384 | off | — | — | 0 | — |
+| `default` | 5 | 3 | 0.90 | 2 | off | — | 16,384 | on | 2 | 0.03 | 1 | — |
+| `thorough` | 8 | 5 | 0.95 | 3 | on | 15,000 | 32,768 | on | 3 | 0.02 | 1 | Sonnet |
+| `extreme` | 12 | 5 | 0.97 | 5 | on | 40,000 | 65,536 | on | 3 | 0.02 | 2 | Sonnet |
 
 Both `/alethic-solve` and `/alethic-derive` support presets via `-p`/`--preset`, controlling iterations, revisions, budget, confidence threshold, and best-of-N candidates. Temperature and extended thinking are API-only (Task sub-agent limitation). Explicit flags (e.g., `-B 5`) override preset values.
 
@@ -155,20 +157,20 @@ The `verify` and `check` commands use `VerifierConfig` presets controlling verif
 
 | Module | Purpose |
 |--------|---------|
-| `agent.py` | `MathAgent` orchestrator — runs the Generate N → Verify all → Select best → Revise loop with best-of-N sampling (parallel via `ThreadPoolExecutor`), false-premise detection, candidate ranking, failed approach tracking via `RunState`, structured event logging via `EventLog`, switchable tool guidance via `_build_system_prompt()`/`_get_tool_guidance_map()`, and stall detection with strategy reset via `_check_stall()`/`_build_reset_context()` |
+| `agent.py` | `MathAgent` orchestrator — runs the Generate N → Verify all → Select best → Revise loop with best-of-N sampling (parallel via `ThreadPoolExecutor`), variant-B model diversity (odd-indexed candidates use alternate config), FIXABLE verdict shortcut (re-verifies corrected solution, accepts if passing), false-premise detection, candidate ranking, failed approach tracking via `RunState`, structured event logging via `EventLog`, switchable tool guidance via `_build_system_prompt()`/`_get_tool_guidance_map()`, and stall detection with strategy reset via `_check_stall()`/`_build_reset_context()` |
 | `physics_agent.py` | `PhysicsAgent` — thin subclass of `MathAgent` that injects physics-specific prompt templates and overrides `_get_tool_guidance_map()` to return `PHYSICS_TOOL_GUIDANCE` and `_reset_addendum()` to return `PHYSICS_STRATEGY_RESET_ADDENDUM` |
 | `subagents.py` | `generate()`, `verify()`, `revise()` — each wraps a Claude API call with role-specific prompts; accepts optional prompt kwargs for domain specialization; supports extended thinking |
-| `models.py` | Dataclasses: `AgentConfig` (with `PRESETS`, `from_preset()`, `best_of_n`, `tool_guidance: frozenset[str]`, `stall_window`, `stall_epsilon`, `stall_reset`, `reset_n_boost` fields), `VerifierConfig` (with `PRESETS`, `from_preset()`, `num_verifiers`, `domain`, `tool_guidance` fields), `ConsensusResult` (verdict, confidence, confidence_range, critique, issues, individual_results), `ConsensusIssue` (text, severity, flagged_by), `Solution`, `VerificationResult` (with `Issue`, `SectionConfidence`, severity-aware `is_acceptable()`), `Revision`, `AgentResult` (with `AgentEvent` list, `failed_approaches`), `Verdict` enum, `IssueSeverity` enum, `EventType` enum (incl. `STALL_RESET`) |
-| `prompts.py` | Math system/user prompt templates for all three subagents + balanced prompting addendum + `STRATEGY_RESET_ADDENDUM` + `TOOL_GUIDANCE` map (SymPy/NumPy generator/verifier guidance strings) |
-| `physics_prompts.py` | Physics-specific prompt templates: derivation strategies, physics error checklist, dimensional/limiting-case balanced addendum + `PHYSICS_STRATEGY_RESET_ADDENDUM` + `PHYSICS_TOOL_GUIDANCE` map (physics-specific SymPy/NumPy guidance) |
+| `models.py` | Dataclasses: `AgentConfig` (with `PRESETS`, `from_preset()`, `build_variant_b_config()`, `best_of_n`, `tool_guidance: frozenset[str]`, `stall_window`, `stall_epsilon`, `stall_reset`, `reset_n_boost`, `variant_b: dict | None` fields), `VerifierConfig` (with `PRESETS`, `from_preset()`, `num_verifiers`, `domain`, `tool_guidance` fields), `ConsensusResult` (verdict, confidence, confidence_range, critique, issues, individual_results), `ConsensusIssue` (text, severity, flagged_by), `Solution`, `VerificationResult` (with `Issue`, `SectionConfidence`, `corrected_solution: str | None`, severity-aware `is_acceptable()`, `has_correction` property), `Revision`, `AgentResult` (with `AgentEvent` list, `failed_approaches`), `Verdict` enum (CORRECT, MINOR_ISSUES, FIXABLE, MAJOR_FLAW, UNSOLVED), `IssueSeverity` enum, `EventType` enum (incl. `STALL_RESET`) |
+| `prompts.py` | Math system/user prompt templates for all three subagents + balanced prompting addendum + `STRATEGY_RESET_ADDENDUM` + `TOOL_GUIDANCE` map (SymPy/NumPy generator/verifier guidance strings); verifier includes FIXABLE verdict and citation-checking instructions |
+| `physics_prompts.py` | Physics-specific prompt templates: derivation strategies, physics error checklist, dimensional/limiting-case balanced addendum + `PHYSICS_STRATEGY_RESET_ADDENDUM` + `PHYSICS_TOOL_GUIDANCE` map (physics-specific SymPy/NumPy guidance); verifier includes FIXABLE verdict and citation-checking instructions |
 | `tools.py` | `execute_python()` sandbox, `PYTHON_TOOL` schema (highlights SymPy as `sp` and NumPy as `np`), `process_tool_calls()` for tool-use loop |
 | `verifier_agent.py` | `VerifierAgent` and `CheckerAgent` — K-verifier consensus pipeline with `ThreadPoolExecutor` parallelism, domain auto-detection, mechanical aggregation + LLM critique synthesis; `VerifierAgent.verify(problem, solution)` and `CheckerAgent.check(solution)` |
 | `synthesizer.py` | Two-stage consensus synthesis: `aggregate_mechanical()` (majority-vote verdict, mean confidence, issue dedup via `SequenceMatcher`) + `synthesize_critique()` (LLM cleanup) |
-| `check_prompts.py` | Check-specific prompt templates (`CHECKER_SYSTEM`, `CHECKER_USER`) for solution-only internal consistency auditing + `CHECK_TOOL_GUIDANCE` map (SymPy/NumPy/SciPy/Matplotlib verifier guidance) |
+| `check_prompts.py` | Check-specific prompt templates (`CHECKER_SYSTEM`, `CHECKER_USER`) for solution-only internal consistency auditing + `CHECK_TOOL_GUIDANCE` map (SymPy/NumPy/SciPy/Matplotlib verifier guidance); includes FIXABLE verdict and citation-checking instructions |
 | `domain.py` | `detect_domain(text, override=None)` — static keyword dictionary (~500 terms, 3 weighted tiers) classifying text as `"math"` or `"physics"` |
 | `session_reader.py` | `resolve_session_input(path)` — extracts `(problem, solution)` from `.alethic/` session directories (tries `output.md`, falls back to `worklog/solution.md`) |
 | `output.py` | `format_consensus(result, mode, command)` — formats `ConsensusResult` as box-drawing text, JSON, or single-line quiet output |
-| `cli.py` | `argparse`-based CLI (`alethic` entry point) with `solve`/`derive`/`verify`/`check` subcommands, `--preset`, `--thinking`, `--best-of`/`-B`, `--tools`, `--no-stall-reset`, `--stall-window`, `--stall-epsilon`, `--verifiers`/`-K`, `--problem-text`, `--problem-file`/`-P`, `--domain` support |
+| `cli.py` | `argparse`-based CLI (`alethic` entry point) with `solve`/`derive`/`verify`/`check` subcommands, `--preset`, `--thinking`, `--best-of`/`-B`, `--tools`, `--no-stall-reset`, `--stall-window`, `--stall-epsilon`, `--variant-b-model`, `--no-variant-b`, `--verifiers`/`-K`, `--problem-text`, `--problem-file`/`-P`, `--domain` support |
 | `examples.py` | Bundled example problems (`python -m alethic.examples`) |
 
 | Skill file | Purpose |
@@ -214,6 +216,12 @@ The `verify` and `check` commands use `VerifierConfig` presets controlling verif
 12. **Multi-verifier consensus (verify/check)**: K independent verifiers run in parallel via `ThreadPoolExecutor`, each producing a `VerificationResult`. Results are mechanically aggregated: majority-vote verdict (ties broken by severity), mean confidence with min/max range, and issue dedup via `SequenceMatcher` (0.6 similarity threshold) with vote counts. An LLM then synthesizes a unified critique from all individual critiques. `verify` requires a problem statement and assesses correctness; `check` audits internal consistency without one. Domain auto-detection uses a static keyword dictionary (~500 terms across 3 weighted tiers: strong=3, moderate=2, weak=1) to classify text as math or physics. Tool guidance defaults to `sympy,numpy,scipy,matplotlib` (broader than solve/derive). Both the Python library (`VerifierAgent`, `CheckerAgent`) and the skills (`/alethic-verify`, `/alethic-check`) implement the same pipeline; skills use a shared `verify-orchestrator.md` with thin configurators.
 
 13. **Stall detection with strategy reset**: A lightweight monitoring layer detects when confidence stops improving (plateau: `iterations_since_meaningful_improvement >= stall_window`) or when `MAJOR_FLAW` verdicts repeat consecutively. On trigger, the next iteration widens best-of-N by `reset_n_boost`, injects a `STRATEGY_RESET_ADDENDUM` prompt (forcing a categorically different approach), and reduces revision budget to 1. All overrides are iteration-scoped (auto-revert). A cooldown of 1 iteration prevents back-to-back resets; total resets capped at `max(1, max_iterations // 4)`. Detection is deterministic; stochasticity comes from the LLM response. Disabled in the `quick` preset (too few iterations). Configurable via `--no-stall-reset`, `--stall-window`, `--stall-epsilon` (CLI/skill) or `AgentConfig` fields (Python API). `STALL_RESET` / `stall_reset` events are logged for post-hoc analysis. Both the Python library (`MathAgent._check_stall()`, `_build_reset_context()`) and the skill orchestrator (Step 2-pre) implement identical logic; domain-specific reset addenda live in `prompts.py`/`physics_prompts.py` (Python) and the thin SKILL.md configurators (skills).
+
+14. **FIXABLE verdict with corrected-solution shortcut**: Verifiers can return a `FIXABLE` verdict (between `MINOR_ISSUES` and `MAJOR_FLAW`) with a complete corrected solution in a `CORRECTED SOLUTION` block. When the agent receives a FIXABLE verdict with a correction, it re-verifies the corrected solution immediately. If re-verification passes (acceptable confidence), the corrected solution is accepted directly — bypassing the revision cycle entirely. If re-verification fails, the corrected solution replaces the original and falls through to normal revision. This avoids burning revision budget on mechanical errors (sign mistakes, algebraic slips) that the verifier already knows how to fix. `VerificationResult` gains a `corrected_solution: str | None` field and `has_correction` property. The `FIXABLE` verdict is supported in all verifier/checker prompts (solve, derive, verify, check) and in the `synthesizer.py` consensus aggregation. Inspired by [Aletheia's FirstProof report](https://arxiv.org/abs/2602.21201).
+
+15. **Variant-B model diversity**: In best-of-N sampling, odd-indexed candidates (1, 3, 5...) can use an alternate model configuration ("variant B") while even-indexed candidates (0, 2, 4...) use the primary config. This diversifies the solution pool by generating candidates from different model capabilities. Configured via `AgentConfig.variant_b: dict | None` — a dict of field overrides (e.g., `{"model": "claude-sonnet-4-6"}`) applied via `build_variant_b_config()`. Enabled by default in `thorough` and `extreme` presets (Sonnet variant); disabled in `quick` and `default`. CLI: `--variant-b-model MODEL` or `--no-variant-b`. When N=1, variant B has no effect (only candidate 0 is generated). The variant B client is reused if the model matches the primary; a separate `anthropic.Anthropic` client is created only when models differ. Inspired by Aletheia A/B dual-model approach in [arXiv:2602.21201](https://arxiv.org/abs/2602.21201).
+
+16. **Citation and reference checking**: All verifier and checker prompts now include explicit instructions to verify citations and references. For every theorem, identity, lemma, or known result invoked in a solution: the verifier confirms it is either (a) proved within the solution itself, or (b) cited by specific name. Vague appeals ("it is well known", "by a standard result", "it can be shown that") are flagged as `[MINOR]` if the claim is independently verifiable, or `[MAJOR]` if it cannot be confirmed. This applies to all four prompt sets: solve verifier, derive verifier, standalone verify, and check.
 
 ### Session Directory Layout (skills only)
 
