@@ -9,14 +9,19 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import anthropic
+import pytest
 
 from alethic.models import (
     AgentConfig,
     AgentResult,
+    ConsensusIssue,
+    ConsensusResult,
     EventType,
+    IssueSeverity,
     Solution,
     Verdict,
     VerificationResult,
+    VerifierConfig,
 )
 from alethic.prompts import (
     BALANCED_GENERATOR_ADDENDUM,
@@ -114,6 +119,76 @@ class TestModels:
         )
         assert not result.solved
         assert "UNSOLVED" in str(result)
+
+
+# ── VerifierConfig and ConsensusResult model tests ───────────────────
+
+
+class TestVerifierModels:
+    def test_verifier_config_defaults(self):
+        config = VerifierConfig()
+        assert config.model == "claude-opus-4-6"
+        assert config.num_verifiers == 3
+        assert config.tool_guidance == frozenset({"sympy", "numpy", "scipy", "matplotlib"})
+        assert config.domain is None
+
+    def test_verifier_config_presets(self):
+        quick = VerifierConfig.from_preset("quick")
+        assert quick.num_verifiers == 2
+        thorough = VerifierConfig.from_preset("thorough")
+        assert thorough.num_verifiers == 5
+        assert thorough.extended_thinking is True
+        extreme = VerifierConfig.from_preset("extreme")
+        assert extreme.num_verifiers == 7
+
+    def test_verifier_config_preset_override(self):
+        config = VerifierConfig.from_preset("quick", num_verifiers=4)
+        assert config.num_verifiers == 4
+
+    def test_verifier_config_unknown_preset(self):
+        with pytest.raises(ValueError, match="Unknown preset"):
+            VerifierConfig.from_preset("nonexistent")
+
+    def test_verifier_config_validation(self):
+        with pytest.raises(ValueError, match="num_verifiers must be >= 1"):
+            VerifierConfig(num_verifiers=0)
+
+    def test_consensus_result_basics(self):
+        result = ConsensusResult(
+            verdict=Verdict.CORRECT,
+            confidence=0.91,
+            confidence_range=(0.85, 0.95),
+            critique="Looks good",
+            issues=[],
+            individual_results=[],
+            domain_detected="math",
+            num_verifiers=3,
+            elapsed_seconds=12.5,
+        )
+        assert result.consensus_ratio == "0/0"  # no individual results
+        assert result.verdict == Verdict.CORRECT
+
+    def test_consensus_result_with_individuals(self):
+        vr1 = VerificationResult(verdict=Verdict.CORRECT, critique="ok", confidence=0.95)
+        vr2 = VerificationResult(verdict=Verdict.CORRECT, critique="ok", confidence=0.90)
+        vr3 = VerificationResult(verdict=Verdict.MINOR_ISSUES, critique="hmm", confidence=0.85)
+        result = ConsensusResult(
+            verdict=Verdict.CORRECT,
+            confidence=0.90,
+            confidence_range=(0.85, 0.95),
+            critique="Synthesized",
+            issues=[ConsensusIssue(text="Minor gap", severity=IssueSeverity.MINOR, flagged_by=1)],
+            individual_results=[vr1, vr2, vr3],
+            domain_detected="physics",
+            num_verifiers=3,
+            elapsed_seconds=30.0,
+        )
+        assert result.consensus_ratio == "2/3"
+
+    def test_consensus_issue(self):
+        issue = ConsensusIssue(text="Sign error in step 3", severity=IssueSeverity.MAJOR, flagged_by=2)
+        assert issue.flagged_by == 2
+        assert issue.severity == IssueSeverity.MAJOR
 
 
 # ── Preset and threshold tests ────────────────────────────────────────
@@ -247,6 +322,28 @@ class TestPrompts:
         assert "counterexample" in BALANCED_GENERATOR_ADDENDUM.lower()
 
 
+class TestCheckPrompts:
+    def test_check_prompts_exist(self):
+        from alethic.check_prompts import CHECKER_SYSTEM, CHECKER_USER
+
+        assert "internally valid" in CHECKER_SYSTEM.lower() or "proof auditor" in CHECKER_SYSTEM.lower()
+        assert "{solution}" in CHECKER_USER
+
+    def test_check_tool_guidance_has_all_four(self):
+        from alethic.check_prompts import CHECK_TOOL_GUIDANCE
+
+        assert "sympy" in CHECK_TOOL_GUIDANCE
+        assert "numpy" in CHECK_TOOL_GUIDANCE
+        assert "scipy" in CHECK_TOOL_GUIDANCE
+        assert "matplotlib" in CHECK_TOOL_GUIDANCE
+
+    def test_check_tool_guidance_has_verifier_keys(self):
+        from alethic.check_prompts import CHECK_TOOL_GUIDANCE
+
+        for tool_name, entries in CHECK_TOOL_GUIDANCE.items():
+            assert "verifier" in entries, f"{tool_name} missing 'verifier' key"
+
+
 # ── Tool execution tests ──────────────────────────────────────────────
 
 
@@ -262,6 +359,19 @@ class TestTools:
     def test_execute_restricted_import(self):
         result = execute_python("import os")
         assert "ERROR" in result or "not allowed" in result
+
+    def test_matplotlib_allowed_in_sandbox(self):
+        """matplotlib should be importable in the sandbox."""
+        result = execute_python("import matplotlib; print(matplotlib.__name__)")
+        assert "matplotlib" in result
+        assert "not allowed" not in result
+
+    def test_matplotlib_agg_backend(self):
+        """matplotlib.use('Agg') should work in sandbox."""
+        result = execute_python(
+            "import matplotlib\nmatplotlib.use('Agg')\nimport matplotlib.pyplot as plt\nprint('ok')"
+        )
+        assert "ok" in result
 
     def test_execute_timeout(self):
         result = execute_python("while True: pass", timeout_seconds=2)

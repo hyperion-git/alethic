@@ -33,6 +33,8 @@ from alethic.models import (
     AgentConfig,
     AgentEvent,
     AgentResult,
+    ConsensusIssue,
+    ConsensusResult,
     EventType,
     Issue,
     IssueSeverity,
@@ -41,15 +43,21 @@ from alethic.models import (
     Solution,
     Verdict,
     VerificationResult,
+    VerifierConfig,
 )
 from alethic.physics_agent import PhysicsAgent
+from alethic.verifier_agent import CheckerAgent, VerifierAgent
 
 __all__ = [
+    "CheckerAgent",
     "MathAgent",
     "PhysicsAgent",
+    "VerifierAgent",
     "AgentConfig",
     "AgentEvent",
     "AgentResult",
+    "ConsensusIssue",
+    "ConsensusResult",
     "EventType",
     "Issue",
     "IssueSeverity",
@@ -58,6 +66,7 @@ __all__ = [
     "Solution",
     "Verdict",
     "VerificationResult",
+    "VerifierConfig",
 ]
 
 __version__ = "2.0.0"

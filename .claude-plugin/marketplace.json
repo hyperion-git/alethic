@@ -1,13 +1,13 @@
 {
   "name": "alethic",
-  "description": "Reasoning agent for mathematics and physics with Generate-Verify-Revise loop, plus scientific figure generation",
+  "description": "Reasoning agent for mathematics and physics with Generate-Verify-Revise loop, multi-verifier consensus, proof auditing, plus scientific figure generation",
   "owner": {
     "name": "Alexander Friedrich"
   },
   "plugins": [
     {
       "name": "alethic",
-      "description": "Reasoning agent for mathematics and physics with Generate-Verify-Revise loop (inspired by DeepMind's Aletheia), plus scientific figure generation",
+      "description": "Reasoning agent for mathematics and physics with Generate-Verify-Revise loop (inspired by DeepMind's Aletheia), multi-verifier consensus, proof auditing, plus scientific figure generation",
       "version": "2.1.0",
       "source": "./",
       "author": {

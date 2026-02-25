@@ -23,9 +23,10 @@ PYTHON_TOOL = {
         "NumPy is pre-imported as `np` for numerical computation. "
         "SciPy provides numerical integration (scipy.integrate), "
         "special functions (scipy.special), and physical constants (scipy.constants). "
+        "Matplotlib is available for plotting (use matplotlib.use('Agg') before pyplot). "
         "Available libraries: math, fractions, decimal, itertools, functools, "
         "collections, operator, random, statistics. "
-        "NumPy, SymPy, SciPy, and mpmath are also available if installed."
+        "NumPy, SymPy, SciPy, mpmath, and matplotlib are also available if installed."
     ),
     "input_schema": {
         "type": "object",
@@ -59,7 +60,7 @@ _ALLOWED_MODULES = {
     "collections", "operator", "random", "statistics", "re", "string",
     "textwrap", "numbers",
     # Scientific (available if installed)
-    "numpy", "sympy", "scipy", "mpmath",
+    "numpy", "sympy", "scipy", "mpmath", "matplotlib",
 }
 
 
@@ -94,7 +95,7 @@ _WORKER_SCRIPT = textwrap.dedent(r'''
         "math", "cmath", "fractions", "decimal", "itertools", "functools",
         "collections", "operator", "random", "statistics", "re", "string",
         "textwrap", "numbers",
-        "numpy", "sympy", "scipy", "mpmath",
+        "numpy", "sympy", "scipy", "mpmath", "matplotlib",
     }
 
     # ── Restricted import gate ───────────────────────────────────────────
