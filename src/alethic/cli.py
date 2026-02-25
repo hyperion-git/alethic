@@ -179,6 +179,16 @@ Examples:
         default=None,
         help="Minimum confidence improvement to count as progress (default: 0.03)",
     )
+    parser.add_argument(
+        "--variant-b-model",
+        default=None,
+        help="Model ID for variant B candidates (shorthand for variant_b={'model': VALUE})",
+    )
+    parser.add_argument(
+        "--no-variant-b",
+        action="store_true",
+        help="Disable variant B generation even if preset enables it",
+    )
 
     # verify/check specific arguments
     parser.add_argument(
@@ -245,6 +255,11 @@ def _build_config(args: argparse.Namespace) -> AgentConfig:
     if args.no_stall_reset:
         overrides["stall_reset"] = False
 
+    if args.no_variant_b:
+        overrides["variant_b"] = None
+    elif args.variant_b_model:
+        overrides["variant_b"] = {"model": args.variant_b_model}
+
     # Auto-bump max_tokens for extended thinking when not explicitly set.
     # Resolve thinking state and budget *before* constructing the config so we
     # only build it once (AgentConfig is frozen).
@@ -278,6 +293,7 @@ _FLAGS_WITH_VALUE = frozenset({
     "--tools",
     "--stall-window",
     "--stall-epsilon",
+    "--variant-b-model",
     "--problem-text",
     "-P", "--problem-file",
     "--domain",

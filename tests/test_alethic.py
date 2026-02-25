@@ -39,6 +39,7 @@ class TestModels:
     def test_verdict_enum(self):
         assert Verdict.CORRECT.value == "correct"
         assert Verdict.MINOR_ISSUES.value == "minor_issues"
+        assert Verdict.FIXABLE.value == "fixable"
         assert Verdict.MAJOR_FLAW.value == "major_flaw"
         assert Verdict.UNSOLVED.value == "unsolved"
 
@@ -78,6 +79,33 @@ class TestModels:
         )
         assert not unsolved.is_acceptable()
         assert not unsolved.needs_revision()
+
+    def test_fixable_verdict_needs_revision(self):
+        fixable = VerificationResult(
+            verdict=Verdict.FIXABLE, critique="Sign error", confidence=0.7
+        )
+        assert not fixable.is_acceptable()
+        assert fixable.needs_revision()
+
+    def test_fixable_has_correction_true(self):
+        fixable = VerificationResult(
+            verdict=Verdict.FIXABLE, critique="Sign error", confidence=0.7,
+            corrected_solution="Fixed version here",
+        )
+        assert fixable.has_correction
+
+    def test_fixable_has_correction_false_no_text(self):
+        fixable = VerificationResult(
+            verdict=Verdict.FIXABLE, critique="Sign error", confidence=0.7,
+        )
+        assert not fixable.has_correction
+
+    def test_has_correction_false_for_non_fixable(self):
+        minor = VerificationResult(
+            verdict=Verdict.MINOR_ISSUES, critique="Gap", confidence=0.8,
+            corrected_solution="Some text",
+        )
+        assert not minor.has_correction
 
     def test_correct_but_low_confidence_needs_revision(self):
         """CORRECT with confidence < 0.90 should trigger revision, not acceptance."""
@@ -309,7 +337,7 @@ class TestPrompts:
         assert "VERDICT:" in VERIFIER_SYSTEM
 
     def test_verifier_system_has_all_verdicts(self):
-        for verdict in ["correct", "minor_issues", "major_flaw", "unsolved"]:
+        for verdict in ["correct", "minor_issues", "fixable", "major_flaw", "unsolved"]:
             assert verdict in VERIFIER_SYSTEM
 
     def test_reviser_system_references_critique(self):
@@ -342,6 +370,13 @@ class TestCheckPrompts:
 
         for tool_name, entries in CHECK_TOOL_GUIDANCE.items():
             assert "verifier" in entries, f"{tool_name} missing 'verifier' key"
+
+    def test_checker_section_confidences_matches_parser(self):
+        """CHECKER_SYSTEM must use 'SECTION CONFIDENCES:' (space) to match the parser regex."""
+        from alethic.check_prompts import CHECKER_SYSTEM
+
+        assert "SECTION CONFIDENCES:" in CHECKER_SYSTEM
+        assert "SECTION_CONFIDENCES:" not in CHECKER_SYSTEM
 
 
 # ── Tool execution tests ──────────────────────────────────────────────
@@ -493,6 +528,45 @@ None
         assert result.confidence == 0.95
         assert result.reason == "N/A"
         assert len(result.issues) == 0
+
+    def test_parse_fixable_with_correction(self):
+        text = """\
+VERDICT: fixable
+CONFIDENCE: 0.75
+
+CRITIQUE:
+Sign error in step 3, otherwise sound.
+
+ISSUES:
+- [MAJOR] Sign error in step 3
+
+CORRECTED SOLUTION:
+The corrected proof goes like this...
+Step 1: ...
+Step 2: ...
+Step 3 (fixed): correct sign
+END CORRECTED SOLUTION
+"""
+        result = _parse_verification(text)
+        assert result.verdict == Verdict.FIXABLE
+        assert result.confidence == 0.75
+        assert result.corrected_solution is not None
+        assert "correct sign" in result.corrected_solution
+
+    def test_parse_fixable_without_correction(self):
+        text = """\
+VERDICT: fixable
+CONFIDENCE: 0.70
+
+CRITIQUE:
+Has fixable errors but no correction provided.
+
+ISSUES:
+- [MAJOR] Algebra error
+"""
+        result = _parse_verification(text)
+        assert result.verdict == Verdict.FIXABLE
+        assert result.corrected_solution is None
 
     def test_confidence_clamping(self):
         """Confidence values above 1.0 should be clamped to 1.0."""
@@ -707,6 +781,91 @@ class TestAgentIntegration:
         assert result.admitted_failure
         assert result.verdict == Verdict.UNSOLVED
         assert result.iterations_used == 2
+
+    @patch("alethic.subagents.process_tool_calls", return_value=[])
+    def test_fixable_correction_accepted(self, mock_tools):
+        """FIXABLE with correction that passes re-verification should skip reviser."""
+        from alethic.agent import MathAgent
+
+        config = AgentConfig(
+            max_iterations=3,
+            enable_code_execution=False,
+            verbose=False,
+        )
+
+        responses = [
+            # Generate
+            self._mock_response("Attempt with sign error"),
+            # Verify → fixable with correction
+            self._mock_response(
+                "VERDICT: fixable\nCONFIDENCE: 0.75\n\n"
+                "CRITIQUE:\nSign error in step 3.\n\nISSUES:\n- [MAJOR] Sign error\n\n"
+                "CORRECTED SOLUTION:\nFixed solution text\nEND CORRECTED SOLUTION"
+            ),
+            # Re-verify correction → correct
+            self._mock_response(
+                "VERDICT: correct\nCONFIDENCE: 0.95\n\nCRITIQUE:\nNow correct.\n\nISSUES:\nNone"
+            ),
+        ]
+
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = responses
+
+        agent = MathAgent(config=config)
+        agent.client = mock_client
+
+        result = agent.solve("test problem")
+
+        assert result.solved
+        assert result.solution == "Fixed solution text"
+        assert result.total_revisions == 0  # reviser was skipped
+
+    @patch("alethic.subagents.process_tool_calls", return_value=[])
+    def test_fixable_correction_fails_reverification(self, mock_tools):
+        """FIXABLE correction that fails re-verification should fall through to reviser."""
+        from alethic.agent import MathAgent
+
+        config = AgentConfig(
+            max_iterations=2,
+            max_revisions_per_cycle=1,
+            enable_code_execution=False,
+            verbose=False,
+        )
+
+        responses = [
+            # Generate
+            self._mock_response("Attempt with errors"),
+            # Verify → fixable with correction
+            self._mock_response(
+                "VERDICT: fixable\nCONFIDENCE: 0.70\n\n"
+                "CRITIQUE:\nErrors found.\n\nISSUES:\n- [MAJOR] Error\n\n"
+                "CORRECTED SOLUTION:\nStill wrong fix\nEND CORRECTED SOLUTION"
+            ),
+            # Re-verify correction → still has issues
+            self._mock_response(
+                "VERDICT: minor_issues\nCONFIDENCE: 0.80\n\n"
+                "CRITIQUE:\nStill has issues.\n\nISSUES:\n- [MINOR] Gap"
+            ),
+            # Reviser (fallback)
+            self._mock_response(
+                "CHANGES MADE:\nFixed gap.\n\nREVISED SOLUTION:\nFinal correct version"
+            ),
+            # Re-verify revision → correct
+            self._mock_response(
+                "VERDICT: correct\nCONFIDENCE: 0.92\n\nCRITIQUE:\nGood.\n\nISSUES:\nNone"
+            ),
+        ]
+
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = responses
+
+        agent = MathAgent(config=config)
+        agent.client = mock_client
+
+        result = agent.solve("test problem")
+
+        assert result.solved
+        assert result.total_revisions == 1  # reviser was used as fallback
 
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     def test_solve_api_error_resilience(self, mock_tools):
@@ -988,3 +1147,94 @@ class TestThinkingTokenBump:
         config = _build_config(args)
         # thorough: max_tokens=32768, thinking_budget=15000 → min=23192
         assert config.max_tokens == 32768  # unchanged
+
+
+# ── Variant B A/B generation tests ───────────────────────────────────
+
+
+class TestVariantB:
+    def test_config_variant_b_default_none(self):
+        """Default AgentConfig has variant_b=None."""
+        config = AgentConfig()
+        assert config.variant_b is None
+
+    def test_config_variant_b_preset_thorough(self):
+        """Thorough preset has variant_b with model."""
+        config = AgentConfig.from_preset("thorough")
+        assert config.variant_b is not None
+        assert config.variant_b["model"] == "claude-sonnet-4-6"
+
+    def test_build_variant_b_config(self):
+        """build_variant_b_config produces correct merged config."""
+        config = AgentConfig(
+            model="claude-opus-4-6",
+            max_iterations=5,
+            variant_b={"model": "claude-sonnet-4-6", "max_iterations": 3},
+        )
+        vb = config.build_variant_b_config()
+        assert vb.model == "claude-sonnet-4-6"
+        assert vb.max_iterations == 3
+        assert vb.variant_b is None  # no recursion
+        # Unoverridden fields inherited
+        assert vb.max_revisions_per_cycle == config.max_revisions_per_cycle
+
+    def test_variant_b_invalid_keys(self):
+        """Unknown keys in variant_b raise ValueError."""
+        with pytest.raises(ValueError, match="variant_b contains unknown keys"):
+            AgentConfig(variant_b={"nonexistent_field": 42})
+
+    def test_no_variant_b_flag(self):
+        """CLI --no-variant-b overrides preset variant_b."""
+        from alethic.cli import _build_config, build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["--preset", "thorough", "--no-variant-b", "test"])
+        config = _build_config(args)
+        assert config.variant_b is None
+
+    def test_variant_b_model_flag(self):
+        """CLI --variant-b-model sets variant_b."""
+        from alethic.cli import _build_config, build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["--variant-b-model", "claude-sonnet-4-6", "test"])
+        config = _build_config(args)
+        assert config.variant_b == {"model": "claude-sonnet-4-6"}
+
+    @patch("alethic.subagents.process_tool_calls", return_value=[])
+    def test_generate_n1_ignores_variant_b(self, mock_tools):
+        """With n=1, variant_b is ignored (only primary config used)."""
+        from alethic.agent import MathAgent
+
+        config = AgentConfig(
+            max_iterations=1,
+            best_of_n=1,
+            enable_code_execution=False,
+            verbose=False,
+            variant_b={"model": "claude-sonnet-4-6"},
+        )
+
+        mock_block = MagicMock()
+        mock_block.type = "text"
+        mock_block.text = "Solution text.\n\nCONCLUSION: answer"
+        mock_resp = MagicMock()
+        mock_resp.content = [mock_block]
+
+        verify_resp_block = MagicMock()
+        verify_resp_block.type = "text"
+        verify_resp_block.text = (
+            "VERDICT: correct\nCONFIDENCE: 0.95\n\nCRITIQUE:\nGood.\n\nISSUES:\nNone"
+        )
+        verify_resp = MagicMock()
+        verify_resp.content = [verify_resp_block]
+
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = [mock_resp, verify_resp]
+
+        agent = MathAgent(config=config)
+        agent.client = mock_client
+
+        result = agent.solve("test problem")
+        assert result.solved
+        # With n=1, only 2 API calls: generate + verify (no variant B client created)
+        assert mock_client.messages.create.call_count == 2

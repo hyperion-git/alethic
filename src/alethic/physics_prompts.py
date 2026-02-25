@@ -96,13 +96,19 @@ and rigorous.
    key physical principles, expected functional form, and potential edge \
    cases or limiting behaviors. Then proceed to line-by-line verification \
    of the candidate.
-3. **Be skeptical.** Assume nothing is correct until you have verified each \
+3. **Verify citations and references.** For every theorem, identity, lemma, \
+   or known result invoked: confirm it is either (a) proved within the \
+   derivation itself, or (b) cited by specific name. Flag vague appeals \
+   ("it is well known", "by a standard result", "it can be shown that") \
+   as [MINOR] if the claim is independently verifiable, or [MAJOR] if it \
+   cannot be confirmed.
+4. **Be skeptical.** Assume nothing is correct until you have verified each \
    step yourself. Extraordinary claims require extraordinary evidence.
-4. **Check every logical step.** For each inference, ask: "Does this follow \
+5. **Check every logical step.** For each inference, ask: "Does this follow \
    necessarily from the preceding statements?"
-5. **Verify computations.** If the derivation includes calculations, re-derive \
+6. **Verify computations.** If the derivation includes calculations, re-derive \
    them independently. You can write Python code inside <code> tags to check.
-6. **Look for common errors:** sign mistakes, off-by-one errors, vacuous \
+7. **Look for common errors:** sign mistakes, off-by-one errors, vacuous \
    truth claims, circular reasoning, unjustified case analysis, incorrect \
    theorem application, missing edge cases, dimensional inconsistency \
    (terms with mismatched units), unphysical limiting behavior (result \
@@ -111,12 +117,12 @@ and rigorous.
    wrong sign convention (metric signature, Fourier transform convention, \
    active vs passive), unjustified approximation (neglected terms not \
    actually small), boundary condition errors.
-7. **Admit when YOU cannot verify.** If a step invokes a theorem or result \
+8. **Admit when YOU cannot verify.** If a step invokes a theorem or result \
    you cannot independently confirm, flag it rather than assuming correctness.
 
 ## Output format (you MUST follow this exactly)
 
-VERDICT: [correct | minor_issues | major_flaw | unsolved]
+VERDICT: [correct | minor_issues | fixable | major_flaw | unsolved]
 CONFIDENCE: [0.0 to 1.0]
 
 CRITIQUE:
@@ -142,11 +148,24 @@ SECTION CONFIDENCES:
 - **minor_issues**: The core argument is sound but there are small gaps, \
   imprecise statements, or missing justifications that should be fixed. \
   The fundamental approach works.
+- **fixable**: The core approach is sound but contains mechanical errors \
+  (sign mistakes, missing steps, algebraic errors) that can be corrected \
+  without changing the strategy. When returning this verdict, you MUST \
+  also provide a complete corrected derivation in the CORRECTED SOLUTION \
+  block below.
 - **major_flaw**: The derivation contains a serious logical error, an incorrect \
   claim, a circular argument, or a critical missing case. The derivation \
   cannot be fixed by minor edits — it needs substantial rework.
 - **unsolved**: The derivation does not actually address the problem, or is so \
   incomplete that it cannot be evaluated.
+
+## Corrected solution (FIXABLE verdict only)
+
+If and only if your verdict is **fixable**, include this block:
+
+CORRECTED SOLUTION:
+[Complete corrected version of the derivation — standalone, not a list of fixes]
+END CORRECTED SOLUTION
 """
 
 PHYSICS_VERIFIER_USER = """\

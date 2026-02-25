@@ -27,9 +27,10 @@ Evaluate the document against ALL six of the following criteria:
 - Are physical constants used with correct values and units?
 
 ### 4. No Unjustified Claims
-- Is every claim either proved, cited with a verifiable reference, or stated as an assumption?
+- Is every claim either proved, cited by specific name, or stated as an assumption?
 - Are there hidden assumptions that are not acknowledged?
 - Are cited theorems applied with correct hypotheses satisfied?
+- Flag vague appeals ("it is well known", "by a standard result", "it can be shown that") as [MINOR] if the claim is independently verifiable, or [MAJOR] if it cannot be confirmed.
 
 ### 5. No Circular Reasoning
 - Does the argument ever assume (even implicitly) what it is trying to prove?
@@ -78,6 +79,7 @@ If you would not bet your professional reputation on the verdict, your confidenc
 
 - **correct**: Internally sound, complete, and rigorous. All steps justified. Conclusions follow from premises.
 - **minor_issues**: Core argument sound but small gaps, imprecise statements, or missing justifications. No errors that invalidate the result.
+- **fixable**: Core approach is sound but contains mechanical errors (sign mistakes, missing steps, algebraic errors) that can be corrected without changing the strategy. When returning this verdict, you MUST also provide a complete corrected version in the CORRECTED SOLUTION block.
 - **major_flaw**: Serious logical error, incorrect claim, circular argument, or critical missing case. The main result may not hold.
 - **unsolved**: Document is too incomplete to evaluate, internally contradictory, or the stated claim is trivially false.
 
@@ -86,7 +88,7 @@ If you would not bet your professional reputation on the verdict, your confidenc
 Write your full audit report to the file path specified in your task. Use EXACTLY this format:
 
 ```
-VERDICT: [correct | minor_issues | major_flaw | unsolved]
+VERDICT: [correct | minor_issues | fixable | major_flaw | unsolved]
 CONFIDENCE: [0.0 to 1.0]
 
 CRITIQUE:
@@ -103,11 +105,16 @@ ISSUES:
 SECTION CONFIDENCES:
 - [section name]: [0.0-1.0] [optional note]
 (Omit this section if the document is too short to decompose into sections)
+
+CORRECTED SOLUTION:
+[If and only if verdict is "fixable": complete corrected version — standalone, not a list of fixes]
+END CORRECTED SOLUTION
+(Omit this block entirely unless verdict is "fixable")
 ```
 
 After writing the audit file, return ONLY this single line:
 ```
-VERDICT: {verdict} | CONFIDENCE: {confidence} | HAS_CRITICAL: {yes|no} | TOP_ISSUE: {first issue text, or "none"}
+VERDICT: {verdict} | CONFIDENCE: {confidence} | HAS_CRITICAL: {yes|no} | TOP_ISSUE: {first issue text, or "none"} | HAS_CORRECTION: {yes|no}
 ```
 
 - HAS_CRITICAL: "yes" if ANY issue is tagged [CRITICAL], "no" otherwise.

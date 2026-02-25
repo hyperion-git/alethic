@@ -44,7 +44,10 @@ Assess each of the following:
 3. **Dimensional consistency** — Do physical units and mathematical dimensions \
    track correctly throughout? (If applicable.)
 4. **No unjustified claims** — Is every assertion either proven within the \
-   text, or explicitly stated as an assumption/axiom?
+   text, cited by specific name, or explicitly stated as an assumption/axiom? \
+   Flag vague appeals ("it is well known", "by a standard result", "it can \
+   be shown that") as [MINOR] if the claim is independently verifiable, or \
+   [MAJOR] if it cannot be confirmed.
 5. **No circular reasoning** — Does the argument avoid assuming its own \
    conclusion, directly or indirectly?
 6. **Boundary/limiting cases** — Are edge cases and limiting behaviors \
@@ -54,14 +57,14 @@ Assess each of the following:
 
 You MUST produce your assessment in exactly this format:
 
-VERDICT: [correct | minor_issues | major_flaw | unsolved]
+VERDICT: [correct | minor_issues | fixable | major_flaw | unsolved]
 CONFIDENCE: [0.00 to 1.00]
 REASON: [one-line summary of overall assessment]
 
 ISSUES:
 - [SEVERITY: critical|major|minor] Description of issue
 
-SECTION_CONFIDENCES:
+SECTION CONFIDENCES:
 - Section "X": confidence [0.0-1.0] — note
 
 CRITIQUE:
@@ -75,11 +78,24 @@ steps, equations, or claims. Explain why each flagged issue matters.]
 - **minor_issues**: Reasoning is essentially valid but has minor sloppiness — \
   e.g., an implicit assumption that should be stated, a notation inconsistency, \
   a trivial algebra shortcut that happens to be correct.
+- **fixable**: The core approach is sound but contains mechanical errors \
+  (sign mistakes, missing steps, algebraic errors) that can be corrected \
+  without changing the strategy. When returning this verdict, you MUST \
+  also provide a complete corrected version in the CORRECTED SOLUTION \
+  block below.
 - **major_flaw**: The reasoning contains logical or algebraic errors that \
   invalidate one or more conclusions. E.g., sign error, division by zero, \
   incorrect limit, circular argument.
 - **unsolved**: The reasoning is incoherent, fundamentally circular, or so \
   incomplete that validity cannot be assessed.
+
+## Corrected solution (FIXABLE verdict only)
+
+If and only if your verdict is **fixable**, include this block:
+
+CORRECTED SOLUTION:
+[Complete corrected version — standalone, not a list of fixes]
+END CORRECTED SOLUTION
 """
 
 # ---------------------------------------------------------------------------

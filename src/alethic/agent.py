@@ -263,12 +263,12 @@ class MathAgent:
     ) -> list[tuple[Solution, float]]:
         """Generate N candidates. Parallel (ThreadPoolExecutor) when N>1, sequential when N=1."""
 
-        def _gen_one() -> tuple[Solution, float]:
+        def _gen_one(client: anthropic.Anthropic, config: AgentConfig) -> tuple[Solution, float]:
             t0 = time.time()
             sol = generate(
-                self.client,
+                client,
                 problem=problem,
-                config=self.config,
+                config=config,
                 iteration=iteration,
                 balanced=balanced,
                 failed_approaches=failed_approaches,
@@ -280,11 +280,28 @@ class MathAgent:
             return sol, time.time() - t0
 
         if n == 1:
-            return [_gen_one()]
+            return [_gen_one(self.client, self.config)]
+
+        # Build variant B config and client when variant_b is set
+        variant_b_config: AgentConfig | None = None
+        variant_b_client: anthropic.Anthropic | None = None
+        if self.config.variant_b is not None:
+            variant_b_config = self.config.build_variant_b_config()
+            if variant_b_config.model != self.config.model:
+                variant_b_client = anthropic.Anthropic(api_key=self.client.api_key)
+            else:
+                variant_b_client = self.client
 
         results: list[tuple[Solution, float]] = []
         with ThreadPoolExecutor(max_workers=n) as pool:
-            futures = {pool.submit(_gen_one): i for i in range(1, n + 1)}
+            futures = {}
+            for i in range(n):
+                # Even indices (0,2,4...) → variant A; odd indices (1,3,5...) → variant B
+                if variant_b_config is not None and variant_b_client is not None and i % 2 == 1:
+                    fut = pool.submit(_gen_one, variant_b_client, variant_b_config)
+                else:
+                    fut = pool.submit(_gen_one, self.client, self.config)
+                futures[fut] = i + 1  # 1-based index for logging
             for future in as_completed(futures):
                 idx = futures[future]
                 try:
@@ -623,6 +640,59 @@ class MathAgent:
                 )
                 if fp:
                     return fp
+
+                # ── FIXABLE shortcut: use verifier's correction directly ──
+                if verification.has_correction:
+                    self._log("[FIXABLE] Verifier provided corrected solution — re-verifying...")
+                    corrected = Solution(
+                        problem=problem,
+                        solution_text=verification.corrected_solution,  # type: ignore[arg-type]
+                        iteration=solution.iteration,
+                    )
+                    re_verification = verify(
+                        self.client,
+                        problem=problem,
+                        solution=corrected,
+                        config=self.config,
+                        system_prompt=prompts.get("verifier_system"),
+                        user_template=prompts.get("verifier_user"),
+                    )
+                    log.emit(
+                        EventType.VERIFY,
+                        iteration,
+                        source="fixable_correction",
+                        verdict=re_verification.verdict.value,
+                        confidence=re_verification.confidence,
+                    )
+                    self._log(f"[VERIFY] Re-verification: {re_verification.verdict.value} "
+                               f"(confidence: {re_verification.confidence:.0%})")
+                    if re_verification.confidence > state.best_confidence:
+                        state.best_confidence = re_verification.confidence
+                        state.best_solution = corrected
+                    if re_verification.is_acceptable(threshold):
+                        self._log("")
+                        self._log("[SOLVED] Verifier-corrected solution accepted!")
+                        log.emit(
+                            EventType.ACCEPT,
+                            iteration,
+                            confidence=re_verification.confidence,
+                            verdict=re_verification.verdict.value,
+                            source="fixable_correction",
+                        )
+                        return self._make_result(
+                            problem=problem,
+                            solution=corrected.solution_text,
+                            verdict=Verdict.CORRECT,
+                            confidence=re_verification.confidence,
+                            iterations_used=iteration,
+                            admitted_failure=False,
+                            state=state,
+                            log=log,
+                        )
+                    # Correction failed re-verification — fall through to normal revision
+                    self._log("[FIXABLE] Correction failed re-verification — falling back to reviser")
+                    verification = re_verification
+                    solution = corrected
 
                 # ── REVISE (best candidate) ──
                 if verification.needs_revision(threshold):

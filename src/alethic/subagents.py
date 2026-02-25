@@ -225,6 +225,7 @@ def generate(
 _VERDICT_MAP: dict[str, Verdict] = {
     "correct": Verdict.CORRECT,
     "minor_issues": Verdict.MINOR_ISSUES,
+    "fixable": Verdict.FIXABLE,
     "major_flaw": Verdict.MAJOR_FLAW,
     "unsolved": Verdict.UNSOLVED,
 }
@@ -292,7 +293,7 @@ def _parse_verification(text: str) -> VerificationResult:
     """Parse structured verifier output into a VerificationResult."""
     # Extract verdict
     verdict_match = re.search(
-        r"VERDICT:\s*(correct|minor_issues|major_flaw|unsolved)",
+        r"VERDICT:\s*(correct|minor_issues|fixable|major_flaw|unsolved)",
         text,
         re.IGNORECASE,
     )
@@ -345,6 +346,14 @@ def _parse_verification(text: str) -> VerificationResult:
 
     section_confidences = _parse_section_confidences(text)
 
+    # Extract corrected solution (for FIXABLE verdicts)
+    corrected_match = re.search(
+        r"CORRECTED SOLUTION:\s*\n(.*?)(?:\nEND CORRECTED SOLUTION|\n[A-Z]+ [A-Z]+:|\Z)",
+        text,
+        re.DOTALL | re.IGNORECASE,
+    )
+    corrected_solution = corrected_match.group(1).strip() if corrected_match else None
+
     return VerificationResult(
         verdict=verdict,
         critique=critique,
@@ -352,6 +361,7 @@ def _parse_verification(text: str) -> VerificationResult:
         issues=issues,
         reason=reason,
         section_confidences=section_confidences,
+        corrected_solution=corrected_solution if corrected_solution else None,
     )
 
 

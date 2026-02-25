@@ -27,8 +27,9 @@ logger = logging.getLogger("alethic")
 _VERDICT_SEVERITY = {
     Verdict.MAJOR_FLAW: 0,
     Verdict.UNSOLVED: 1,
-    Verdict.MINOR_ISSUES: 2,
-    Verdict.CORRECT: 3,
+    Verdict.FIXABLE: 2,
+    Verdict.MINOR_ISSUES: 3,
+    Verdict.CORRECT: 4,
 }
 
 _ISSUE_SEVERITY = {

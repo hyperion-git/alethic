@@ -5,6 +5,7 @@ from __future__ import annotations
 import enum
 import time
 from dataclasses import dataclass, field
+from dataclasses import fields as dataclass_fields
 from typing import Any, ClassVar
 
 
@@ -13,6 +14,7 @@ class Verdict(enum.Enum):
 
     CORRECT = "correct"
     MINOR_ISSUES = "minor_issues"
+    FIXABLE = "fixable"
     MAJOR_FLAW = "major_flaw"
     UNSOLVED = "unsolved"  # strategic failure admission
 
@@ -112,6 +114,7 @@ class AgentConfig:
     stall_epsilon: float = 0.03
     stall_reset: bool = True
     reset_n_boost: int = 1
+    variant_b: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if self.best_of_n < 1:
@@ -145,6 +148,14 @@ class AgentConfig:
             raise ValueError(f"stall_epsilon must be >= 0, got {self.stall_epsilon}")
         if self.reset_n_boost < 0:
             raise ValueError(f"reset_n_boost must be >= 0, got {self.reset_n_boost}")
+        if self.variant_b is not None:
+            valid_field_names = {f.name for f in dataclass_fields(self)}
+            invalid_keys = set(self.variant_b) - valid_field_names
+            if invalid_keys:
+                raise ValueError(
+                    f"variant_b contains unknown keys: {invalid_keys}. "
+                    f"Valid keys: {sorted(valid_field_names)}"
+                )
 
     PRESETS: ClassVar[dict[str, dict[str, Any]]] = {
         "quick": {
@@ -181,6 +192,7 @@ class AgentConfig:
             "stall_epsilon": 0.02,
             "stall_reset": True,
             "reset_n_boost": 1,
+            "variant_b": {"model": "claude-sonnet-4-6"},
         },
         "extreme": {
             "max_iterations": 12,
@@ -194,8 +206,26 @@ class AgentConfig:
             "stall_epsilon": 0.02,
             "stall_reset": True,
             "reset_n_boost": 2,
+            "variant_b": {"model": "claude-sonnet-4-6"},
         },
     }
+
+    def build_variant_b_config(self) -> AgentConfig:
+        """Build a new AgentConfig with variant_b overrides applied.
+
+        Returns a new AgentConfig where fields from self.variant_b override
+        the current config's values. The returned config has variant_b=None
+        to avoid recursion.
+
+        Raises:
+            ValueError: If variant_b is None.
+        """
+        if self.variant_b is None:
+            raise ValueError("variant_b is None; cannot build variant B config")
+        base = {f.name: getattr(self, f.name) for f in dataclass_fields(self)}
+        base.update(self.variant_b)
+        base["variant_b"] = None
+        return AgentConfig(**base)
 
     @classmethod
     def from_preset(cls, name: str, **overrides: Any) -> AgentConfig:
@@ -309,6 +339,7 @@ class VerificationResult:
     issues: list[Issue] = field(default_factory=list)
     reason: str = ""  # For false-premise detection (REASON field from verifier)
     section_confidences: list[SectionConfidence] = field(default_factory=list)
+    corrected_solution: str | None = None  # For FIXABLE verdicts
 
     def is_acceptable(self, threshold: float = 0.90) -> bool:
         has_critical = any(
@@ -321,9 +352,14 @@ class VerificationResult:
         )
 
     def needs_revision(self, threshold: float = 0.90) -> bool:
-        return self.verdict in (Verdict.MINOR_ISSUES, Verdict.MAJOR_FLAW) or (
+        return self.verdict in (Verdict.MINOR_ISSUES, Verdict.FIXABLE, Verdict.MAJOR_FLAW) or (
             self.verdict == Verdict.CORRECT and self.confidence < threshold
         )
+
+    @property
+    def has_correction(self) -> bool:
+        """True if this is a FIXABLE verdict with a verifier-generated corrected solution."""
+        return self.verdict == Verdict.FIXABLE and self.corrected_solution is not None
 
     def __str__(self) -> str:
         lines = [
