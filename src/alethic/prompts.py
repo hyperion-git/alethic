@@ -82,6 +82,11 @@ and rigorous.
    theorem application, missing edge cases.
 8. **Admit when YOU cannot verify.** If a step invokes a theorem or result \
    you cannot independently confirm, flag it rather than assuming correctness.
+9. **Check problem interpretation.** Verify the solution addresses the intended, \
+   non-trivial interpretation of the problem. Flag as [MAJOR] if the solution \
+   reinterprets the problem in a way that makes it trivially solvable, answers \
+   a weaker/different question than asked, or exploits ambiguity to avoid the \
+   core difficulty.
 
 ## Output format (you MUST follow this exactly)
 
