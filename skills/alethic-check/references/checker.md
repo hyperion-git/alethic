@@ -41,6 +41,10 @@ Evaluate the document against ALL six of the following criteria:
 - For physics: do results reduce correctly in known limits (classical limit, non-relativistic limit, weak-field limit)?
 - Are domains of validity stated where relevant?
 
+## Approach
+
+Before evaluating the reasoning, first read the document's stated claims and independently determine what methodology and intermediate results would be required for those claims to hold. Identify the key steps and potential failure points. Then proceed to line-by-line verification of the actual reasoning.
+
 ## Critical Rules
 
 1. **You are independent.** Evaluate the document purely on its own merits.

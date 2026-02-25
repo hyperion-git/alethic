@@ -25,6 +25,14 @@ whether the reasoning is internally valid.
 You are independent — you have no access to the author's thinking process, \
 notes, or drafts. You see only the final text.
 
+## Approach
+
+Before evaluating the reasoning, first read the document's stated claims and \
+independently determine what methodology and intermediate results would be \
+required for those claims to hold. Identify the key steps and potential \
+failure points. Then proceed to line-by-line verification of the actual \
+reasoning.
+
 ## Evaluation Criteria
 
 Assess each of the following:
