@@ -6,7 +6,9 @@
 
 The Python library generates candidates in parallel via `ThreadPoolExecutor` when N > 1; Claude Code skills generate sequentially. Both support configurable N through presets (quick=1, default=2, thorough=3, extreme=5) or the `--best-of` flag.
 
-Available as Claude Code skills (`/alethic-solve` for math, `/alethic-derive` for physics, `/alethic-scientific-figure` for scientific figures) or as a standalone **Python library** with CLI.
+Additionally, `verify` and `check` commands provide standalone multi-verifier consensus: K independent verifiers evaluate a solution in parallel, results are mechanically aggregated (majority-vote verdict, mean confidence, issue union), then an LLM synthesizes a unified critique. `verify` assesses correctness against a problem statement; `check` audits internal consistency without one.
+
+Available as Claude Code skills (`/alethic-solve` for math, `/alethic-derive` for physics, `/alethic-verify` and `/alethic-check` for consensus verification, `/alethic-scientific-figure` for scientific figures) or as a standalone **Python library** with CLI.
 
 ## Dev Commands
 
@@ -47,6 +49,15 @@ alethic --tools none "Is 17 prime?"                         # no tool guidance
 alethic derive --tools sympy,numpy "Derive the Lamb shift"  # both (default)
 alethic --no-stall-reset "Is 17 prime?"                     # disable stall detection
 alethic --stall-window 3 --stall-epsilon 0.05 "..."         # custom stall parameters
+
+# Verify/check (standalone consensus verification)
+alethic verify solution.md --problem-text "Is 1+1=2?"      # verify solution against problem
+alethic verify .alethic/session-dir/ --verifiers 5          # verify from session dir, K=5
+alethic verify solution.md -P problem.txt                   # problem from file
+alethic check derivation.md                                 # internal consistency check
+alethic check solution.md --domain physics                  # override domain detection
+alethic check solution.md --json                            # JSON output
+alethic verify solution.md --problem-text "..." --preset thorough  # preset controls K & thinking
 
 # Textbook-style output (skills only)
 # /alethic-solve --textbook "Prove sqrt(2) is irrational"
@@ -129,6 +140,17 @@ Both the CLI (`--preset`) and the Python API (`AgentConfig.from_preset()`) suppo
 
 Both `/alethic-solve` and `/alethic-derive` support presets via `-p`/`--preset`, controlling iterations, revisions, budget, confidence threshold, and best-of-N candidates. Temperature and extended thinking are API-only (Task sub-agent limitation). Explicit flags (e.g., `-B 5`) override preset values.
 
+### Verify/Check Presets
+
+The `verify` and `check` commands use `VerifierConfig` presets controlling verifier count and thinking. Explicit flags (e.g., `-K 5`) override preset values.
+
+| Preset | Verifiers (K) | Thinking | Think budget | Max tokens |
+|--------|--------------|----------|-------------|------------|
+| `quick` | 2 | off | — | 16,384 |
+| `default` | 3 | off | — | 16,384 |
+| `thorough` | 5 | on | 15,000 | 32,768 |
+| `extreme` | 7 | on | 40,000 | 65,536 |
+
 ## Module Map
 
 | Module | Purpose |
@@ -136,11 +158,17 @@ Both `/alethic-solve` and `/alethic-derive` support presets via `-p`/`--preset`,
 | `agent.py` | `MathAgent` orchestrator — runs the Generate N → Verify all → Select best → Revise loop with best-of-N sampling (parallel via `ThreadPoolExecutor`), false-premise detection, candidate ranking, failed approach tracking via `RunState`, structured event logging via `EventLog`, switchable tool guidance via `_build_system_prompt()`/`_get_tool_guidance_map()`, and stall detection with strategy reset via `_check_stall()`/`_build_reset_context()` |
 | `physics_agent.py` | `PhysicsAgent` — thin subclass of `MathAgent` that injects physics-specific prompt templates and overrides `_get_tool_guidance_map()` to return `PHYSICS_TOOL_GUIDANCE` and `_reset_addendum()` to return `PHYSICS_STRATEGY_RESET_ADDENDUM` |
 | `subagents.py` | `generate()`, `verify()`, `revise()` — each wraps a Claude API call with role-specific prompts; accepts optional prompt kwargs for domain specialization; supports extended thinking |
-| `models.py` | Dataclasses: `AgentConfig` (with `PRESETS`, `from_preset()`, `best_of_n`, `tool_guidance: frozenset[str]`, `stall_window`, `stall_epsilon`, `stall_reset`, `reset_n_boost` fields), `Solution`, `VerificationResult` (with `Issue`, `SectionConfidence`, severity-aware `is_acceptable()`), `Revision`, `AgentResult` (with `AgentEvent` list, `failed_approaches`), `Verdict` enum, `IssueSeverity` enum, `EventType` enum (incl. `STALL_RESET`) |
+| `models.py` | Dataclasses: `AgentConfig` (with `PRESETS`, `from_preset()`, `best_of_n`, `tool_guidance: frozenset[str]`, `stall_window`, `stall_epsilon`, `stall_reset`, `reset_n_boost` fields), `VerifierConfig` (with `PRESETS`, `from_preset()`, `num_verifiers`, `domain`, `tool_guidance` fields), `ConsensusResult` (verdict, confidence, confidence_range, critique, issues, individual_results), `ConsensusIssue` (text, severity, flagged_by), `Solution`, `VerificationResult` (with `Issue`, `SectionConfidence`, severity-aware `is_acceptable()`), `Revision`, `AgentResult` (with `AgentEvent` list, `failed_approaches`), `Verdict` enum, `IssueSeverity` enum, `EventType` enum (incl. `STALL_RESET`) |
 | `prompts.py` | Math system/user prompt templates for all three subagents + balanced prompting addendum + `STRATEGY_RESET_ADDENDUM` + `TOOL_GUIDANCE` map (SymPy/NumPy generator/verifier guidance strings) |
 | `physics_prompts.py` | Physics-specific prompt templates: derivation strategies, physics error checklist, dimensional/limiting-case balanced addendum + `PHYSICS_STRATEGY_RESET_ADDENDUM` + `PHYSICS_TOOL_GUIDANCE` map (physics-specific SymPy/NumPy guidance) |
 | `tools.py` | `execute_python()` sandbox, `PYTHON_TOOL` schema (highlights SymPy as `sp` and NumPy as `np`), `process_tool_calls()` for tool-use loop |
-| `cli.py` | `argparse`-based CLI (`alethic` entry point) with `solve`/`derive` subcommands, `--preset`, `--thinking`, `--best-of`/`-B`, `--tools`, `--no-stall-reset`, `--stall-window`, and `--stall-epsilon` support |
+| `verifier_agent.py` | `VerifierAgent` and `CheckerAgent` — K-verifier consensus pipeline with `ThreadPoolExecutor` parallelism, domain auto-detection, mechanical aggregation + LLM critique synthesis; `VerifierAgent.verify(problem, solution)` and `CheckerAgent.check(solution)` |
+| `synthesizer.py` | Two-stage consensus synthesis: `aggregate_mechanical()` (majority-vote verdict, mean confidence, issue dedup via `SequenceMatcher`) + `synthesize_critique()` (LLM cleanup) |
+| `check_prompts.py` | Check-specific prompt templates (`CHECKER_SYSTEM`, `CHECKER_USER`) for solution-only internal consistency auditing + `CHECK_TOOL_GUIDANCE` map (SymPy/NumPy/SciPy/Matplotlib verifier guidance) |
+| `domain.py` | `detect_domain(text, override=None)` — static keyword dictionary (~500 terms, 3 weighted tiers) classifying text as `"math"` or `"physics"` |
+| `session_reader.py` | `resolve_session_input(path)` — extracts `(problem, solution)` from `.alethic/` session directories (tries `output.md`, falls back to `worklog/solution.md`) |
+| `output.py` | `format_consensus(result, mode, command)` — formats `ConsensusResult` as box-drawing text, JSON, or single-line quiet output |
+| `cli.py` | `argparse`-based CLI (`alethic` entry point) with `solve`/`derive`/`verify`/`check` subcommands, `--preset`, `--thinking`, `--best-of`/`-B`, `--tools`, `--no-stall-reset`, `--stall-window`, `--stall-epsilon`, `--verifiers`/`-K`, `--problem-text`, `--problem-file`/`-P`, `--domain` support |
 | `examples.py` | Bundled example problems (`python -m alethic.examples`) |
 
 | Skill file | Purpose |
@@ -148,6 +176,15 @@ Both `/alethic-solve` and `/alethic-derive` support presets via `-p`/`--preset`,
 | `skills/alethic-common/orchestrator.md` | Shared GVR loop orchestrator (~805 lines) — parameterized by domain, reads prompts from references/*.md, handles session management, dashboard, textbook pipeline, event logging, stall detection with strategy reset, and all CLI flags |
 | `skills/alethic-solve/SKILL.md` | `/alethic-solve` thin configurator — sets math domain variables, balanced approach addendum, strategy reset addendum, loads shared orchestrator |
 | `skills/alethic-derive/SKILL.md` | `/alethic-derive` thin configurator — sets physics domain variables, balanced approach addendum, strategy reset addendum, loads shared orchestrator |
+| `skills/alethic-verify/SKILL.md` | `/alethic-verify` thin configurator — sets mode=verify, requires_problem=true, loads shared verify-orchestrator |
+| `skills/alethic-verify/references/verifier.md` | Standalone verifier prompt for correctness assessment against a problem statement |
+| `skills/alethic-verify/references/tools/*.md` | Tool guidance overlays (sympy, numpy, scipy, matplotlib) for verification |
+| `skills/alethic-check/SKILL.md` | `/alethic-check` thin configurator — sets mode=check, requires_problem=false, loads shared verify-orchestrator |
+| `skills/alethic-check/references/checker.md` | Proof auditor prompt for internal consistency checking (6 evaluation criteria) |
+| `skills/alethic-check/references/tools/*.md` | Tool guidance overlays (sympy, numpy, scipy, matplotlib) for checking |
+| `skills/alethic-common/verify-orchestrator.md` | Shared verify/check orchestrator — K parallel verifier Task calls → mechanical aggregation → synthesizer Task call → formatted output |
+| `skills/alethic-common/references/synthesizer.md` | Critique cleanup prompt for LLM-based synthesis of individual verifier critiques |
+| `skills/alethic-common/references/domain-keywords.json` | Static keyword dictionary (~500 terms, 3 weighted tiers) for domain auto-detection |
 | `skills/alethic-textbook/SKILL.md` | `/alethic-textbook` command — standalone textbook-style converter for existing sessions or raw .md files |
 | `skills/alethic-scientific-figure/SKILL.md` | `/alethic-scientific-figure` command — publication-quality scientific figures with AFP color palette and Tufte principles |
 | `skills/alethic-scientific-figure/references/*.md` | Color palette reference, presentation/poster overrides |
@@ -174,7 +211,9 @@ Both `/alethic-solve` and `/alethic-derive` support presets via `-p`/`--preset`,
 10. **Best-of-N sampling**: Each iteration generates N candidates (configurable via `--best-of` / `-B`), verifies all, selects the highest-confidence candidate, and revises only the winner. The Python library uses `ThreadPoolExecutor` for parallel generation when N>1; skills generate sequentially and display a monitoring dashboard with candidate rankings and cumulative iteration history. When N=1, behavior is identical to the pre-best-of-N code path (no thread pool, same log messages, same history shape). `AgentResult` includes `candidates_per_iteration` metadata. Preset defaults: quick=1, default=2, thorough=3, extreme=5.
 11. **Textbook-style converter** (skill only): The `--textbook` flag on `/alethic-solve` and `/alethic-derive` (or standalone `/alethic-textbook`) runs a staged sub-agent pipeline — Planner → Writer × N → Fidelity Verifier — that converts raw solutions into textbook-quality documents with theorem/definition/lemma environments (math) or setup/derivation/result environments (physics), pedagogical motivation, numbered equations with back-references, and connecting prose. The Planner adaptively decides section count based on solution length (1–8 sections), keeping each Writer's context bounded. The Fidelity Verifier compares the textbook version against the original on a 6-point checklist; MAJOR_ALTERATION triggers fallback to the simple beautifier. The orchestrator never reads solution text — only file paths and one-line summaries.
 
-12. **Stall detection with strategy reset**: A lightweight monitoring layer detects when confidence stops improving (plateau: `iterations_since_meaningful_improvement >= stall_window`) or when `MAJOR_FLAW` verdicts repeat consecutively. On trigger, the next iteration widens best-of-N by `reset_n_boost`, injects a `STRATEGY_RESET_ADDENDUM` prompt (forcing a categorically different approach), and reduces revision budget to 1. All overrides are iteration-scoped (auto-revert). A cooldown of 1 iteration prevents back-to-back resets; total resets capped at `max(1, max_iterations // 4)`. Detection is deterministic; stochasticity comes from the LLM response. Disabled in the `quick` preset (too few iterations). Configurable via `--no-stall-reset`, `--stall-window`, `--stall-epsilon` (CLI/skill) or `AgentConfig` fields (Python API). `STALL_RESET` / `stall_reset` events are logged for post-hoc analysis. Both the Python library (`MathAgent._check_stall()`, `_build_reset_context()`) and the skill orchestrator (Step 2-pre) implement identical logic; domain-specific reset addenda live in `prompts.py`/`physics_prompts.py` (Python) and the thin SKILL.md configurators (skills).
+12. **Multi-verifier consensus (verify/check)**: K independent verifiers run in parallel via `ThreadPoolExecutor`, each producing a `VerificationResult`. Results are mechanically aggregated: majority-vote verdict (ties broken by severity), mean confidence with min/max range, and issue dedup via `SequenceMatcher` (0.6 similarity threshold) with vote counts. An LLM then synthesizes a unified critique from all individual critiques. `verify` requires a problem statement and assesses correctness; `check` audits internal consistency without one. Domain auto-detection uses a static keyword dictionary (~500 terms across 3 weighted tiers: strong=3, moderate=2, weak=1) to classify text as math or physics. Tool guidance defaults to `sympy,numpy,scipy,matplotlib` (broader than solve/derive). Both the Python library (`VerifierAgent`, `CheckerAgent`) and the skills (`/alethic-verify`, `/alethic-check`) implement the same pipeline; skills use a shared `verify-orchestrator.md` with thin configurators.
+
+13. **Stall detection with strategy reset**: A lightweight monitoring layer detects when confidence stops improving (plateau: `iterations_since_meaningful_improvement >= stall_window`) or when `MAJOR_FLAW` verdicts repeat consecutively. On trigger, the next iteration widens best-of-N by `reset_n_boost`, injects a `STRATEGY_RESET_ADDENDUM` prompt (forcing a categorically different approach), and reduces revision budget to 1. All overrides are iteration-scoped (auto-revert). A cooldown of 1 iteration prevents back-to-back resets; total resets capped at `max(1, max_iterations // 4)`. Detection is deterministic; stochasticity comes from the LLM response. Disabled in the `quick` preset (too few iterations). Configurable via `--no-stall-reset`, `--stall-window`, `--stall-epsilon` (CLI/skill) or `AgentConfig` fields (Python API). `STALL_RESET` / `stall_reset` events are logged for post-hoc analysis. Both the Python library (`MathAgent._check_stall()`, `_build_reset_context()`) and the skill orchestrator (Step 2-pre) implement identical logic; domain-specific reset addenda live in `prompts.py`/`physics_prompts.py` (Python) and the thin SKILL.md configurators (skills).
 
 ### Session Directory Layout (skills only)
 
