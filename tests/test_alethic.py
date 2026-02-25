@@ -338,6 +338,19 @@ class TestTools:
         result = execute_python("import os")
         assert "ERROR" in result or "not allowed" in result
 
+    def test_matplotlib_allowed_in_sandbox(self):
+        """matplotlib should be importable in the sandbox."""
+        result = execute_python("import matplotlib; print(matplotlib.__name__)")
+        assert "matplotlib" in result
+        assert "not allowed" not in result
+
+    def test_matplotlib_agg_backend(self):
+        """matplotlib.use('Agg') should work in sandbox."""
+        result = execute_python(
+            "import matplotlib\nmatplotlib.use('Agg')\nimport matplotlib.pyplot as plt\nprint('ok')"
+        )
+        assert "ok" in result
+
     def test_execute_timeout(self):
         result = execute_python("while True: pass", timeout_seconds=2)
         assert "TIMEOUT" in result or "ERROR" in result
