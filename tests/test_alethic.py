@@ -322,6 +322,28 @@ class TestPrompts:
         assert "counterexample" in BALANCED_GENERATOR_ADDENDUM.lower()
 
 
+class TestCheckPrompts:
+    def test_check_prompts_exist(self):
+        from alethic.check_prompts import CHECKER_SYSTEM, CHECKER_USER
+
+        assert "internally valid" in CHECKER_SYSTEM.lower() or "proof auditor" in CHECKER_SYSTEM.lower()
+        assert "{solution}" in CHECKER_USER
+
+    def test_check_tool_guidance_has_all_four(self):
+        from alethic.check_prompts import CHECK_TOOL_GUIDANCE
+
+        assert "sympy" in CHECK_TOOL_GUIDANCE
+        assert "numpy" in CHECK_TOOL_GUIDANCE
+        assert "scipy" in CHECK_TOOL_GUIDANCE
+        assert "matplotlib" in CHECK_TOOL_GUIDANCE
+
+    def test_check_tool_guidance_has_verifier_keys(self):
+        from alethic.check_prompts import CHECK_TOOL_GUIDANCE
+
+        for tool_name, entries in CHECK_TOOL_GUIDANCE.items():
+            assert "verifier" in entries, f"{tool_name} missing 'verifier' key"
+
+
 # ── Tool execution tests ──────────────────────────────────────────────
 
 
