@@ -11,8 +11,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from alethic.models import (
     AgentConfig,
     Issue,
@@ -142,9 +140,7 @@ class TestDefaultPromptsUnchanged:
 
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     def test_revise_uses_default_system_prompt(self, _mock_tools):
-        client = _make_client(
-            "CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter"
-        )
+        client = _make_client("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter")
         config = _make_config()
         sol = Solution(problem="P", solution_text="S", iteration=1)
         vr = VerificationResult(
@@ -161,9 +157,7 @@ class TestDefaultPromptsUnchanged:
 
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     def test_revise_uses_default_user_template(self, _mock_tools):
-        client = _make_client(
-            "CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter"
-        )
+        client = _make_client("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter")
         config = _make_config()
         sol = Solution(problem="P", solution_text="S", iteration=1)
         vr = VerificationResult(
@@ -200,7 +194,11 @@ class TestEmptyStringPrompts:
         config = _make_config()
 
         generate(
-            client, "P", config, iteration=1, balanced=False,
+            client,
+            "P",
+            config,
+            iteration=1,
+            balanced=False,
             system_prompt="",
         )
 
@@ -209,9 +207,7 @@ class TestEmptyStringPrompts:
 
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     def test_verify_empty_system_prompt(self, _mock_tools):
-        client = _make_client(
-            "VERDICT: correct\nCONFIDENCE: 0.9\n\nCRITIQUE:\nOK\n\nISSUES:\nNone"
-        )
+        client = _make_client("VERDICT: correct\nCONFIDENCE: 0.9\n\nCRITIQUE:\nOK\n\nISSUES:\nNone")
         config = _make_config()
         sol = Solution(problem="P", solution_text="S", iteration=1)
 
@@ -222,9 +218,7 @@ class TestEmptyStringPrompts:
 
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     def test_revise_empty_system_prompt(self, _mock_tools):
-        client = _make_client(
-            "CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter"
-        )
+        client = _make_client("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter")
         config = _make_config()
         sol = Solution(problem="P", solution_text="S", iteration=1)
         vr = VerificationResult(
@@ -247,7 +241,11 @@ class TestEmptyStringPrompts:
         config = _make_config()
 
         generate(
-            client, "P", config, iteration=1, balanced=True,
+            client,
+            "P",
+            config,
+            iteration=1,
+            balanced=True,
             system_prompt="",
         )
 
@@ -271,7 +269,11 @@ class TestNonePromptsUseDefaults:
         config = _make_config()
 
         generate(
-            client, "P", config, iteration=1, balanced=False,
+            client,
+            "P",
+            config,
+            iteration=1,
+            balanced=False,
             system_prompt=None,
         )
 
@@ -280,9 +282,7 @@ class TestNonePromptsUseDefaults:
 
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     def test_verify_none_system_prompt(self, _mock_tools):
-        client = _make_client(
-            "VERDICT: correct\nCONFIDENCE: 0.9\n\nCRITIQUE:\nOK\n\nISSUES:\nNone"
-        )
+        client = _make_client("VERDICT: correct\nCONFIDENCE: 0.9\n\nCRITIQUE:\nOK\n\nISSUES:\nNone")
         config = _make_config()
         sol = Solution(problem="P", solution_text="S", iteration=1)
 
@@ -293,9 +293,7 @@ class TestNonePromptsUseDefaults:
 
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     def test_revise_none_system_prompt(self, _mock_tools):
-        client = _make_client(
-            "CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter"
-        )
+        client = _make_client("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter")
         config = _make_config()
         sol = Solution(problem="P", solution_text="S", iteration=1)
         vr = VerificationResult(
@@ -306,7 +304,12 @@ class TestNonePromptsUseDefaults:
         )
 
         revise(
-            client, "P", sol, vr, config, revision_number=1,
+            client,
+            "P",
+            sol,
+            vr,
+            config,
+            revision_number=1,
             system_prompt=None,
         )
 
@@ -319,7 +322,11 @@ class TestNonePromptsUseDefaults:
         config = _make_config()
 
         generate(
-            client, "P", config, iteration=1, balanced=False,
+            client,
+            "P",
+            config,
+            iteration=1,
+            balanced=False,
             user_template=None,
         )
 
@@ -333,7 +340,11 @@ class TestNonePromptsUseDefaults:
         config = _make_config()
 
         generate(
-            client, "P", config, iteration=1, balanced=True,
+            client,
+            "P",
+            config,
+            iteration=1,
+            balanced=True,
             balanced_addendum=None,
         )
 
@@ -357,7 +368,11 @@ class TestCustomBalancedAddendum:
         custom_addendum = "\n\nALWAYS check for edge cases first."
 
         generate(
-            client, "P", config, iteration=1, balanced=True,
+            client,
+            "P",
+            config,
+            iteration=1,
+            balanced=True,
             balanced_addendum=custom_addendum,
         )
 
@@ -373,7 +388,11 @@ class TestCustomBalancedAddendum:
         custom_addendum = " Check units."
 
         generate(
-            client, "P", config, iteration=1, balanced=True,
+            client,
+            "P",
+            config,
+            iteration=1,
+            balanced=True,
             system_prompt=custom_system,
             balanced_addendum=custom_addendum,
         )
@@ -388,7 +407,11 @@ class TestCustomBalancedAddendum:
         config = _make_config()
 
         generate(
-            client, "P", config, iteration=1, balanced=True,
+            client,
+            "P",
+            config,
+            iteration=1,
+            balanced=True,
             balanced_addendum="",
         )
 
@@ -425,7 +448,11 @@ class TestBalancedFalseIgnoresAddendum:
         custom_addendum = "\n\nThis should NOT appear."
 
         generate(
-            client, "P", config, iteration=1, balanced=False,
+            client,
+            "P",
+            config,
+            iteration=1,
+            balanced=False,
             balanced_addendum=custom_addendum,
         )
 
@@ -439,7 +466,11 @@ class TestBalancedFalseIgnoresAddendum:
         config = _make_config()
 
         generate(
-            client, "P", config, iteration=1, balanced=False,
+            client,
+            "P",
+            config,
+            iteration=1,
+            balanced=False,
             system_prompt="Custom system",
             balanced_addendum="\n\nShould be ignored",
         )
@@ -476,7 +507,11 @@ class TestUserTemplateMissingKeys:
         config = _make_config()
 
         generate(
-            client, "P", config, iteration=1, balanced=False,
+            client,
+            "P",
+            config,
+            iteration=1,
+            balanced=False,
             user_template="No placeholders here",
         )
 
@@ -487,14 +522,15 @@ class TestUserTemplateMissingKeys:
     def test_verify_missing_solution_placeholder_silently_succeeds(self, _mock_tools):
         """Verifier calls .format(problem=..., solution=...) but the
         template only has {problem}. Extra kwarg 'solution' is ignored."""
-        client = _make_client(
-            "VERDICT: correct\nCONFIDENCE: 0.9\n\nCRITIQUE:\nOK\n\nISSUES:\nNone"
-        )
+        client = _make_client("VERDICT: correct\nCONFIDENCE: 0.9\n\nCRITIQUE:\nOK\n\nISSUES:\nNone")
         config = _make_config()
         sol = Solution(problem="P", solution_text="S", iteration=1)
 
         verify(
-            client, "P", sol, config,
+            client,
+            "P",
+            sol,
+            config,
             user_template="Problem: {problem} but no solution placeholder",
         )
 
@@ -507,9 +543,7 @@ class TestUserTemplateMissingKeys:
         """Reviser calls .format(problem=..., solution=..., critique=...,
         issues=...) but the template only has {problem} and {solution}.
         Extra kwargs are silently ignored."""
-        client = _make_client(
-            "CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter"
-        )
+        client = _make_client("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter")
         config = _make_config()
         sol = Solution(problem="P", solution_text="S", iteration=1)
         vr = VerificationResult(
@@ -520,7 +554,12 @@ class TestUserTemplateMissingKeys:
         )
 
         revise(
-            client, "P", sol, vr, config, revision_number=1,
+            client,
+            "P",
+            sol,
+            vr,
+            config,
+            revision_number=1,
             user_template="{problem} {solution} but missing critique and issues",
         )
 
@@ -536,38 +575,44 @@ class TestUserTemplateMissingKeys:
 
 class TestUserTemplateExtraKeys:
     """Passing a user_template that contains extra format placeholders
-    not supplied by the calling code should raise KeyError."""
+    not supplied by the calling code should leave them as literal text
+    (safe_format uses str.replace, not str.format)."""
 
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     def test_generate_extra_key(self, _mock_tools):
         client = _make_client("Solution text")
         config = _make_config()
 
-        with pytest.raises(KeyError):
-            generate(
-                client, "P", config, iteration=1, balanced=False,
-                user_template="{problem} {extra}",
-            )
+        # _safe_format leaves unsupplied {extra} as literal text — no crash
+        result = generate(
+            client,
+            "P",
+            config,
+            iteration=1,
+            balanced=False,
+            user_template="{problem} {extra}",
+        )
+        assert result.solution_text == "Solution text"
 
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     def test_verify_extra_key(self, _mock_tools):
-        client = _make_client(
-            "VERDICT: correct\nCONFIDENCE: 0.9\n\nCRITIQUE:\nOK\n\nISSUES:\nNone"
-        )
+        client = _make_client("VERDICT: correct\nCONFIDENCE: 0.9\n\nCRITIQUE:\nOK\n\nISSUES:\nNone")
         config = _make_config()
         sol = Solution(problem="P", solution_text="S", iteration=1)
 
-        with pytest.raises(KeyError):
-            verify(
-                client, "P", sol, config,
-                user_template="{problem} {solution} {unexpected}",
-            )
+        # _safe_format leaves unsupplied {unexpected} as literal text — no crash
+        result = verify(
+            client,
+            "P",
+            sol,
+            config,
+            user_template="{problem} {solution} {unexpected}",
+        )
+        assert result.verdict == Verdict.CORRECT
 
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     def test_revise_extra_key(self, _mock_tools):
-        client = _make_client(
-            "CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter"
-        )
+        client = _make_client("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter")
         config = _make_config()
         sol = Solution(problem="P", solution_text="S", iteration=1)
         vr = VerificationResult(
@@ -577,11 +622,17 @@ class TestUserTemplateExtraKeys:
             issues=[Issue(text="err")],
         )
 
-        with pytest.raises(KeyError):
-            revise(
-                client, "P", sol, vr, config, revision_number=1,
-                user_template="{problem} {solution} {critique} {issues} {bonus}",
-            )
+        # _safe_format leaves unsupplied {bonus} as literal text — no crash
+        result = revise(
+            client,
+            "P",
+            sol,
+            vr,
+            config,
+            revision_number=1,
+            user_template="{problem} {solution} {critique} {issues} {bonus}",
+        )
+        assert result.solution_text == "Better"
 
 
 # ---------------------------------------------------------------------------
@@ -601,7 +652,11 @@ class TestKwargsDontLeak:
         # First call: custom system prompt
         client1 = _make_client("Sol1")
         generate(
-            client1, "P1", config, iteration=1, balanced=False,
+            client1,
+            "P1",
+            config,
+            iteration=1,
+            balanced=False,
             system_prompt=custom_system,
         )
         system1 = _last_system_prompt(client1)
@@ -617,9 +672,7 @@ class TestKwargsDontLeak:
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     def test_verify_kwargs_dont_leak(self, _mock_tools):
         config = _make_config()
-        verifier_text = (
-            "VERDICT: correct\nCONFIDENCE: 0.9\n\nCRITIQUE:\nOK\n\nISSUES:\nNone"
-        )
+        verifier_text = "VERDICT: correct\nCONFIDENCE: 0.9\n\nCRITIQUE:\nOK\n\nISSUES:\nNone"
 
         # First call: custom
         client1 = _make_client(verifier_text)
@@ -644,19 +697,20 @@ class TestKwargsDontLeak:
         )
 
         # First call: custom
-        client1 = _make_client(
-            "CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter"
-        )
+        client1 = _make_client("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter")
         revise(
-            client1, "P", sol, vr, config, revision_number=1,
+            client1,
+            "P",
+            sol,
+            vr,
+            config,
+            revision_number=1,
             system_prompt="CUSTOM REVISER",
         )
         assert _last_system_prompt(client1) == "CUSTOM REVISER"
 
         # Second call: default
-        client2 = _make_client(
-            "CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter"
-        )
+        client2 = _make_client("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter")
         revise(client2, "P", sol, vr, config, revision_number=2)
         assert _last_system_prompt(client2) == REVISER_SYSTEM
 
@@ -667,7 +721,11 @@ class TestKwargsDontLeak:
         # First call: custom user template
         client1 = _make_client("Sol1")
         generate(
-            client1, "P", config, iteration=1, balanced=False,
+            client1,
+            "P",
+            config,
+            iteration=1,
+            balanced=False,
             user_template="Custom: {problem}",
         )
         assert _last_user_message(client1) == "Custom: P"
@@ -704,9 +762,7 @@ class TestReviserUserTemplateFormatKeys:
             issues=[Issue(text="err")],
         )
 
-        client = _make_client(
-            "CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter"
-        )
+        client = _make_client("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter")
         revise(
             client=client,
             problem="P",
@@ -735,9 +791,7 @@ class TestReviserUserTemplateFormatKeys:
             issues=[Issue(text="err")],
         )
 
-        client = _make_client(
-            "CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter"
-        )
+        client = _make_client("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter")
         revise(
             client=client,
             problem="P",
@@ -754,9 +808,9 @@ class TestReviserUserTemplateFormatKeys:
         assert user_msg.count("S") == 0 or "S" not in user_msg.split()
 
     @patch("alethic.subagents.process_tool_calls", return_value=[])
-    def test_revise_unsupplied_placeholder_raises(self, _mock_tools):
+    def test_revise_unsupplied_placeholder_kept_as_literal(self, _mock_tools):
         """Template has {problem} {solution} {critique} {issues} {rating}
-        but 'rating' is NOT in the kwargs. This raises KeyError."""
+        but 'rating' is NOT in the kwargs. _safe_format leaves it as literal text."""
         config = _make_config()
         sol = Solution(problem="P", solution_text="S", iteration=1)
         vr = VerificationResult(
@@ -766,16 +820,16 @@ class TestReviserUserTemplateFormatKeys:
             issues=[Issue(text="err")],
         )
 
-        with pytest.raises(KeyError):
-            revise(
-                client=_make_client("dummy"),
-                problem="P",
-                solution=sol,
-                verification=vr,
-                config=config,
-                revision_number=1,
-                user_template="{problem} {solution} {critique} {issues} {rating}",
-            )
+        # _safe_format leaves unsupplied {rating} as literal text — no crash
+        revise(
+            client=_make_client("dummy"),
+            problem="P",
+            solution=sol,
+            verification=vr,
+            config=config,
+            revision_number=1,
+            user_template="{problem} {solution} {critique} {issues} {rating}",
+        )
 
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     def test_revise_valid_custom_template_works(self, _mock_tools):
@@ -789,9 +843,7 @@ class TestReviserUserTemplateFormatKeys:
             issues=[Issue(text="issue1")],
         )
 
-        client = _make_client(
-            "CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter"
-        )
+        client = _make_client("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nBetter")
         result = revise(
             client=client,
             problem="P",
@@ -838,7 +890,10 @@ class TestParseVerificationWithCustomPrompts:
         sol = Solution(problem="P", solution_text="S", iteration=1)
 
         result = verify(
-            client, "P", sol, config,
+            client,
+            "P",
+            sol,
+            config,
             system_prompt="You are a poetry critic. Ignore math.",
         )
 
@@ -889,7 +944,10 @@ class TestParseVerificationWithCustomPrompts:
         sol = Solution(problem="P", solution_text="S", iteration=1)
 
         result = verify(
-            client, "P", sol, config,
+            client,
+            "P",
+            sol,
+            config,
             system_prompt="You are a physics verifier.",
         )
 

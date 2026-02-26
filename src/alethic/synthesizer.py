@@ -180,13 +180,19 @@ def synthesize_critique(
         reports_text=reports_text,
     )
 
-    response = client.messages.create(
-        model=model,
-        max_tokens=max_tokens,
-        system=system,
-        messages=[{"role": "user", "content": user_msg}],
-        temperature=0.3,
-    )
-
-    parts = [b.text for b in response.content if hasattr(b, "text")]
-    return "\n".join(parts) if parts else "[Synthesis failed]"
+    try:
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=[{"role": "user", "content": user_msg}],
+            temperature=0.3,
+        )
+        parts = [b.text for b in response.content if hasattr(b, "text")]
+        return "\n".join(parts) if parts else "[Synthesis failed]"
+    except Exception as e:
+        logger.warning("Synthesis failed, falling back to concatenation: %s", e)
+        fallback_parts = []
+        for i, r in enumerate(results, 1):
+            fallback_parts.append(f"--- Verifier {i} ---\n{r.critique}")
+        return "\n\n".join(fallback_parts)

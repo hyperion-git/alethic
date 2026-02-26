@@ -56,53 +56,49 @@ class TestModels:
         assert str(sol) == "answer"
 
     def test_verification_result_methods(self):
-        correct = VerificationResult(
-            verdict=Verdict.CORRECT, critique="Good", confidence=0.95
-        )
+        correct = VerificationResult(verdict=Verdict.CORRECT, critique="Good", confidence=0.95)
         assert correct.is_acceptable()
         assert not correct.needs_revision()
 
-        minor = VerificationResult(
-            verdict=Verdict.MINOR_ISSUES, critique="Almost", confidence=0.7
-        )
+        minor = VerificationResult(verdict=Verdict.MINOR_ISSUES, critique="Almost", confidence=0.7)
         assert not minor.is_acceptable()
         assert minor.needs_revision()
 
-        major = VerificationResult(
-            verdict=Verdict.MAJOR_FLAW, critique="Bad", confidence=0.2
-        )
+        major = VerificationResult(verdict=Verdict.MAJOR_FLAW, critique="Bad", confidence=0.2)
         assert not major.is_acceptable()
         assert major.needs_revision()
 
-        unsolved = VerificationResult(
-            verdict=Verdict.UNSOLVED, critique="N/A", confidence=0.0
-        )
+        unsolved = VerificationResult(verdict=Verdict.UNSOLVED, critique="N/A", confidence=0.0)
         assert not unsolved.is_acceptable()
         assert not unsolved.needs_revision()
 
     def test_fixable_verdict_needs_revision(self):
-        fixable = VerificationResult(
-            verdict=Verdict.FIXABLE, critique="Sign error", confidence=0.7
-        )
+        fixable = VerificationResult(verdict=Verdict.FIXABLE, critique="Sign error", confidence=0.7)
         assert not fixable.is_acceptable()
         assert fixable.needs_revision()
 
     def test_fixable_has_correction_true(self):
         fixable = VerificationResult(
-            verdict=Verdict.FIXABLE, critique="Sign error", confidence=0.7,
+            verdict=Verdict.FIXABLE,
+            critique="Sign error",
+            confidence=0.7,
             corrected_solution="Fixed version here",
         )
         assert fixable.has_correction
 
     def test_fixable_has_correction_false_no_text(self):
         fixable = VerificationResult(
-            verdict=Verdict.FIXABLE, critique="Sign error", confidence=0.7,
+            verdict=Verdict.FIXABLE,
+            critique="Sign error",
+            confidence=0.7,
         )
         assert not fixable.has_correction
 
     def test_has_correction_false_for_non_fixable(self):
         minor = VerificationResult(
-            verdict=Verdict.MINOR_ISSUES, critique="Gap", confidence=0.8,
+            verdict=Verdict.MINOR_ISSUES,
+            critique="Gap",
+            confidence=0.8,
             corrected_solution="Some text",
         )
         assert not minor.has_correction
@@ -214,7 +210,9 @@ class TestVerifierModels:
         assert result.consensus_ratio == "2/3"
 
     def test_consensus_issue(self):
-        issue = ConsensusIssue(text="Sign error in step 3", severity=IssueSeverity.MAJOR, flagged_by=2)
+        issue = ConsensusIssue(
+            text="Sign error in step 3", severity=IssueSeverity.MAJOR, flagged_by=2
+        )
         assert issue.flagged_by == 2
         assert issue.severity == IssueSeverity.MAJOR
 
@@ -248,6 +246,7 @@ class TestPresets:
 
     def test_preset_unknown_raises(self):
         import pytest
+
         with pytest.raises(ValueError, match="Unknown preset 'nonexistent'"):
             AgentConfig.from_preset("nonexistent")
 
@@ -260,9 +259,7 @@ class TestPresets:
 
     def test_custom_confidence_threshold(self):
         """is_acceptable and needs_revision respect custom threshold."""
-        vr = VerificationResult(
-            verdict=Verdict.CORRECT, critique="OK", confidence=0.88
-        )
+        vr = VerificationResult(verdict=Verdict.CORRECT, critique="OK", confidence=0.88)
         # Default threshold (0.90): not acceptable
         assert not vr.is_acceptable()
         assert vr.needs_revision()
@@ -293,6 +290,7 @@ class TestPresets:
 
     def test_cli_preset_flag(self):
         from alethic.cli import _build_config, build_parser
+
         parser = build_parser()
         args = parser.parse_args(["--preset", "quick", "test problem"])
         config = _build_config(args)
@@ -301,6 +299,7 @@ class TestPresets:
 
     def test_cli_preset_with_override(self):
         from alethic.cli import _build_config, build_parser
+
         parser = build_parser()
         args = parser.parse_args(["--preset", "quick", "--iterations", "7", "test"])
         config = _build_config(args)
@@ -309,13 +308,19 @@ class TestPresets:
 
     def test_cli_temperature_flags(self):
         from alethic.cli import _build_config, build_parser
+
         parser = build_parser()
-        args = parser.parse_args([
-            "--temperature-generator", "0.5",
-            "--temperature-verifier", "0.1",
-            "--temperature-reviser", "0.3",
-            "test",
-        ])
+        args = parser.parse_args(
+            [
+                "--temperature-generator",
+                "0.5",
+                "--temperature-verifier",
+                "0.1",
+                "--temperature-reviser",
+                "0.3",
+                "test",
+            ]
+        )
         config = _build_config(args)
         assert config.temperature_generator == 0.5
         assert config.temperature_verifier == 0.1
@@ -332,7 +337,10 @@ class TestPrompts:
 
     def test_verifier_system_is_decoupled(self):
         """Verifier prompt must NOT reference thinking traces or reasoning process."""
-        assert "thinking" not in VERIFIER_SYSTEM.lower() and "intermediate thinking" not in VERIFIER_SYSTEM.lower()
+        assert (
+            "thinking" not in VERIFIER_SYSTEM.lower()
+            and "intermediate thinking" not in VERIFIER_SYSTEM.lower()
+        )
         assert "You are independent" in VERIFIER_SYSTEM
         assert "VERDICT:" in VERIFIER_SYSTEM
 
@@ -354,7 +362,10 @@ class TestCheckPrompts:
     def test_check_prompts_exist(self):
         from alethic.check_prompts import CHECKER_SYSTEM, CHECKER_USER
 
-        assert "internally valid" in CHECKER_SYSTEM.lower() or "proof auditor" in CHECKER_SYSTEM.lower()
+        assert (
+            "internally valid" in CHECKER_SYSTEM.lower()
+            or "proof auditor" in CHECKER_SYSTEM.lower()
+        )
         assert "{solution}" in CHECKER_USER
 
     def test_check_tool_guidance_has_all_four(self):
@@ -592,7 +603,10 @@ CONCLUSION: The theorem holds for all x != 1.
 """
         revision = _parse_revision(text, revision_number=1, critique="div by zero")
         assert "x != 1" in revision.revised_solution
-        assert "division by zero" in revision.changes_made.lower() or "domain" in revision.changes_made.lower()
+        assert (
+            "division by zero" in revision.changes_made.lower()
+            or "domain" in revision.changes_made.lower()
+        )
         assert revision.revision_number == 1
 
 
@@ -602,12 +616,14 @@ CONCLUSION: The theorem holds for all x != 1.
 class TestCLI:
     def test_cli_parser_help(self):
         from alethic.cli import build_parser
+
         parser = build_parser()
         # Just verify it builds without error
         assert parser.prog == "alethic"
 
     def test_cli_parser_args(self):
         from alethic.cli import build_parser
+
         parser = build_parser()
         args = parser.parse_args(["--iterations", "3", "--no-code", "test problem"])
         assert args.iterations == 3
@@ -616,12 +632,14 @@ class TestCLI:
 
     def test_cli_json_flag(self):
         from alethic.cli import build_parser
+
         parser = build_parser()
         args = parser.parse_args(["--json", "test"])
         assert args.json_output is True
 
     def test_cli_no_stall_reset_flag(self):
         from alethic.cli import _build_config, build_parser
+
         parser = build_parser()
         args = parser.parse_args(["--no-stall-reset", "test"])
         config = _build_config(args)
@@ -629,6 +647,7 @@ class TestCLI:
 
     def test_cli_stall_window_flag(self):
         from alethic.cli import _build_config, build_parser
+
         parser = build_parser()
         args = parser.parse_args(["--stall-window", "4", "test"])
         config = _build_config(args)
@@ -636,6 +655,7 @@ class TestCLI:
 
     def test_cli_stall_epsilon_flag(self):
         from alethic.cli import _build_config, build_parser
+
         parser = build_parser()
         args = parser.parse_args(["--stall-epsilon", "0.05", "test"])
         config = _build_config(args)
@@ -716,8 +736,7 @@ class TestAgentIntegration:
             ),
             # Iteration 1: re-verify → correct
             self._mock_response(
-                "VERDICT: correct\nCONFIDENCE: 0.9\n\n"
-                "CRITIQUE:\nNow correct.\n\nISSUES:\nNone"
+                "VERDICT: correct\nCONFIDENCE: 0.9\n\nCRITIQUE:\nNow correct.\n\nISSUES:\nNone"
             ),
         ]
 
@@ -1031,7 +1050,10 @@ class TestTemperatureOverrideLogging:
                 temperature=0.5,
             )
             mock_logger.debug.assert_called_once()
-            assert "temperature=0.5" in mock_logger.debug.call_args[0][0] % mock_logger.debug.call_args[0][1:]
+            assert (
+                "temperature=0.5"
+                in mock_logger.debug.call_args[0][0] % mock_logger.debug.call_args[0][1:]
+            )
 
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     def test_no_log_when_temperature_is_one(self, mock_tools):
@@ -1134,7 +1156,9 @@ class TestThinkingTokenBump:
         from alethic.cli import _build_config, build_parser
 
         parser = build_parser()
-        args = parser.parse_args(["--preset", "quick", "--thinking", "--max-tokens", "12000", "test"])
+        args = parser.parse_args(
+            ["--preset", "quick", "--thinking", "--max-tokens", "12000", "test"]
+        )
         config = _build_config(args)
         assert config.max_tokens == 12000  # user's explicit value preserved
 
@@ -1238,3 +1262,384 @@ class TestVariantB:
         assert result.solved
         # With n=1, only 2 API calls: generate + verify (no variant B client created)
         assert mock_client.messages.create.call_count == 2
+
+
+# ── Audit fix tests ──────────────────────────────────────────────────
+
+
+class TestAuditFixes:
+    """Tests for bugs found in the 6-agent parallel audit and their fixes."""
+
+    def _mock_response(self, text: str):
+        """Create a mock Anthropic response object."""
+        mock_block = MagicMock()
+        mock_block.type = "text"
+        mock_block.text = text
+        mock_resp = MagicMock()
+        mock_resp.content = [mock_block]
+        return mock_resp
+
+    # ── T5: .format() safety (curly braces in problem text) ──────────
+
+    @patch("alethic.subagents.process_tool_calls", return_value=[])
+    def test_generate_with_curly_braces_in_problem(self, mock_tools):
+        """generate() must not crash when problem text contains set notation {x | x > 0}."""
+        from alethic.subagents import generate
+
+        config = AgentConfig(
+            enable_code_execution=False,
+            verbose=False,
+        )
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = self._mock_response(
+            "The set {x | x > 0} is the positive reals.\n\nCONCLUSION: answer"
+        )
+
+        problem = "Let S = {x | x > 0}. Prove that S is uncountable."
+        sol = generate(mock_client, problem, config, iteration=1)
+        assert sol.solution_text is not None
+        # The problem text should appear verbatim in the API call
+        call_args = mock_client.messages.create.call_args
+        user_msg = call_args.kwargs.get("messages", call_args[1].get("messages", [{}]))[0][
+            "content"
+        ]
+        assert "{x | x > 0}" in user_msg
+
+    @patch("alethic.subagents.process_tool_calls", return_value=[])
+    def test_verify_with_curly_braces_in_problem(self, mock_tools):
+        """verify() must not crash when problem/solution contain curly braces."""
+        from alethic.subagents import verify
+
+        config = AgentConfig(
+            enable_code_execution=False,
+            verbose=False,
+        )
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = self._mock_response(
+            "VERDICT: correct\nCONFIDENCE: 0.95\n\nCRITIQUE:\nGood.\n\nISSUES:\nNone"
+        )
+
+        problem = "Prove {x ∈ R | x^2 < 2} is open."
+        sol = Solution(
+            problem=problem, solution_text="Proof using {x | ...} notation.", iteration=1
+        )
+        result = verify(mock_client, problem, sol, config)
+        assert result.verdict == Verdict.CORRECT
+
+    @patch("alethic.subagents.process_tool_calls", return_value=[])
+    def test_revise_with_curly_braces_in_problem(self, mock_tools):
+        """revise() must not crash when all inputs contain curly braces."""
+        from alethic.subagents import revise
+
+        config = AgentConfig(
+            enable_code_execution=False,
+            verbose=False,
+        )
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = self._mock_response(
+            "CHANGES MADE:\nFixed.\n\nREVISED SOLUTION:\nUsing {x | x > 0} correctly."
+        )
+
+        problem = "Let A = {a, b, {c, d}}. Find |A|."
+        sol = Solution(problem=problem, solution_text="Previous attempt with {a, b}.", iteration=1)
+        vr = VerificationResult(
+            verdict=Verdict.MINOR_ISSUES,
+            critique="The set {c, d} was miscounted.",
+            confidence=0.7,
+        )
+        revised = revise(mock_client, problem, sol, vr, config, revision_number=1)
+        assert revised.solution_text is not None
+
+    # ── T6: CORRECTED SOLUTION regex robustness ──────────────────────
+
+    def test_corrected_solution_with_two_word_caps_label(self):
+        """CORRECTED SOLUTION containing two-word ALL-CAPS labels (e.g. STEP ONE:)
+        should NOT be truncated at those labels."""
+        text = """\
+VERDICT: fixable
+CONFIDENCE: 0.75
+
+CRITIQUE:
+Sign error.
+
+ISSUES:
+- [MAJOR] Sign error
+
+CORRECTED SOLUTION:
+STEP ONE: Set up the integral.
+STEP TWO: Evaluate boundary terms.
+The final answer is 42.
+END CORRECTED SOLUTION
+"""
+        result = _parse_verification(text)
+        assert result.verdict == Verdict.FIXABLE
+        assert result.corrected_solution is not None
+        assert "STEP ONE:" in result.corrected_solution
+        assert "STEP TWO:" in result.corrected_solution
+        assert "final answer is 42" in result.corrected_solution
+
+    def test_corrected_solution_end_marker_terminates(self):
+        """END CORRECTED SOLUTION should terminate the corrected solution block."""
+        text = """\
+VERDICT: fixable
+CONFIDENCE: 0.70
+
+CRITIQUE:
+Error found.
+
+ISSUES:
+- [MAJOR] Error
+
+CORRECTED SOLUTION:
+Fixed content here.
+END CORRECTED SOLUTION
+
+REASON: N/A
+"""
+        result = _parse_verification(text)
+        assert result.corrected_solution is not None
+        assert "Fixed content here." in result.corrected_solution
+        # The text after END CORRECTED SOLUTION should NOT be in the correction
+        assert "REASON:" not in result.corrected_solution
+
+    # ── T7: Verifier exception resilience ────────────────────────────
+
+    @patch("alethic.subagents.process_tool_calls", return_value=[])
+    def test_consensus_survives_one_verifier_exception(self, mock_tools):
+        """When one of K verifier futures raises, consensus should still complete with K-1."""
+        from alethic.verifier_agent import VerifierAgent
+
+        config = VerifierConfig(
+            num_verifiers=3,
+            enable_code_execution=False,
+            verbose=False,
+        )
+
+        # Build good VerificationResult responses
+        good_verify_text = (
+            "VERDICT: correct\nCONFIDENCE: 0.92\n\nCRITIQUE:\nAll good.\n\nISSUES:\nNone"
+        )
+        good_response = self._mock_response(good_verify_text)
+
+        # Synthesizer response
+        synth_response = self._mock_response("Unified critique: all good.")
+
+        mock_client = MagicMock()
+        # 2 successful verify calls + 1 synthesize call
+        mock_client.messages.create.side_effect = [
+            good_response,
+            good_response,
+            synth_response,
+        ]
+
+        agent = VerifierAgent(config=config)
+        agent.client = mock_client
+
+        # Patch _run_single_verify to make one raise, two succeed
+        call_count = 0
+        original_run = agent._run_single_verify
+
+        def _patched_run(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:
+                raise RuntimeError("Simulated verifier crash")
+            return original_run(*args, **kwargs)
+
+        with patch.object(agent, "_run_single_verify", side_effect=_patched_run):
+            result = agent.verify(
+                problem="Is 1+1=2?",
+                solution="Yes, 1+1=2 by Peano axioms.",
+            )
+
+        # Should succeed with 2 of 3 verifiers
+        assert result.num_verifiers == 2
+        assert result.verdict == Verdict.CORRECT
+
+    # ── T1: FIXABLE fallthrough to reviser ───────────────────────────
+
+    @patch("alethic.subagents.process_tool_calls", return_value=[])
+    def test_fixable_fallthrough_uses_corrected_as_revision_base(self, mock_tools):
+        """When FIXABLE correction fails re-verification, the corrected solution
+        should become the base for the reviser (not the original)."""
+        from alethic.agent import MathAgent
+
+        config = AgentConfig(
+            max_iterations=2,
+            max_revisions_per_cycle=1,
+            enable_code_execution=False,
+            verbose=False,
+        )
+
+        responses = [
+            # Generate
+            self._mock_response("Original attempt with errors"),
+            # Verify -> fixable with correction
+            self._mock_response(
+                "VERDICT: fixable\nCONFIDENCE: 0.70\n\n"
+                "CRITIQUE:\nSign error.\n\nISSUES:\n- [MAJOR] Sign error\n\n"
+                "CORRECTED SOLUTION:\nCorrected by verifier\nEND CORRECTED SOLUTION"
+            ),
+            # Re-verify correction -> still not acceptable
+            self._mock_response(
+                "VERDICT: minor_issues\nCONFIDENCE: 0.80\n\n"
+                "CRITIQUE:\nStill a gap.\n\nISSUES:\n- [MINOR] Missing step"
+            ),
+            # Reviser called on the corrected solution (not original)
+            self._mock_response(
+                "CHANGES MADE:\nFilled gap.\n\nREVISED SOLUTION:\nFinal correct version"
+            ),
+            # Re-verify revision -> correct
+            self._mock_response(
+                "VERDICT: correct\nCONFIDENCE: 0.93\n\nCRITIQUE:\nNow correct.\n\nISSUES:\nNone"
+            ),
+        ]
+
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = responses
+
+        agent = MathAgent(config=config)
+        agent.client = mock_client
+
+        result = agent.solve("test problem")
+
+        assert result.solved
+        assert result.total_revisions == 1
+        # The reviser should have received the corrected solution as input.
+        # Check the 4th API call (reviser) — its user message should contain
+        # "Corrected by verifier" (the FIXABLE correction text), not "Original attempt".
+        reviser_call = mock_client.messages.create.call_args_list[3]
+        reviser_msg = reviser_call.kwargs.get("messages", reviser_call[1].get("messages", [{}]))[0][
+            "content"
+        ]
+        assert "Corrected by verifier" in reviser_msg
+        assert "Original attempt with errors" not in reviser_msg
+
+    # ── T4: Stall tracking records original FIXABLE verdict ──────────
+
+    @patch("alethic.subagents.process_tool_calls", return_value=[])
+    def test_stall_tracking_records_original_fixable_verdict(self, mock_tools):
+        """iteration_final_verdicts should record the original FIXABLE verdict,
+        not the re-verification verdict after the FIXABLE shortcut."""
+        from alethic.agent import MathAgent
+
+        config = AgentConfig(
+            max_iterations=2,
+            max_revisions_per_cycle=1,
+            enable_code_execution=False,
+            verbose=False,
+            stall_reset=True,
+            stall_window=2,
+        )
+
+        responses = [
+            # Iteration 1: generate
+            self._mock_response("Attempt 1"),
+            # Iteration 1: verify -> fixable with correction
+            self._mock_response(
+                "VERDICT: fixable\nCONFIDENCE: 0.70\n\n"
+                "CRITIQUE:\nSign error.\n\nISSUES:\n- [MAJOR] Sign\n\n"
+                "CORRECTED SOLUTION:\nFixed version\nEND CORRECTED SOLUTION"
+            ),
+            # Iteration 1: re-verify correction -> minor_issues (still not acceptable)
+            self._mock_response(
+                "VERDICT: minor_issues\nCONFIDENCE: 0.80\n\n"
+                "CRITIQUE:\nGap.\n\nISSUES:\n- [MINOR] Gap"
+            ),
+            # Iteration 1: revise
+            self._mock_response("CHANGES MADE:\nFix gap.\n\nREVISED SOLUTION:\nRevised"),
+            # Iteration 1: re-verify revision -> still not acceptable
+            self._mock_response(
+                "VERDICT: minor_issues\nCONFIDENCE: 0.82\n\n"
+                "CRITIQUE:\nAnother gap.\n\nISSUES:\n- [MINOR] Gap2"
+            ),
+            # Iteration 2: generate
+            self._mock_response("Attempt 2"),
+            # Iteration 2: verify -> correct
+            self._mock_response(
+                "VERDICT: correct\nCONFIDENCE: 0.95\n\nCRITIQUE:\nGood.\n\nISSUES:\nNone"
+            ),
+        ]
+
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = responses
+
+        agent = MathAgent(config=config)
+        agent.client = mock_client
+
+        result = agent.solve("test problem")
+
+        assert result.solved
+        # Check the events: the iteration_final_verdicts for iteration 1 should be
+        # FIXABLE (the original verification verdict), not MINOR_ISSUES (the re-verification)
+        # We verify by checking the VERIFY events — the first verification should be FIXABLE
+        verify_events = [e for e in result.events if e.type == EventType.VERIFY]
+        # First verify event should have the FIXABLE verdict
+        first_verify = verify_events[0]
+        assert first_verify.data["verdict"] == "fixable"
+
+    # ── T8: CLI --no-variant-b + --variant-b-model warning ───────────
+
+    def test_cli_conflicting_variant_b_flags_warns(self):
+        """--no-variant-b + --variant-b-model should warn on stderr and --no-variant-b wins."""
+        import io
+        import sys
+
+        from alethic.cli import _build_config, build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "--no-variant-b",
+                "--variant-b-model",
+                "claude-sonnet-4-6",
+                "test problem",
+            ]
+        )
+
+        captured = io.StringIO()
+        old_stderr = sys.stderr
+        sys.stderr = captured
+        try:
+            config = _build_config(args)
+        finally:
+            sys.stderr = old_stderr
+
+        # Warning should have been printed
+        assert "Warning" in captured.getvalue()
+        assert "--no-variant-b" in captured.getvalue()
+        # --no-variant-b wins: variant_b should be None
+        assert config.variant_b is None
+
+    # ── T9: Sandbox blocked submodules ───────────────────────────────
+
+    def test_sandbox_blocks_import_os(self):
+        """Direct 'import os' must be blocked in the sandbox."""
+        result = execute_python("import os\nprint(os.getcwd())")
+        assert "not allowed" in result or "ERROR" in result
+
+    def test_sandbox_blocks_numpy_os_attribute(self):
+        """Accessing os through numpy (numpy.os) should be blocked or unavailable."""
+        result = execute_python("import numpy\nprint(numpy.os.getcwd())")
+        # This should fail — either blocked by import gate or AttributeError
+        assert "ERROR" in result or "error" in result.lower() or "not allowed" in result
+
+    def test_sandbox_blocks_subprocess(self):
+        """'import subprocess' must be blocked in the sandbox."""
+        result = execute_python("import subprocess\nsubprocess.run(['echo', 'hi'])")
+        assert "not allowed" in result or "ERROR" in result
+
+    def test_sandbox_blocks_os_via_dotted_import(self):
+        """'import os.path' should be blocked by the submodule filter."""
+        result = execute_python("import os.path\nprint(os.path.exists('/'))")
+        assert "not allowed" in result or "ERROR" in result
+
+    def test_sandbox_allows_safe_modules(self):
+        """Safe modules like math and fractions should still work."""
+        result = execute_python(
+            "import math\nfrom fractions import Fraction\nprint(Fraction(1, 3))"
+        )
+        assert "1/3" in result

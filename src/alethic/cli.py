@@ -59,21 +59,25 @@ Examples:
         help="The problem to solve (inline)",
     )
     parser.add_argument(
-        "--file", "-f",
+        "--file",
+        "-f",
         help="Read problem from a text file",
     )
     parser.add_argument(
-        "--preset", "-p",
+        "--preset",
+        "-p",
         choices=list(AgentConfig.PRESETS),
         help="Use a named preset (quick, default, thorough, extreme)",
     )
     parser.add_argument(
-        "--model", "-m",
+        "--model",
+        "-m",
         default=None,
         help="Anthropic model ID (default: claude-opus-4-6)",
     )
     parser.add_argument(
-        "--iterations", "-n",
+        "--iterations",
+        "-n",
         type=int,
         default=None,
         help="Max generate-verify-revise iterations (default: 5)",
@@ -119,7 +123,8 @@ Examples:
         help="Disable balanced prompting (counterexample exploration)",
     )
     parser.add_argument(
-        "--quiet", "-q",
+        "--quiet",
+        "-q",
         action="store_true",
         help="Suppress progress output, only print final result",
     )
@@ -151,7 +156,8 @@ Examples:
         help="Token budget for extended thinking (default: 10000)",
     )
     parser.add_argument(
-        "--best-of", "-B",
+        "--best-of",
+        "-B",
         type=int,
         default=None,
         dest="best_of_n",
@@ -197,7 +203,8 @@ Examples:
         help="Problem statement text (verify only)",
     )
     parser.add_argument(
-        "--problem-file", "-P",
+        "--problem-file",
+        "-P",
         default=None,
         help="Read problem from file (verify only)",
     )
@@ -208,7 +215,8 @@ Examples:
         help="Override domain auto-detection (verify/check only)",
     )
     parser.add_argument(
-        "--verifiers", "-K",
+        "--verifiers",
+        "-K",
         type=int,
         default=None,
         help="Number of independent verifiers (verify/check only, default: 3)",
@@ -255,6 +263,12 @@ def _build_config(args: argparse.Namespace) -> AgentConfig:
     if args.no_stall_reset:
         overrides["stall_reset"] = False
 
+    if args.no_variant_b and args.variant_b_model:
+        print(
+            "Warning: --no-variant-b and --variant-b-model both specified; --no-variant-b takes precedence",
+            file=sys.stderr,
+        )
+
     if args.no_variant_b:
         overrides["variant_b"] = None
     elif args.variant_b_model:
@@ -276,29 +290,38 @@ def _build_config(args: argparse.Namespace) -> AgentConfig:
     return AgentConfig(**overrides)
 
 
-_FLAGS_WITH_VALUE = frozenset({
-    "-f", "--file",
-    "-p", "--preset",
-    "-m", "--model",
-    "-n", "--iterations",
-    "--revisions",
-    "--confidence-threshold",
-    "--temperature-generator",
-    "--temperature-verifier",
-    "--temperature-reviser",
-    "--api-key",
-    "--max-tokens",
-    "--thinking-budget",
-    "-B", "--best-of",
-    "--tools",
-    "--stall-window",
-    "--stall-epsilon",
-    "--variant-b-model",
-    "--problem-text",
-    "-P", "--problem-file",
-    "--domain",
-    "-K", "--verifiers",
-})
+_FLAGS_WITH_VALUE = frozenset(
+    {
+        "-f",
+        "--file",
+        "-p",
+        "--preset",
+        "-m",
+        "--model",
+        "-n",
+        "--iterations",
+        "--revisions",
+        "--confidence-threshold",
+        "--temperature-generator",
+        "--temperature-verifier",
+        "--temperature-reviser",
+        "--api-key",
+        "--max-tokens",
+        "--thinking-budget",
+        "-B",
+        "--best-of",
+        "--tools",
+        "--stall-window",
+        "--stall-epsilon",
+        "--variant-b-model",
+        "--problem-text",
+        "-P",
+        "--problem-file",
+        "--domain",
+        "-K",
+        "--verifiers",
+    }
+)
 
 
 def _detect_subcommand(argv: list[str]) -> tuple[str | None, list[str]]:
@@ -325,7 +348,7 @@ def _detect_subcommand(argv: list[str]) -> tuple[str | None, list[str]]:
             continue
         # First positional argument found
         if arg in ("solve", "derive", "verify", "check"):
-            return arg, argv[:i] + argv[i + 1:]
+            return arg, argv[:i] + argv[i + 1 :]
         break
     return None, argv
 
@@ -416,7 +439,10 @@ def _verify_check_handler(args: argparse.Namespace, command: str) -> int:
                 return 2
 
         if not problem:
-            print("Error: verify requires a problem statement (--problem-text or --problem-file)", file=sys.stderr)
+            print(
+                "Error: verify requires a problem statement (--problem-text or --problem-file)",
+                file=sys.stderr,
+            )
             return 2
 
     # Run
@@ -478,9 +504,11 @@ def main(argv: list[str] | None = None) -> int:
     agent: MathAgent
     if command == "derive":
         from alethic.physics_agent import PhysicsAgent
+
         agent = PhysicsAgent(config=config, api_key=args.api_key)
     else:
         from alethic.agent import MathAgent
+
         agent = MathAgent(config=config, api_key=args.api_key)
 
     try:

@@ -37,6 +37,15 @@ from alethic.tools import PYTHON_TOOL, process_tool_calls
 
 logger = logging.getLogger("alethic")
 
+
+def _safe_format(template: str, **kwargs: str) -> str:
+    """Format template using str.replace() to avoid KeyError on curly braces in values."""
+    result = template
+    for key, value in kwargs.items():
+        result = result.replace("{" + key + "}", value)
+    return result
+
+
 _SEVERITY_MAP: dict[str, IssueSeverity] = {
     "CRITICAL": IssueSeverity.CRITICAL,
     "MAJOR": IssueSeverity.MAJOR,
@@ -47,7 +56,8 @@ _SEVERITY_MAP: dict[str, IssueSeverity] = {
 def _extract_text(response) -> str:
     """Extract concatenated text blocks from an Anthropic response."""
     parts = [
-        b.text for b in response.content
+        b.text
+        for b in response.content
         if hasattr(b, "text") and getattr(b, "type", None) == "text"
     ]
     return "\n".join(parts) if parts else "[No response generated]"
@@ -66,7 +76,9 @@ def _create_with_retry(client, kwargs: dict):
                 delay = 2**attempt  # 1s, 2s, 4s
                 logger.warning(
                     "Rate limited (attempt %d/%d) — retrying in %ds",
-                    attempt + 1, _MAX_RETRIES, delay,
+                    attempt + 1,
+                    _MAX_RETRIES,
+                    delay,
                 )
                 time.sleep(delay)
             else:
@@ -181,11 +193,13 @@ def generate(
     """
     system = system_prompt if system_prompt is not None else GENERATOR_SYSTEM
     if balanced:
-        addendum = balanced_addendum if balanced_addendum is not None else BALANCED_GENERATOR_ADDENDUM
+        addendum = (
+            balanced_addendum if balanced_addendum is not None else BALANCED_GENERATOR_ADDENDUM
+        )
         system += addendum
 
     template = user_template if user_template is not None else GENERATOR_USER
-    user_msg = template.format(problem=problem)
+    user_msg = _safe_format(template, problem=problem)
 
     if reset_context is not None:
         user_msg += f"\n\n{reset_context}"
@@ -311,7 +325,9 @@ def _parse_verification(text: str) -> VerificationResult:
         try:
             raw = float(conf_match.group(1))
         except ValueError:
-            logger.warning("Confidence value %r is malformed — defaulting to 0.5", conf_match.group(1))
+            logger.warning(
+                "Confidence value %r is malformed — defaulting to 0.5", conf_match.group(1)
+            )
             raw = 0.5
         # Normalize percentage values (e.g., 95 → 0.95); small overshoots
         # like 1.5 are just clamped rather than treated as percentages.
@@ -325,14 +341,13 @@ def _parse_verification(text: str) -> VerificationResult:
     # Extract critique (stops at REASON: or ISSUES: or SECTION CONFIDENCES: whichever comes first)
     critique_match = re.search(
         r"CRITIQUE:\s*\n(.*?)(?=\nREASON:|\nISSUES:|\nSECTION CONFIDENCES:|\Z)",
-        text, re.DOTALL | re.IGNORECASE
+        text,
+        re.DOTALL | re.IGNORECASE,
     )
     critique = critique_match.group(1).strip() if critique_match else text
 
     # Extract reason (for false-premise detection)
-    reason_match = re.search(
-        r"REASON:\s*(.*?)(?=\nISSUES:|\Z)", text, re.DOTALL | re.IGNORECASE
-    )
+    reason_match = re.search(r"REASON:\s*(.*?)(?=\nISSUES:|\Z)", text, re.DOTALL | re.IGNORECASE)
     reason = reason_match.group(1).strip() if reason_match else ""
 
     issues = _parse_issues(text)
@@ -348,7 +363,7 @@ def _parse_verification(text: str) -> VerificationResult:
 
     # Extract corrected solution (for FIXABLE verdicts)
     corrected_match = re.search(
-        r"CORRECTED SOLUTION:\s*\n(.*?)(?:\nEND CORRECTED SOLUTION|\n[A-Z]+ [A-Z]+:|\Z)",
+        r"CORRECTED SOLUTION:\s*\n(.*?)(?:\nEND CORRECTED SOLUTION|\Z)",
         text,
         re.DOTALL | re.IGNORECASE,
     )
@@ -392,7 +407,8 @@ def verify(
         A VerificationResult with verdict, critique, and issues.
     """
     template = user_template if user_template is not None else VERIFIER_USER
-    user_msg = template.format(
+    user_msg = _safe_format(
+        template,
         problem=problem,
         solution=solution.solution_text,
     )
@@ -432,9 +448,7 @@ def verify(
 def _parse_revision(text: str, revision_number: int, critique: str) -> Revision:
     """Parse reviser output into a Revision object."""
     # Extract changes summary
-    changes_match = re.search(
-        r"CHANGES MADE:\s*\n(.*?)(?=\nREVISED SOLUTION:|\Z)", text, re.DOTALL
-    )
+    changes_match = re.search(r"CHANGES MADE:\s*\n(.*?)(?=\nREVISED SOLUTION:|\Z)", text, re.DOTALL)
     changes = changes_match.group(1).strip() if changes_match else "See revised solution"
 
     # Extract revised solution
@@ -480,7 +494,8 @@ def revise(
         issues_text = "See critique above."
 
     template = user_template if user_template is not None else REVISER_USER
-    user_msg = template.format(
+    user_msg = _safe_format(
+        template,
         problem=problem,
         solution=solution.solution_text,
         critique=verification.critique,
@@ -488,17 +503,13 @@ def revise(
     )
 
     # Add low-confidence section targeting if available
-    low_conf_sections = [
-        sc for sc in verification.section_confidences if sc.confidence < 0.70
-    ]
+    low_conf_sections = [sc for sc in verification.section_confidences if sc.confidence < 0.70]
     if low_conf_sections:
         sections_text = "\n".join(
             f"- {sc.section}: {sc.confidence:.2f}" + (f" ({sc.note})" if sc.note else "")
             for sc in low_conf_sections
         )
-        user_msg += (
-            f"\n\n## Low-confidence sections (focus revision here):\n{sections_text}"
-        )
+        user_msg += f"\n\n## Low-confidence sections (focus revision here):\n{sections_text}"
 
     tools = [PYTHON_TOOL] if config.enable_code_execution else None
 

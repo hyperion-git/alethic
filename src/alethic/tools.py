@@ -46,21 +46,72 @@ PYTHON_TOOL = {
 # The ACTUAL sandbox enforcement is in _WORKER_SCRIPT below — if you change the
 # allowlist here, you MUST update _WORKER_SCRIPT as well.
 _SAFE_BUILTINS = {
-    "abs", "all", "any", "bin", "bool", "chr", "complex", "dict",
-    "divmod", "enumerate", "filter", "float", "format", "frozenset",
-    "hash", "hex", "int", "isinstance", "issubclass", "iter", "len",
-    "list", "map", "max", "min", "next", "oct", "ord", "pow", "print",
-    "range", "repr", "reversed", "round", "set", "slice", "sorted",
-    "str", "sum", "tuple", "type", "zip",
+    "abs",
+    "all",
+    "any",
+    "bin",
+    "bool",
+    "chr",
+    "complex",
+    "dict",
+    "divmod",
+    "enumerate",
+    "filter",
+    "float",
+    "format",
+    "frozenset",
+    "hash",
+    "hex",
+    "int",
+    "isinstance",
+    "issubclass",
+    "iter",
+    "len",
+    "list",
+    "map",
+    "max",
+    "min",
+    "next",
+    "oct",
+    "ord",
+    "pow",
+    "print",
+    "range",
+    "repr",
+    "reversed",
+    "round",
+    "set",
+    "slice",
+    "sorted",
+    "str",
+    "sum",
+    "tuple",
+    "type",
+    "zip",
 }
 
 # Allowed imports
 _ALLOWED_MODULES = {
-    "math", "cmath", "fractions", "decimal", "itertools", "functools",
-    "collections", "operator", "random", "statistics", "re", "string",
-    "textwrap", "numbers",
+    "math",
+    "cmath",
+    "fractions",
+    "decimal",
+    "itertools",
+    "functools",
+    "collections",
+    "operator",
+    "random",
+    "statistics",
+    "re",
+    "string",
+    "textwrap",
+    "numbers",
     # Scientific (available if installed)
-    "numpy", "sympy", "scipy", "mpmath", "matplotlib",
+    "numpy",
+    "sympy",
+    "scipy",
+    "mpmath",
+    "matplotlib",
 }
 
 
@@ -69,7 +120,7 @@ _ALLOWED_MODULES = {
 # builtins / import gate / pre-imports used by the old in-process sandbox,
 # enforces a SIGALRM timeout (safe because the child is always main-thread),
 # and prints stdout on success or error/timeout messages on failure.
-_WORKER_SCRIPT = textwrap.dedent(r'''
+_WORKER_SCRIPT = textwrap.dedent(r"""
     import builtins as _builtins_mod
     import json
     import signal
@@ -101,8 +152,16 @@ _WORKER_SCRIPT = textwrap.dedent(r'''
     # ── Restricted import gate ───────────────────────────────────────────
     _real_import = __import__
 
+    _BLOCKED_SUBMODULES = {"os", "sys", "subprocess", "shutil", "pathlib", "socket", "ctypes", "signal"}
+
     def _restricted_import(name, *args, **kwargs):
-        top_level = name.split(".")[0]
+        parts = name.split(".")
+        for part in parts:
+            if part in _BLOCKED_SUBMODULES:
+                raise ImportError(
+                    f"Import of '{name}' is not allowed: blocked submodule '{part}'"
+                )
+        top_level = parts[0]
         if top_level not in _ALLOWED_MODULES:
             raise ImportError(
                 f"Import of '{name}' is not allowed. "
@@ -155,7 +214,7 @@ _WORKER_SCRIPT = textwrap.dedent(r'''
         sys.exit(1)
     finally:
         signal.alarm(0)
-''').lstrip()
+""").lstrip()
 
 
 def execute_python(code: str, timeout_seconds: int = 30) -> str:
@@ -232,9 +291,11 @@ def process_tool_calls(response) -> list[dict]:
                 output = "ERROR: Empty code provided to execute_python"
             else:
                 output = execute_python(code)
-            results.append({
-                "tool_use_id": block.id,
-                "name": block.name,
-                "result": output,
-            })
+            results.append(
+                {
+                    "tool_use_id": block.id,
+                    "name": block.name,
+                    "result": output,
+                }
+            )
     return results

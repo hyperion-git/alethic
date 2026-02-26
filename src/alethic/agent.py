@@ -112,9 +112,7 @@ class MathAgent:
         api_key: str | None = None,
     ):
         self.config = config or AgentConfig()
-        self.client = anthropic.Anthropic(
-            api_key=api_key or os.environ.get("ANTHROPIC_API_KEY")
-        )
+        self.client = anthropic.Anthropic(api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"))
         self._setup_logging()
 
     def _setup_logging(self) -> None:
@@ -189,7 +187,7 @@ class MathAgent:
         """Build the strategy-reset prompt overlay for a reset iteration."""
         recent = failed_approaches[-2:] if len(failed_approaches) > 2 else failed_approaches
         approaches_text = "\n".join(f"- {a}" for a in recent) if recent else "- (none recorded)"
-        return self._reset_addendum().format(failed_approaches=approaches_text)
+        return self._reset_addendum().replace("{failed_approaches}", approaches_text)
 
     def _log_header(self) -> str:
         return "ALETHIC MATH AGENT"
@@ -346,13 +344,17 @@ class MathAgent:
         generation_wall_time: float,
     ) -> None:
         """Log generation wall time and a ranked table of candidates (N>1 only)."""
-        self._log(f"[BEST-OF-N] Generated {len(verified)} candidates "
-                   f"(wall time: {generation_wall_time:.1f}s)")
+        self._log(
+            f"[BEST-OF-N] Generated {len(verified)} candidates "
+            f"(wall time: {generation_wall_time:.1f}s)"
+        )
         self._log(f"{'Rank':<6}{'Verdict':<16}{'Confidence':<13}{'Gen(s)':<10}{'Ver(s)':<10}")
         self._log(f"{'─' * 55}")
         for rank, (_sol, ver, gen_t, ver_t, _orig_idx) in enumerate(verified, 1):
-            self._log(f"{rank:<6}{ver.verdict.value:<16}{ver.confidence:<13.0%}"
-                       f"{gen_t:<10.1f}{ver_t:<10.1f}")
+            self._log(
+                f"{rank:<6}{ver.verdict.value:<16}{ver.confidence:<13.0%}"
+                f"{gen_t:<10.1f}{ver_t:<10.1f}"
+            )
 
     def _run_revision_loop(
         self,
@@ -368,7 +370,9 @@ class MathAgent:
         max_revisions: int | None = None,
     ) -> AgentResult | None:
         """Run revision sub-loop. Returns AgentResult if solved, else None (mutates state)."""
-        effective_max_revisions = max_revisions if max_revisions is not None else self.config.max_revisions_per_cycle
+        effective_max_revisions = (
+            max_revisions if max_revisions is not None else self.config.max_revisions_per_cycle
+        )
         current_solution = solution
 
         for rev_num in range(1, effective_max_revisions + 1):
@@ -407,8 +411,10 @@ class MathAgent:
                 verdict=verification.verdict.value,
                 confidence=verification.confidence,
             )
-            self._log(f"[VERIFY] Verdict: {verification.verdict.value} "
-                       f"(confidence: {verification.confidence:.0%})")
+            self._log(
+                f"[VERIFY] Verdict: {verification.verdict.value} "
+                f"(confidence: {verification.confidence:.0%})"
+            )
 
             if verification.confidence > state.best_confidence:
                 state.best_confidence = verification.confidence
@@ -442,8 +448,11 @@ class MathAgent:
             # If unsolved after revision, check false premise then restart
             if verification.verdict == Verdict.UNSOLVED:
                 fp = self._check_false_premise(
-                    verification, problem, iteration,
-                    state, log,
+                    verification,
+                    problem,
+                    iteration,
+                    state,
+                    log,
                 )
                 if fp:
                     return fp
@@ -486,12 +495,16 @@ class MathAgent:
         self._log(f"Model: {self.config.model}")
         self._log(f"Max iterations: {self.config.max_iterations}")
         self._log(f"Confidence threshold: {threshold:.0%}")
-        self._log(f"Code execution: {'enabled' if self.config.enable_code_execution else 'disabled'}")
+        self._log(
+            f"Code execution: {'enabled' if self.config.enable_code_execution else 'disabled'}"
+        )
         if self.config.best_of_n > 1:
             self._log(f"Best-of-N: {self.config.best_of_n} candidates per iteration (parallel)")
         if self.config.stall_reset:
-            self._log(f"Stall reset: enabled (window={self.config.stall_window}, "
-                       f"epsilon={self.config.stall_epsilon})")
+            self._log(
+                f"Stall reset: enabled (window={self.config.stall_window}, "
+                f"epsilon={self.config.stall_epsilon})"
+            )
         self._log(f"{'=' * 60}")
         self._log(f"Problem: {problem[:200]}{'...' if len(problem) > 200 else ''}")
         self._log("")
@@ -507,17 +520,23 @@ class MathAgent:
                 # ── STALL CHECK ──
                 is_reset = self._check_stall(state)
                 if is_reset:
-                    reason = "major_flaw_streak" if (
-                        len(state.iteration_final_verdicts) >= 2
-                        and state.iteration_final_verdicts[-1] == Verdict.MAJOR_FLAW
-                        and state.iteration_final_verdicts[-2] == Verdict.MAJOR_FLAW
-                    ) else "no_progress"
+                    reason = (
+                        "major_flaw_streak"
+                        if (
+                            len(state.iteration_final_verdicts) >= 2
+                            and state.iteration_final_verdicts[-1] == Verdict.MAJOR_FLAW
+                            and state.iteration_final_verdicts[-2] == Verdict.MAJOR_FLAW
+                        )
+                        else "no_progress"
+                    )
                     state.resets_used += 1
                     state.reset_cooldown_remaining = 1
                     n_this_iter = self.config.best_of_n + self.config.reset_n_boost
                     reset_context = self._build_reset_context(state.failed_approaches)
-                    self._log(f"[STALL RESET] Triggered (reason: {reason}) — "
-                              f"N={n_this_iter}, max_revisions=1")
+                    self._log(
+                        f"[STALL RESET] Triggered (reason: {reason}) — "
+                        f"N={n_this_iter}, max_revisions=1"
+                    )
                     log.emit(
                         EventType.STALL_RESET,
                         iteration,
@@ -560,10 +579,14 @@ class MathAgent:
                     failures = n_this_iter - len(candidates)
                     logger.info(
                         "Generated %d/%d candidates (%d failed)",
-                        len(candidates), n_this_iter, failures,
+                        len(candidates),
+                        n_this_iter,
+                        failures,
                     )
-                    self._log(f"[GENERATE] Warning: {len(candidates)}/{n_this_iter} candidates "
-                               f"succeeded ({failures} failed)")
+                    self._log(
+                        f"[GENERATE] Warning: {len(candidates)}/{n_this_iter} candidates "
+                        f"succeeded ({failures} failed)"
+                    )
 
                 for idx, (sol, gen_t) in enumerate(candidates, 1):
                     log.emit(
@@ -572,8 +595,10 @@ class MathAgent:
                         candidate=idx,
                         solution_preview=sol.solution_text[:500],
                     )
-                    self._log(f"[GENERATE] Candidate {idx}/{len(candidates)} produced "
-                               f"({len(sol.solution_text)} chars, {gen_t:.1f}s)")
+                    self._log(
+                        f"[GENERATE] Candidate {idx}/{len(candidates)} produced "
+                        f"({len(sol.solution_text)} chars, {gen_t:.1f}s)"
+                    )
 
                 # ── VERIFY (decoupled) ──
                 self._log("[VERIFY] Independently verifying...")
@@ -600,9 +625,12 @@ class MathAgent:
 
                 # Best candidate is first (sorted by confidence desc)
                 solution, verification, _, _, _ = verified[0]
+                iteration_verdict = verification.verdict
 
-                self._log(f"[VERIFY] Best: {verification.verdict.value} "
-                           f"(confidence: {verification.confidence:.0%})")
+                self._log(
+                    f"[VERIFY] Best: {verification.verdict.value} "
+                    f"(confidence: {verification.confidence:.0%})"
+                )
                 if verification.issues:
                     for issue in verification.issues:
                         self._log(f"  Issue: {str(issue)[:100]}")
@@ -635,8 +663,11 @@ class MathAgent:
 
                 # ── CHECK: False premise? ──
                 fp = self._check_false_premise(
-                    verification, problem, iteration,
-                    state, log,
+                    verification,
+                    problem,
+                    iteration,
+                    state,
+                    log,
                 )
                 if fp:
                     return fp
@@ -664,8 +695,10 @@ class MathAgent:
                         verdict=re_verification.verdict.value,
                         confidence=re_verification.confidence,
                     )
-                    self._log(f"[VERIFY] Re-verification: {re_verification.verdict.value} "
-                               f"(confidence: {re_verification.confidence:.0%})")
+                    self._log(
+                        f"[VERIFY] Re-verification: {re_verification.verdict.value} "
+                        f"(confidence: {re_verification.confidence:.0%})"
+                    )
                     if re_verification.confidence > state.best_confidence:
                         state.best_confidence = re_verification.confidence
                         state.best_solution = corrected
@@ -690,7 +723,9 @@ class MathAgent:
                             log=log,
                         )
                     # Correction failed re-verification — fall through to normal revision
-                    self._log("[FIXABLE] Correction failed re-verification — falling back to reviser")
+                    self._log(
+                        "[FIXABLE] Correction failed re-verification — falling back to reviser"
+                    )
                     verification = re_verification
                     solution = corrected
 
@@ -710,10 +745,12 @@ class MathAgent:
                     if result is not None:
                         return result
                 else:
-                    self._log("[GENERATE] Solution unsolvable in this attempt — will retry from scratch")
+                    self._log(
+                        "[GENERATE] Solution unsolvable in this attempt — will retry from scratch"
+                    )
 
                 # ── UPDATE STALL TRACKING ──
-                state.iteration_final_verdicts.append(verification.verdict)
+                state.iteration_final_verdicts.append(iteration_verdict)
                 if state.best_confidence > pre_iter_best + self.config.stall_epsilon:
                     state.iterations_since_meaningful_improvement = 0
                 else:

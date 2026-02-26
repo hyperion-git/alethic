@@ -35,9 +35,7 @@ class VerifierAgent:
 
     def __init__(self, config: VerifierConfig | None = None, *, api_key: str | None = None):
         self.config = config or VerifierConfig()
-        self.client = anthropic.Anthropic(
-            api_key=api_key or os.environ.get("ANTHROPIC_API_KEY")
-        )
+        self.client = anthropic.Anthropic(api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"))
 
     def _select_prompts(self, domain: str) -> tuple[str, str]:
         """Return (system_prompt, user_template) for the detected domain."""
@@ -54,7 +52,9 @@ class VerifierAgent:
             max_tokens=self.config.max_tokens,
             extended_thinking=self.config.extended_thinking,
             thinking_budget=self.config.thinking_budget,
-            tool_guidance=frozenset(t for t in self.config.tool_guidance if t in {"sympy", "numpy"}),
+            tool_guidance=frozenset(
+                t for t in self.config.tool_guidance if t in {"sympy", "numpy"}
+            ),
             verbose=False,
         )
 
@@ -99,7 +99,12 @@ class VerifierAgent:
                 for _ in range(k)
             ]
             for future in as_completed(futures):
-                results.append(future.result())
+                try:
+                    results.append(future.result())
+                except Exception as e:
+                    logger.warning("Verifier %d/%d failed: %s", len(results) + 1, k, e)
+        if not results:
+            raise RuntimeError(f"All {k} verifiers failed")
 
         aggregation = aggregate_mechanical(results)
 
@@ -107,9 +112,7 @@ class VerifierAgent:
             print(f"Aggregated: {aggregation['verdict'].value} ({aggregation['confidence']:.2f})")
             print("Synthesizing critique...")
 
-        critique = synthesize_critique(
-            self.client, results, aggregation, model=self.config.model
-        )
+        critique = synthesize_critique(self.client, results, aggregation, model=self.config.model)
 
         return ConsensusResult(
             verdict=aggregation["verdict"],
