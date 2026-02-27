@@ -119,6 +119,34 @@ class TestMechanicalAggregation:
         with pytest.raises(ValueError, match="at least one"):
             aggregate_mechanical([])
 
+    def test_fixable_in_tie_breaks_to_fixable_over_minor(self):
+        """1:1 tie of FIXABLE vs MINOR_ISSUES -> FIXABLE wins (more severe)."""
+        results = [
+            VerificationResult(verdict=Verdict.FIXABLE, critique="fixable", confidence=0.70),
+            VerificationResult(verdict=Verdict.MINOR_ISSUES, critique="minor", confidence=0.75),
+        ]
+        agg = aggregate_mechanical(results)
+        assert agg["verdict"] == Verdict.FIXABLE
+
+    def test_fixable_majority(self):
+        """2 FIXABLE + 1 CORRECT -> FIXABLE majority."""
+        results = [
+            VerificationResult(verdict=Verdict.FIXABLE, critique="fix1", confidence=0.65),
+            VerificationResult(verdict=Verdict.FIXABLE, critique="fix2", confidence=0.70),
+            VerificationResult(verdict=Verdict.CORRECT, critique="ok", confidence=0.90),
+        ]
+        agg = aggregate_mechanical(results)
+        assert agg["verdict"] == Verdict.FIXABLE
+
+    def test_unsolved_vs_fixable_tie_takes_unsolved(self):
+        """1:1 tie of UNSOLVED vs FIXABLE -> UNSOLVED wins (more severe per _VERDICT_SEVERITY)."""
+        results = [
+            VerificationResult(verdict=Verdict.UNSOLVED, critique="unsolved", confidence=0.30),
+            VerificationResult(verdict=Verdict.FIXABLE, critique="fixable", confidence=0.60),
+        ]
+        agg = aggregate_mechanical(results)
+        assert agg["verdict"] == Verdict.UNSOLVED
+
 
 class TestSynthesizeCritique:
     def test_synthesize_calls_api(self):

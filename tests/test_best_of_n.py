@@ -481,3 +481,179 @@ class TestAgentResultDisplay:
             candidates_per_iteration=1,
         )
         assert "Candidates per iteration" not in str(result)
+
+
+# ── Variant-B client tests ──────────────────────────────────────────
+
+
+class TestVariantBClient:
+    """Variant-B model diversity: client reuse, separate client creation, alternation."""
+
+    @patch("alethic.subagents.process_tool_calls", return_value=[])
+    def test_variant_b_same_model_reuses_client(self, _mock_tools):
+        """When variant_b model matches primary, same client is reused (no new Anthropic())."""
+        from alethic.agent import MathAgent
+
+        config = AgentConfig(
+            max_iterations=1,
+            max_revisions_per_cycle=0,
+            best_of_n=2,
+            enable_code_execution=False,
+            verbose=False,
+            variant_b={"model": "claude-opus-4-6"},  # same as primary
+        )
+
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = [
+            # Generate 2 candidates
+            _mock_response("Candidate A"),
+            _mock_response("Candidate B"),
+            # Verify both
+            _mock_response(CORRECT_HIGH),
+            _mock_response(CORRECT_MED),
+        ]
+
+        agent = MathAgent(config=config)
+        agent.client = mock_client
+        agent._api_key = "test-key"
+
+        with patch("alethic.agent.anthropic.Anthropic") as mock_anthropic_cls:
+            result = agent.solve("test problem")
+
+        # No new Anthropic() client should have been created
+        mock_anthropic_cls.assert_not_called()
+        assert result.solved
+        # All generate + verify calls went through the same mock_client
+        assert mock_client.messages.create.call_count == 4
+
+    @patch("alethic.subagents.process_tool_calls", return_value=[])
+    def test_variant_b_different_model_creates_new_client(self, _mock_tools):
+        """When variant_b model differs, a separate Anthropic client is created."""
+        from alethic.agent import MathAgent
+
+        config = AgentConfig(
+            max_iterations=1,
+            max_revisions_per_cycle=0,
+            best_of_n=2,
+            enable_code_execution=False,
+            verbose=False,
+            variant_b={"model": "claude-sonnet-4-6"},  # different from primary
+        )
+
+        primary_client = MagicMock(name="primary_client")
+        variant_client = MagicMock(name="variant_client")
+
+        # Primary handles candidate 0 (even) gen + both verifications
+        # Variant handles candidate 1 (odd) gen
+        primary_client.messages.create.side_effect = [
+            _mock_response("Candidate A (primary)"),
+            # Verify both candidates (verification always uses primary client)
+            _mock_response(CORRECT_HIGH),
+            _mock_response(CORRECT_MED),
+        ]
+        variant_client.messages.create.side_effect = [
+            _mock_response("Candidate B (variant)"),
+        ]
+
+        agent = MathAgent(config=config)
+        agent.client = primary_client
+        agent._api_key = "test-key"
+
+        with patch("alethic.agent.anthropic.Anthropic", return_value=variant_client) as mock_cls:
+            result = agent.solve("test problem")
+
+        # A new Anthropic client should have been created for the variant
+        mock_cls.assert_called_once_with(api_key="test-key")
+        # Variant client should have been called for at least one generate
+        assert variant_client.messages.create.call_count >= 1
+        assert result.solved
+
+    @patch("alethic.subagents.process_tool_calls", return_value=[])
+    def test_variant_b_odd_even_alternation(self, _mock_tools):
+        """With best_of_n=4 and variant_b (same model), all 4 candidates complete."""
+        from alethic.agent import MathAgent
+
+        config = AgentConfig(
+            max_iterations=1,
+            max_revisions_per_cycle=0,
+            best_of_n=4,
+            enable_code_execution=False,
+            verbose=False,
+            variant_b={"model": "claude-opus-4-6"},  # same model to simplify
+        )
+
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = [
+            # Generate 4 candidates
+            _mock_response("Candidate A"),
+            _mock_response("Candidate B"),
+            _mock_response("Candidate C"),
+            _mock_response("Candidate D"),
+            # Verify 4 candidates
+            _mock_response(CORRECT_HIGH),
+            _mock_response(CORRECT_MED),
+            _mock_response(MINOR_ISSUES),
+            _mock_response(MAJOR_FLAW),
+        ]
+
+        agent = MathAgent(config=config)
+        agent.client = mock_client
+        agent._api_key = "test-key"
+
+        result = agent.solve("test problem")
+
+        assert result.solved
+        assert result.candidates_per_iteration == 4
+        # 4 gen + 4 ver = 8 API calls
+        assert mock_client.messages.create.call_count == 8
+
+
+# ── Large N with partial failures tests ─────────────────────────────
+
+
+class TestLargeN:
+    """Large best-of-N with partial generation failures."""
+
+    @patch("alethic.subagents.process_tool_calls", return_value=[])
+    def test_n5_with_partial_failures(self, _mock_tools):
+        """N=5 where 2 generate calls fail; remaining 3 produce a result."""
+        from alethic.agent import MathAgent
+
+        config = AgentConfig(
+            max_iterations=1,
+            max_revisions_per_cycle=0,
+            best_of_n=5,
+            enable_code_execution=False,
+            verbose=False,
+        )
+
+        # Track call count to fail on specific generate calls.
+        # _generate_candidates uses ThreadPoolExecutor, so we can't rely on
+        # strict ordering. Instead, we use a counter: the first 5 calls are
+        # generates; calls 2 and 4 (1-indexed) raise RuntimeError.
+        # The remaining calls are verify responses for the 3 survivors.
+        call_counter = {"n": 0}
+
+        def side_effect(*args, **kwargs):
+            call_counter["n"] += 1
+            n = call_counter["n"]
+            if n <= 5:
+                # Generate phase: fail calls 2 and 4
+                if n in (2, 4):
+                    raise RuntimeError(f"Simulated failure on generate call {n}")
+                return _mock_response(f"Candidate from gen call {n}")
+            else:
+                # Verify phase: all succeed
+                return _mock_response(CORRECT_HIGH)
+
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = side_effect
+
+        agent = MathAgent(config=config)
+        agent.client = mock_client
+
+        result = agent.solve("test problem")
+
+        assert result.solved
+        # 5 generate attempts (2 failed) + 3 verify calls = 8 total
+        assert mock_client.messages.create.call_count == 8

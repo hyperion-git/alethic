@@ -23,7 +23,9 @@ from alethic.models import (
 
 logger = logging.getLogger("alethic")
 
-# Severity ordering: lower = more severe (used for tie-breaking and sorting)
+# Severity ordering: lower = more severe (used for tie-breaking in consensus).
+# UNSOLVED (1) > FIXABLE (2): "no solution at all" is worse than "flawed but
+# recoverable solution", so ties between the two break toward UNSOLVED.
 _VERDICT_SEVERITY = {
     Verdict.MAJOR_FLAW: 0,
     Verdict.UNSOLVED: 1,

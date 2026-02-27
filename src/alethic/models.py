@@ -123,7 +123,7 @@ class AgentConfig:
             raise ValueError(f"max_iterations must be >= 1, got {self.max_iterations}")
         if self.max_revisions_per_cycle < 0:
             raise ValueError(f"max_revisions_per_cycle must be >= 0, got {self.max_revisions_per_cycle}")
-        valid_tools = {"sympy", "numpy"}
+        valid_tools = {"sympy", "numpy", "scipy", "matplotlib"}
         invalid = self.tool_guidance - valid_tools
         if invalid:
             raise ValueError(

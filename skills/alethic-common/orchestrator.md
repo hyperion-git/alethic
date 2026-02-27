@@ -81,13 +81,14 @@ Extract `max_iterations`, `max_revisions`, `max_budget`, `confidence_threshold`,
 Sub-agents may fail. Handle failures as follows:
 
 **Verdict parsing**: After each Verifier Task, extract VERDICT and CONFIDENCE independently (do not require both on one line):
-- Search for `VERDICT:\s*(correct|minor_issues|major_flaw|unsolved)` (case-insensitive).
+- Search for `VERDICT:\s*(correct|minor_issues|fixable|major_flaw|unsolved)` (case-insensitive).
 - Search for `CONFIDENCE:\s*([\d.]+)`.
 - First try parsing the Task return value. If that fails, Read the verification file and extract from the file content.
 - If both fail, treat as `VERDICT: unsolved | CONFIDENCE: 0.0` and log a warning.
 - If verdict is "unsolved", also extract `REASON:` from the verification file (the text between `REASON:` and `ISSUES:`).
 - Search for `HAS_CRITICAL:\s*(yes|no)` (case-insensitive). Default: "no" if missing.
 - Search for `TOP_ISSUE:\s*(.+?)(?:\s*\||\s*$)`. Default: "none" if missing.
+- If verdict is "fixable", search the verification file for `CORRECTED SOLUTION:\s*\n([\s\S]*?)END CORRECTED SOLUTION`. Store the captured group (trimmed) as `corrected_solution`. If no match found, set `corrected_solution` to null.
 
 **Confidence validation**: Parse confidence as a float. If unparseable or outside [0.0, 1.0], default to 0.5.
 
@@ -425,6 +426,25 @@ The "Reset" column shows "STALL" when a stall reset was triggered for that itera
   - If `max_revisions` > 0, proceed to Step 2d (Revise).
   - If `max_revisions` == 0, continue to next iteration.
 
+- **If verdict is "fixable"**:
+  - If `corrected_solution` is not null:
+    1. Write `corrected_solution` to `{session_dir}/worklog/iter{N}/corrected.md`.
+    2. **Record the FIXABLE verdict for stall tracking BEFORE re-verification** — append "fixable" to `iteration_final_verdicts` now. Do not wait for re-verification, which could overwrite the original verdict.
+    3. **Re-verify the corrected solution**: Read the Verifier prompt from `{references_dir}/verifier.md`. Append tool overlays (same procedure as Step 2b). Increment `task_calls`. Spawn a fresh Verifier Task with:
+       - The problem from `problem.md`
+       - The corrected solution from `worklog/iter{N}/corrected.md` (NOT the original solution)
+       - Same decoupling rules as Step 2b
+       - Return format: same as Step 2b ("VERDICT: ... | CONFIDENCE: ... | HAS_CRITICAL: ... | TOP_ISSUE: ...")
+    4. Extract re-verification verdict and confidence using the Error Handling Protocol (same parsing as Step 2b.2).
+    5. **If re-verification verdict is "correct" AND confidence >= {confidence_threshold}**:
+       - **CRITICAL issue guard** applies (same as the "correct" branch above). If HAS_CRITICAL is "yes", treat as "major_flaw" and proceed to Step 2d.
+       - Otherwise: Copy `worklog/iter{N}/corrected.md` to `worklog/iter{N}/solution.md`. Update `session.json`: `"status": "solved"`, `"verdict": "correct"`, current iteration, confidence.
+       - **Log event**: `{"type":"accept","iteration":{N},"confidence":{confidence},"via":"fixable_shortcut","timestamp":"..."}`
+       - Go to **Step 4: Format Output**, then **Step 5: Present Results**. **STOP the loop.**
+    6. **If re-verification fails**: Copy `worklog/iter{N}/corrected.md` to `worklog/iter{N}/solution.md` (use corrected version as new base). Copy the re-verification output to `worklog/iter{N}/verification.md`. Proceed to Step 2d (Revise) — the reviser will work from the corrected solution, not the original.
+  - If `corrected_solution` is null:
+    - Treat as "major_flaw" — if `max_revisions` > 0, proceed to Step 2d. Otherwise, continue to next iteration.
+
 - **If verdict is "unsolved"**:
   - Read the verification file. Check the `REASON:` field — if it indicates the problem's premise is false or the problem is ill-posed, **present the Verifier's REASON and CRITIQUE to the user immediately and STOP the loop.** This is not a failure — it is a valid finding.
   - Otherwise, continue to next iteration (skip revision — start fresh).
@@ -505,7 +525,8 @@ After each iteration (whether solved or not):
    - `"failed_approaches": [{accumulated list}]`
 
 3. **Update stall tracking** (skip if `stall_reset` is off):
-   - Append the iteration's final verdict (the best candidate's verdict after all revisions) to `iteration_final_verdicts` (keep only the last 3 entries).
+   - Append the iteration's final verdict (the best candidate's verdict after all revisions) to `iteration_final_verdicts` (keep only the last 2 entries).
+   - **Exception**: If the verdict was "fixable" and `corrected_solution` was not null, the verdict was already recorded in Step 2c before re-verification. Do not record it again.
    - If `best_confidence > pre_iter_best + stall_epsilon`: reset `iterations_since_meaningful_improvement` to 0.
    - Otherwise: increment `iterations_since_meaningful_improvement`.
    - Update `stall_state` in `session.json` with the new values of `iterations_since_meaningful_improvement`, `iteration_final_verdicts`, `resets_used`, and `reset_cooldown_remaining`.

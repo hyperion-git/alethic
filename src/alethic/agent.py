@@ -64,7 +64,7 @@ class RunState:
     start_time: float = field(default_factory=time.time)
     # Stall detection state
     iterations_since_meaningful_improvement: int = 0
-    iteration_final_verdicts: deque = field(default_factory=lambda: deque(maxlen=3))
+    iteration_final_verdicts: deque = field(default_factory=lambda: deque(maxlen=2))
     resets_used: int = 0
     reset_cooldown_remaining: int = 0
 
@@ -91,7 +91,11 @@ def _summarize_failed_approach(verification: VerificationResult) -> str:
         top_issue = str(verification.issues[0])
         summary = f"{summary} Issue: {top_issue}"
 
-    return summary[:200]
+    if len(summary) <= 200:
+        return summary
+    # Truncate at last space before 200 chars, add ellipsis
+    cut = summary[:197].rfind(" ")
+    return summary[: cut if cut > 0 else 197] + "..."
 
 
 class MathAgent:
@@ -112,7 +116,8 @@ class MathAgent:
         api_key: str | None = None,
     ):
         self.config = config or AgentConfig()
-        self.client = anthropic.Anthropic(api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"))
+        self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        self.client = anthropic.Anthropic(api_key=self._api_key)
         self._setup_logging()
 
     def _setup_logging(self) -> None:
@@ -286,7 +291,7 @@ class MathAgent:
         if self.config.variant_b is not None:
             variant_b_config = self.config.build_variant_b_config()
             if variant_b_config.model != self.config.model:
-                variant_b_client = anthropic.Anthropic(api_key=self.client.api_key)
+                variant_b_client = anthropic.Anthropic(api_key=self._api_key)
             else:
                 variant_b_client = self.client
 
@@ -575,17 +580,19 @@ class MathAgent:
                     log.emit(EventType.ERROR, iteration, error="all candidates failed")
                     continue
 
-                if len(candidates) < n_this_iter:
-                    failures = n_this_iter - len(candidates)
+                n_expected = n_this_iter if is_reset else self.config.best_of_n
+                n_failed = n_expected - len(candidates)
+                if n_failed > 0:
+                    log.emit(EventType.ERROR, iteration, error=f"{n_failed}/{n_expected} candidates failed")
                     logger.info(
                         "Generated %d/%d candidates (%d failed)",
                         len(candidates),
-                        n_this_iter,
-                        failures,
+                        n_expected,
+                        n_failed,
                     )
                     self._log(
-                        f"[GENERATE] Warning: {len(candidates)}/{n_this_iter} candidates "
-                        f"succeeded ({failures} failed)"
+                        f"[GENERATE] Warning: {len(candidates)}/{n_expected} candidates "
+                        f"succeeded ({n_failed} failed)"
                     )
 
                 for idx, (sol, gen_t) in enumerate(candidates, 1):

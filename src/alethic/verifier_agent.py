@@ -52,9 +52,7 @@ class VerifierAgent:
             max_tokens=self.config.max_tokens,
             extended_thinking=self.config.extended_thinking,
             thinking_budget=self.config.thinking_budget,
-            tool_guidance=frozenset(
-                t for t in self.config.tool_guidance if t in {"sympy", "numpy"}
-            ),
+            tool_guidance=self.config.tool_guidance,
             verbose=False,
         )
 
