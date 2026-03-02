@@ -32,12 +32,15 @@ from dataclasses import dataclass, field
 
 import anthropic
 
+from alethic.exceptions import ContextExhaustedError, TruncatedResponseError
 from alethic.models import (
+    MODEL_CONTEXT_LIMITS,
     AgentConfig,
     AgentEvent,
     AgentResult,
     EventType,
     Solution,
+    TokenLedger,
     Verdict,
     VerificationResult,
 )
@@ -46,6 +49,7 @@ from alethic.prompts import (
     TOOL_GUIDANCE,
     VERIFIER_SYSTEM,
 )
+from alethic.session import create_session_dir, load_checkpoint, write_checkpoint
 from alethic.subagents import generate, revise, verify
 
 logger = logging.getLogger("alethic")
@@ -132,6 +136,10 @@ class MathAgent:
             logger.addHandler(handler)
             logger.setLevel(logging.INFO)
 
+    def _domain(self) -> str:
+        """Return the domain string for session metadata."""
+        return "math"
+
     def _prompt_set(self) -> dict[str, str]:
         """Return domain-specific prompt overrides for subagents.
 
@@ -208,6 +216,9 @@ class MathAgent:
         admitted_failure: bool,
         state: RunState,
         log: EventLog,
+        token_ledger: TokenLedger | None = None,
+        session_dir: str | None = None,
+        checkpoint_path: str | None = None,
     ) -> AgentResult:
         """Build an AgentResult with fields common to all exit paths."""
         return AgentResult(
@@ -222,6 +233,9 @@ class MathAgent:
             elapsed_seconds=time.time() - state.start_time,
             candidates_per_iteration=self.config.best_of_n,
             failed_approaches=state.failed_approaches,
+            token_ledger=token_ledger,
+            session_dir=session_dir,
+            checkpoint_path=checkpoint_path,
         )
 
     def _check_false_premise(
@@ -231,6 +245,8 @@ class MathAgent:
         iteration: int,
         state: RunState,
         log: EventLog,
+        token_ledger: TokenLedger | None = None,
+        session_dir: str | None = None,
     ) -> AgentResult | None:
         """Return AgentResult if verifier detected a false premise, else None."""
         if (
@@ -250,6 +266,8 @@ class MathAgent:
                 admitted_failure=False,
                 state=state,
                 log=log,
+                token_ledger=token_ledger,
+                session_dir=session_dir,
             )
         return None
 
@@ -263,6 +281,9 @@ class MathAgent:
         n: int,
         failed_approaches: tuple[str, ...] = (),
         reset_context: str | None = None,
+        ledger: TokenLedger | None = None,
+        context_limit: int = 200_000,
+        context_threshold: float = 0.8,
     ) -> list[tuple[Solution, float]]:
         """Generate N candidates. Parallel (ThreadPoolExecutor) when N>1, sequential when N=1."""
 
@@ -279,6 +300,9 @@ class MathAgent:
                 system_prompt=prompts.get("generator_system"),
                 user_template=prompts.get("generator_user"),
                 balanced_addendum=prompts.get("balanced_addendum"),
+                ledger=ledger,
+                context_limit=context_limit,
+                context_threshold=context_threshold,
             )
             return sol, time.time() - t0
 
@@ -319,6 +343,9 @@ class MathAgent:
         problem: str,
         candidates: list[tuple[Solution, float]],
         prompts: dict[str, str],
+        ledger: TokenLedger | None = None,
+        context_limit: int = 200_000,
+        context_threshold: float = 0.8,
     ) -> list[tuple[Solution, VerificationResult, float, float, int]]:
         """Verify all candidates sequentially. Return list sorted by confidence desc.
 
@@ -335,6 +362,9 @@ class MathAgent:
                 config=self.config,
                 system_prompt=prompts.get("verifier_system"),
                 user_template=prompts.get("verifier_user"),
+                ledger=ledger,
+                context_limit=context_limit,
+                context_threshold=context_threshold,
             )
             verify_time = time.time() - t0
             verified.append((solution, verification, gen_time, verify_time, idx))
@@ -373,6 +403,10 @@ class MathAgent:
         log: EventLog,
         threshold: float,
         max_revisions: int | None = None,
+        ledger: TokenLedger | None = None,
+        context_limit: int = 200_000,
+        context_threshold: float = 0.8,
+        session_dir: str | None = None,
     ) -> AgentResult | None:
         """Run revision sub-loop. Returns AgentResult if solved, else None (mutates state)."""
         effective_max_revisions = (
@@ -391,6 +425,9 @@ class MathAgent:
                 revision_number=rev_num,
                 system_prompt=prompts.get("reviser_system"),
                 user_template=prompts.get("reviser_user"),
+                ledger=ledger,
+                context_limit=context_limit,
+                context_threshold=context_threshold,
             )
             state.total_revisions += 1
             log.emit(
@@ -408,6 +445,9 @@ class MathAgent:
                 config=self.config,
                 system_prompt=prompts.get("verifier_system"),
                 user_template=prompts.get("verifier_user"),
+                ledger=ledger,
+                context_limit=context_limit,
+                context_threshold=context_threshold,
             )
             log.emit(
                 EventType.VERIFY,
@@ -443,6 +483,8 @@ class MathAgent:
                     admitted_failure=False,
                     state=state,
                     log=log,
+                    token_ledger=ledger,
+                    session_dir=session_dir,
                 )
 
             # If major flaw after revision, break to restart from generator
@@ -458,6 +500,8 @@ class MathAgent:
                     iteration,
                     state,
                     log,
+                    token_ledger=ledger,
+                    session_dir=session_dir,
                 )
                 if fp:
                     return fp
@@ -472,12 +516,14 @@ class MathAgent:
         self,
         problem: str,
         balanced: bool = True,
+        resume_from: str | None = None,
     ) -> AgentResult:
         """Solve a mathematical problem using the Generate → Verify → Revise loop.
 
         Args:
             problem: The mathematical problem statement.
             balanced: Use balanced prompting (explore counterexamples first).
+            resume_from: Path to a session directory to resume from (checkpoint).
 
         Returns:
             AgentResult with the solution (or admitted failure).
@@ -494,6 +540,53 @@ class MathAgent:
         # Build verifier system prompt with tool guidance
         ver_base = prompts.get("verifier_system") or VERIFIER_SYSTEM
         prompts["verifier_system"] = self._build_system_prompt("verifier", ver_base)
+
+        # Initialize token ledger and context tracking
+        ledger = TokenLedger()
+        context_limit = MODEL_CONTEXT_LIMITS.get(self.config.model, 200_000)
+
+        # Resume from checkpoint if requested
+        start_iteration = 1
+        session_dir: str | None = None
+        if resume_from:
+            checkpoint = load_checkpoint(resume_from)
+            session_dir = resume_from
+            start_iteration = checkpoint["current_iteration"] + 1
+            state.best_confidence = checkpoint["best_confidence"]
+            state.failed_approaches = checkpoint.get("failed_approaches", [])
+            # Restore stall state
+            ss = checkpoint.get("stall_state", {})
+            state.iterations_since_meaningful_improvement = ss.get(
+                "iterations_since_meaningful_improvement", 0
+            )
+            valid_verdicts = {e.value for e in Verdict}
+            for v in ss.get("iteration_final_verdicts", []):
+                if isinstance(v, str) and v in valid_verdicts:
+                    state.iteration_final_verdicts.append(Verdict(v))
+            state.resets_used = ss.get("resets_used", 0)
+            state.reset_cooldown_remaining = ss.get("reset_cooldown_remaining", 0)
+            # Restore best solution
+            best_text = checkpoint.get("best_solution_text")
+            if best_text:
+                state.best_solution = Solution(
+                    problem=problem, solution_text=best_text, iteration=0
+                )
+            # Restore ledger
+            ledger = TokenLedger.from_dict(checkpoint.get("token_ledger", {}))
+            self._log(
+                f"[RESUME] Resuming from iteration {start_iteration} "
+                f"(conf: {state.best_confidence:.0%})"
+            )
+        else:
+            try:
+                session_dir = create_session_dir(
+                    problem=problem,
+                    domain=self._domain(),
+                    config=self.config,
+                )
+            except OSError:
+                logger.warning("Failed to create session directory")
+                session_dir = None
 
         self._log(f"{'=' * 60}")
         self._log(self._log_header())
@@ -514,7 +607,7 @@ class MathAgent:
         self._log(f"Problem: {problem[:200]}{'...' if len(problem) > 200 else ''}")
         self._log("")
 
-        for iteration in range(1, self.config.max_iterations + 1):
+        for iteration in range(start_iteration, self.config.max_iterations + 1):
             self._log(f"{'─' * 40}")
             self._log(f"Iteration {iteration}/{self.config.max_iterations}")
             self._log(f"{'─' * 40}")
@@ -572,6 +665,9 @@ class MathAgent:
                     n=n_this_iter,
                     failed_approaches=tuple(state.failed_approaches),
                     reset_context=reset_context,
+                    ledger=ledger,
+                    context_limit=context_limit,
+                    context_threshold=self.config.context_threshold,
                 )
                 gen_wall_time = time.time() - gen_t0
 
@@ -613,6 +709,9 @@ class MathAgent:
                     problem=problem,
                     candidates=candidates,
                     prompts=prompts,
+                    ledger=ledger,
+                    context_limit=context_limit,
+                    context_threshold=self.config.context_threshold,
                 )
 
                 # Log rankings for N>1
@@ -666,6 +765,8 @@ class MathAgent:
                         admitted_failure=False,
                         state=state,
                         log=log,
+                        token_ledger=ledger,
+                        session_dir=session_dir,
                     )
 
                 # ── CHECK: False premise? ──
@@ -675,6 +776,8 @@ class MathAgent:
                     iteration,
                     state,
                     log,
+                    token_ledger=ledger,
+                    session_dir=session_dir,
                 )
                 if fp:
                     return fp
@@ -694,6 +797,9 @@ class MathAgent:
                         config=self.config,
                         system_prompt=prompts.get("verifier_system"),
                         user_template=prompts.get("verifier_user"),
+                        ledger=ledger,
+                        context_limit=context_limit,
+                        context_threshold=self.config.context_threshold,
                     )
                     log.emit(
                         EventType.VERIFY,
@@ -728,6 +834,8 @@ class MathAgent:
                             admitted_failure=False,
                             state=state,
                             log=log,
+                            token_ledger=ledger,
+                            session_dir=session_dir,
                         )
                     # Correction failed re-verification — fall through to normal revision
                     self._log(
@@ -748,6 +856,10 @@ class MathAgent:
                         log=log,
                         threshold=threshold,
                         max_revisions=1 if is_reset else None,
+                        ledger=ledger,
+                        context_limit=context_limit,
+                        context_threshold=self.config.context_threshold,
+                        session_dir=session_dir,
                     )
                     if result is not None:
                         return result
@@ -766,6 +878,62 @@ class MathAgent:
                 # ── ACCUMULATE FAILED APPROACH ──
                 summary = _summarize_failed_approach(verification)
                 state.failed_approaches.append(summary)
+
+            except ContextExhaustedError:
+                self._log(f"\n[CHECKPOINT] Context exhausted at iteration {iteration}")
+                checkpoint_path = session_dir
+                try:
+                    if session_dir:
+                        write_checkpoint(
+                            session_dir=session_dir,
+                            current_iteration=iteration,
+                            best_confidence=state.best_confidence,
+                            best_solution_text=(
+                                state.best_solution.solution_text if state.best_solution else None
+                            ),
+                            failed_approaches=state.failed_approaches,
+                            stall_state={
+                                "iterations_since_meaningful_improvement": (
+                                    state.iterations_since_meaningful_improvement
+                                ),
+                                "iteration_final_verdicts": [
+                                    v.value if isinstance(v, Verdict) else str(v)
+                                    for v in state.iteration_final_verdicts
+                                ],
+                                "resets_used": state.resets_used,
+                                "reset_cooldown_remaining": state.reset_cooldown_remaining,
+                            },
+                            token_ledger=ledger,
+                            status="checkpoint",
+                        )
+                        self._log(f"Session saved to: {session_dir}")
+                        self._log(f"Resume with: --resume {session_dir}")
+                except Exception as cp_err:
+                    logger.warning("Failed to write checkpoint: %s", cp_err)
+                    checkpoint_path = None
+
+                best_text = state.best_solution.solution_text if state.best_solution else None
+                return AgentResult(
+                    problem=problem,
+                    solution=best_text,
+                    verdict=Verdict.UNSOLVED,
+                    confidence=state.best_confidence,
+                    iterations_used=iteration,
+                    total_revisions=state.total_revisions,
+                    admitted_failure=False,
+                    events=log.events,
+                    elapsed_seconds=time.time() - state.start_time,
+                    candidates_per_iteration=self.config.best_of_n,
+                    failed_approaches=state.failed_approaches,
+                    token_ledger=ledger,
+                    session_dir=session_dir,
+                    checkpoint_path=checkpoint_path,
+                )
+
+            except TruncatedResponseError as e:
+                logger.warning("Iteration %d: response truncated: %s", iteration, e)
+                log.emit(EventType.ERROR, iteration, error=f"truncated: {e}")
+                continue
 
             except anthropic.APIError as e:
                 logger.warning("Iteration %d failed: %s", iteration, e)
@@ -795,6 +963,8 @@ class MathAgent:
             admitted_failure=True,
             state=state,
             log=log,
+            token_ledger=ledger,
+            session_dir=session_dir,
         )
 
     def _log(self, message: str) -> None:

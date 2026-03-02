@@ -216,6 +216,9 @@ def generate(
     system_prompt: str | None = None,
     user_template: str | None = None,
     balanced_addendum: str | None = None,
+    ledger: TokenLedger | None = None,
+    context_limit: int = 200_000,
+    context_threshold: float = 0.8,
 ) -> Solution:
     """Generate a candidate solution.
 
@@ -264,6 +267,9 @@ def generate(
         config=config,
         temperature=config.temperature_generator,
         tools=tools,
+        ledger=ledger,
+        context_limit=context_limit,
+        context_threshold=context_threshold,
     )
 
     return Solution(
@@ -430,6 +436,9 @@ def verify(
     *,
     system_prompt: str | None = None,
     user_template: str | None = None,
+    ledger: TokenLedger | None = None,
+    context_limit: int = 200_000,
+    context_threshold: float = 0.8,
 ) -> VerificationResult:
     """Independently verify a candidate solution.
 
@@ -468,6 +477,9 @@ def verify(
         config=config,
         temperature=config.temperature_verifier,
         tools=tools,
+        ledger=ledger,
+        context_limit=context_limit,
+        context_threshold=context_threshold,
     )
 
     result = _parse_verification(text)
@@ -515,6 +527,9 @@ def revise(
     *,
     system_prompt: str | None = None,
     user_template: str | None = None,
+    ledger: TokenLedger | None = None,
+    context_limit: int = 200_000,
+    context_threshold: float = 0.8,
 ) -> Solution:
     """Revise a solution based on verifier feedback.
 
@@ -570,6 +585,9 @@ def revise(
         config=config,
         temperature=config.temperature_reviser,
         tools=tools,
+        ledger=ledger,
+        context_limit=context_limit,
+        context_threshold=context_threshold,
     )
 
     revision = _parse_revision(text, revision_number, verification.critique)

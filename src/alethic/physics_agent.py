@@ -43,6 +43,9 @@ class PhysicsAgent(MathAgent):
             "reviser_user": PHYSICS_REVISER_USER,
         }
 
+    def _domain(self) -> str:
+        return "physics"
+
     def _get_tool_guidance_map(self) -> dict:
         return PHYSICS_TOOL_GUIDANCE
 
