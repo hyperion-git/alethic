@@ -59,6 +59,7 @@ Consider approaches from a different formalism entirely (e.g., if Lagrangian met
 - `/alethic-derive --textbook "Derive the energy spectrum of the quantum harmonic oscillator"` — textbook-style output
 - `/alethic-derive -p thorough --textbook "Derive the hydrogen atom energy spectrum"` — thorough + textbook
 - `/alethic-derive --no-balanced "Derive the Euler-Lagrange equations"` — skip dimensional check
+- `/alethic-derive --resume .alethic/session-id/ "original problem"` — resume from checkpoint
 - `/alethic-derive --file problem.md` — read problem from file
 - `/alethic-derive -q -p thorough "Derive the hydrogen atom energy spectrum"` — quiet mode (no dashboard)
 - `/alethic-derive --json "Derive the period of a simple pendulum"` — JSON output

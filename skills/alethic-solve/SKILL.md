@@ -59,6 +59,7 @@ Consider approaches from a different branch of mathematics entirely.
 - `/alethic-solve --textbook "Prove sqrt(2) is irrational"` — textbook-style output
 - `/alethic-solve -p thorough --textbook "Prove the Cayley-Hamilton theorem"` — thorough + textbook
 - `/alethic-solve --no-balanced "Prove sqrt(2) is irrational"` — skip counterexample check
+- `/alethic-solve --resume .alethic/session-id/ "original problem"` — resume from checkpoint
 - `/alethic-solve --file problem.md` — read problem from file
 - `/alethic-solve -q -p thorough "Prove the Cayley-Hamilton theorem"` — quiet mode (no dashboard)
 - `/alethic-solve --json "Is 17 prime?"` — JSON output

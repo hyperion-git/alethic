@@ -46,6 +46,7 @@ Parse the user's input for optional flags and the problem statement.
 | `--no-stall-reset` | — | off | Disable stall detection and strategy resets |
 | `--stall-window` | — | (from preset) | Iterations without meaningful improvement before triggering reset |
 | `--stall-epsilon` | — | (from preset) | Minimum confidence improvement to count as meaningful |
+| `--resume` | — | — | Resume from an incomplete session directory |
 
 ### Presets
 
@@ -175,6 +176,26 @@ Log each event immediately after the corresponding Task call completes (or fails
    git rev-parse --show-toplevel 2>/dev/null || echo ""
    ```
    If a git root is found, set `{project_root}` to the current working directory (cwd, NOT the git root — sessions live where the user invoked the skill). If no git repo is found, fall back to legacy behavior: `DIR=$(mktemp -d /tmp/alethic-XXXXXXXXXX) && echo $DIR` and skip to sub-step 4.
+
+1b. **Resume check**: If `--resume PATH` is provided:
+   1. Read `{PATH}/session.json`. Validate `status` is `"running"` or `"checkpoint"`.
+   2. Extract `current_iteration`, `best_confidence`, `best_solution_path`, `failed_approaches`, `stall_state`, `config`, and the problem text.
+   3. Set `{session_dir} = PATH`. Skip slug generation, directory creation, and `problem.md` writing.
+   4. Set `start_iteration = current_iteration + 1`. The main loop (Step 2) starts from `start_iteration` instead of 1.
+   5. Restore all state variables from the saved values: `max_iterations`, `max_revisions`, `max_budget`, `confidence_threshold`, `best_of_n`, `stall_reset`, `stall_window`, `stall_epsilon`, `reset_n_boost` from `config`; `task_calls` from `session.json`; `iterations_since_meaningful_improvement`, `iteration_final_verdicts`, `resets_used`, `reset_cooldown_remaining` from `stall_state`.
+   6. Print: `[RESUME] Resuming session {session_id} from iteration {start_iteration}`
+   7. Skip to sub-step 7 (initialize counter is replaced by restored `task_calls`), then sub-step 8 (capture start time), then sub-step 9 (resource estimate).
+
+1c. **Auto-detect** (when `--resume` is NOT provided and a git root exists):
+   1. Scan `.alethic/` for subdirectories containing `session.json` where `status` is `"running"` or `"checkpoint"`:
+      ```bash
+      for f in .alethic/*/session.json; do
+        [ -f "$f" ] && grep -l '"status":\s*"\(running\|checkpoint\)"' "$f" 2>/dev/null
+      done
+      ```
+   2. If any are found, print a summary for each:
+      `Found incomplete session: .alethic/{id}/ (iter {N}/{max}, conf {best}, {status})`
+   3. Do NOT auto-resume — just inform the user. They must explicitly use `--resume` to continue.
 
 2. **Slug generation**: From the problem text — lowercase, strip non-alphanumeric characters to hyphens, collapse runs of hyphens, trim leading/trailing hyphens, truncate to 40 chars. Use Bash:
    ```bash
@@ -325,7 +346,7 @@ Before generating candidates, check whether a stall-triggered strategy reset sho
    - When `best_of_n == 1`: "Write your complete {noun} to `{session_dir}/worklog/iter{N}/solution.md`."
    - When `best_of_n > 1`: "Write your complete {noun} to `{session_dir}/worklog/iter{N}/candidate_{C}.md`."
    - If iteration 2+ AND `reset_context` is NOT null (stall reset active): Replace the standard "Previous attempts:" block with the `reset_context` text. Do not include the normal failed_approaches history — the reset addendum already contains the relevant recent failures.
-   - If iteration 2+ AND `reset_context` IS null: include the strategy history from `failed_approaches` — "Previous attempts:\n- Iter 1: {strategy} -> {verdict} ({confidence}): {top_issue}\n- Iter 2: {strategy} -> {verdict} ({confidence}): {top_issue}\nTry a DIFFERENT approach."
+   - If iteration 2+ AND `reset_context` IS null: include the strategy history from `failed_approaches` — "Previous attempts:\n- Iter 1: {strategy} -> {verdict} ({confidence}): {top_issue}\n- Iter 2: {strategy} -> {verdict} ({confidence}): {top_issue}\nTry a DIFFERENT approach." When constructing this block, include only the **last 5 entries** from the `failed_approaches` list. Older entries remain in `session.json` for post-hoc analysis but are not inlined into the Generator prompt.
    - When `best_of_n > 1` and C > 1: "Other candidates are being generated in parallel. Use a DIFFERENT strategy from your default approach to maximize diversity."
    - "After writing the {noun} file, return a ONE-LINE summary of your strategy and approach (e.g., 'Proof by contradiction using infinite descent' or 'Lagrangian mechanics with small-angle approximation')."
 
@@ -807,6 +828,24 @@ After presenting results, finalize the session state for future reference.
 - Let the sub-agents do all {domain} reasoning — you are a coordinator
 - Only read `best_solution.md` at the very end when presenting results
 - If past iteration 3, mentally summarize previous iterations' outcomes rather than re-reading verbose details
+
+### Context-Pressure Checkpoint
+
+If you are past iteration 6 and notice that:
+- Your responses are becoming slower or shorter than earlier iterations
+- Auto-compression messages appear in the conversation
+- You are having difficulty recalling earlier iteration details
+
+Then checkpoint immediately: update `session.json` with `"status": "checkpoint"` and `"completed_at"` timestamp. Present whatever results exist with:
+
+```
+[CHECKPOINT] Context pressure detected at iteration {N}.
+Best confidence: {best_confidence}
+Session saved to: .alethic/{session_id}/
+Resume with: /{command} --resume .alethic/{session_id}/ "{problem first 80 chars}..."
+```
+
+After printing the checkpoint message, proceed to Step 3 (Failure Admission) and then Step 5 (Present Results) to save whatever best {noun} exists. The user can resume with `--resume` to continue from the checkpoint.
 
 ---
 
