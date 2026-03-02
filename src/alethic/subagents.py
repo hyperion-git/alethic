@@ -14,6 +14,7 @@ from typing import Any
 
 import anthropic
 
+from alethic.exceptions import ContextExhaustedError, TruncatedResponseError
 from alethic.models import (
     AgentConfig,
     Issue,
@@ -21,6 +22,7 @@ from alethic.models import (
     Revision,
     SectionConfidence,
     Solution,
+    TokenLedger,
     Verdict,
     VerificationResult,
 )
@@ -96,11 +98,31 @@ def _call_model(
     config: AgentConfig,
     temperature: float,
     tools: list[dict] | None = None,
+    ledger: TokenLedger | None = None,
+    context_limit: int = 200_000,
+    context_threshold: float = 0.8,
 ) -> str:
     """Make an API call to Claude, handling tool use loops.
 
     Returns the final text response after all tool calls have been resolved.
+
+    Args:
+        ledger: If provided, records token usage from each API call.
+        context_limit: Model context window size in tokens.
+        context_threshold: Fraction of context_limit that triggers safety abort.
+
+    Raises:
+        ContextExhaustedError: If estimated input tokens exceed the threshold.
+        TruncatedResponseError: If the API response was truncated (stop_reason=max_tokens).
     """
+    # Pre-flight estimate: chars/4 heuristic for token count
+    estimated_input = len(system + user_message) // 4
+    if estimated_input > context_threshold * context_limit:
+        raise ContextExhaustedError(
+            f"Pre-flight estimate: ~{estimated_input} tokens estimated "
+            f"(threshold: {int(context_threshold * context_limit)} of {context_limit})"
+        )
+
     messages: list[dict[str, Any]] = [{"role": "user", "content": user_message}]
     kwargs = {
         "model": config.model,
@@ -130,10 +152,19 @@ def _call_model(
     for _ in range(max_tool_rounds):
         response = _create_with_retry(client, kwargs)
 
+        if ledger is not None:
+            ledger.record(response.usage)
+
         # Check for tool use
         tool_results = process_tool_calls(response) if tools else []
 
         if not tool_results:
+            # Check for truncation before returning
+            if getattr(response, "stop_reason", None) == "max_tokens":
+                raise TruncatedResponseError(
+                    f"Response truncated (stop_reason=max_tokens) after "
+                    f"{ledger.api_calls if ledger else '?'} calls"
+                )
             # No tool calls — extract final text
             return _extract_text(response)
 
@@ -152,6 +183,17 @@ def _call_model(
         ]
         messages.append({"role": "user", "content": tool_result_content})
         kwargs["messages"] = messages
+
+        # Re-estimate context after tool round
+        total_chars = sum(
+            len(str(m.get("content", ""))) for m in messages
+        ) + len(system)
+        re_estimated = total_chars // 4
+        if re_estimated > context_threshold * context_limit:
+            raise ContextExhaustedError(
+                f"Tool-use loop estimate: ~{re_estimated} tokens "
+                f"(threshold: {int(context_threshold * context_limit)} of {context_limit})"
+            )
 
     # Exhausted tool rounds — return whatever text we have
     return _extract_text(response)
