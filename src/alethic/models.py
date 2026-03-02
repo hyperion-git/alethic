@@ -9,6 +9,13 @@ from dataclasses import fields as dataclass_fields
 from typing import Any, ClassVar
 
 
+MODEL_CONTEXT_LIMITS: dict[str, int] = {
+    "claude-opus-4-6": 200_000,
+    "claude-sonnet-4-6": 200_000,
+    "claude-haiku-4-5-20251001": 200_000,
+}
+
+
 class Verdict(enum.Enum):
     """Verifier verdict on a candidate solution."""
 
@@ -70,6 +77,40 @@ class AgentEvent:
     data: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class TokenLedger:
+    """Tracks cumulative token usage across API calls in a session."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    api_calls: int = 0
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+    def record(self, usage: Any) -> None:
+        """Record token usage from an Anthropic API response."""
+        self.input_tokens += usage.input_tokens
+        self.output_tokens += usage.output_tokens
+        self.api_calls += 1
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "api_calls": self.api_calls,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> TokenLedger:
+        return cls(
+            input_tokens=d.get("input_tokens", 0),
+            output_tokens=d.get("output_tokens", 0),
+            api_calls=d.get("api_calls", 0),
+        )
+
+
 @dataclass(frozen=True)
 class AgentConfig:
     """Configuration for the Alethic agent.
@@ -114,6 +155,7 @@ class AgentConfig:
     stall_epsilon: float = 0.03
     stall_reset: bool = True
     reset_n_boost: int = 1
+    context_threshold: float = 0.8
     variant_b: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
@@ -148,6 +190,8 @@ class AgentConfig:
             raise ValueError(f"stall_epsilon must be >= 0, got {self.stall_epsilon}")
         if self.reset_n_boost < 0:
             raise ValueError(f"reset_n_boost must be >= 0, got {self.reset_n_boost}")
+        if not 0.0 < self.context_threshold <= 1.0:
+            raise ValueError(f"context_threshold must be in (0.0, 1.0], got {self.context_threshold}")
         if self.variant_b is not None:
             valid_field_names = {f.name for f in dataclass_fields(self)}
             invalid_keys = set(self.variant_b) - valid_field_names
@@ -167,6 +211,7 @@ class AgentConfig:
             "best_of_n": 1,
             "stall_reset": False,
             "reset_n_boost": 0,
+            "context_threshold": 0.85,
         },
         "default": {
             "max_iterations": 5,
@@ -179,6 +224,7 @@ class AgentConfig:
             "stall_epsilon": 0.03,
             "stall_reset": True,
             "reset_n_boost": 1,
+            "context_threshold": 0.8,
         },
         "thorough": {
             "max_iterations": 8,
@@ -192,6 +238,7 @@ class AgentConfig:
             "stall_epsilon": 0.02,
             "stall_reset": True,
             "reset_n_boost": 1,
+            "context_threshold": 0.8,
             "variant_b": {"model": "claude-sonnet-4-6"},
         },
         "extreme": {
@@ -206,6 +253,7 @@ class AgentConfig:
             "stall_epsilon": 0.02,
             "stall_reset": True,
             "reset_n_boost": 2,
+            "context_threshold": 0.75,
             "variant_b": {"model": "claude-sonnet-4-6"},
         },
     }
@@ -431,6 +479,9 @@ class AgentResult:
     elapsed_seconds: float = 0.0
     candidates_per_iteration: int = 1
     failed_approaches: list[str] = field(default_factory=list)
+    token_ledger: TokenLedger | None = None
+    session_dir: str | None = None
+    checkpoint_path: str | None = None
 
     @property
     def solved(self) -> bool:
