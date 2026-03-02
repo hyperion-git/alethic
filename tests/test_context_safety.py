@@ -155,3 +155,32 @@ class TestPreFlightEstimate:
             context_threshold=0.8,
         )
         assert result == "ok"
+
+    def test_tool_use_context_growth_raises(self):
+        """Context growth from tool results should trigger ContextExhaustedError."""
+        from alethic.subagents import _call_model
+
+        client = MagicMock()
+        # First API call returns a response (tool_use handling is via process_tool_calls)
+        client.messages.create.return_value = _mock_response("thinking...")
+        config = AgentConfig(verbose=False, enable_code_execution=False)
+
+        # process_tool_calls returns large tool results on first call
+        large_result = "x" * 8000  # 8K chars → ~2K tokens in re-estimate
+        tool_results = [{"tool_use_id": "tool_1", "name": "execute_python", "result": large_result}]
+        dummy_tools = [{"name": "execute_python", "description": "test", "input_schema": {}}]
+
+        with (
+            patch("alethic.subagents.process_tool_calls", return_value=tool_results),
+            pytest.raises(ContextExhaustedError, match="Tool-use loop"),
+        ):
+            _call_model(
+                client,
+                system="sys",
+                user_message="short",
+                config=config,
+                temperature=1.0,
+                tools=dummy_tools,
+                context_limit=1000,  # low limit so re-estimate triggers
+                context_threshold=0.5,
+            )

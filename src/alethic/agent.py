@@ -550,6 +550,13 @@ class MathAgent:
         session_dir: str | None = None
         if resume_from:
             checkpoint = load_checkpoint(resume_from)
+            saved_problem = checkpoint.get("problem", "")
+            if saved_problem and problem != saved_problem:
+                logger.warning(
+                    "Resume problem mismatch: checkpoint was for a different problem. "
+                    "Checkpoint: %s...",
+                    saved_problem[:80],
+                )
             session_dir = resume_from
             start_iteration = checkpoint["current_iteration"] + 1
             state.best_confidence = checkpoint["best_confidence"]
@@ -891,9 +898,7 @@ class MathAgent:
                             current_iteration=iteration,
                             best_confidence=state.best_confidence,
                             best_solution_text=(
-                                state.best_solution.solution_text
-                                if state.best_solution
-                                else None
+                                state.best_solution.solution_text if state.best_solution else None
                             ),
                             failed_approaches=state.failed_approaches,
                             stall_state={
@@ -911,9 +916,7 @@ class MathAgent:
                             status="running",
                         )
                     except (OSError, TypeError) as write_err:
-                        logger.warning(
-                            "Failed to write incremental checkpoint: %s", write_err
-                        )
+                        logger.warning("Failed to write incremental checkpoint: %s", write_err)
 
             except ContextExhaustedError:
                 self._log(f"\n[CHECKPOINT] Context exhausted at iteration {iteration}")

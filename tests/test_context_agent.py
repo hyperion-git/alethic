@@ -192,3 +192,43 @@ class TestResumeFromCheckpoint:
         assert result.solved
         assert result.iterations_used == 4  # resumed at iter 4 (3+1)
         assert len(result.failed_approaches) >= 1  # inherited from checkpoint
+
+    @patch("alethic.subagents.process_tool_calls", return_value=[])
+    def test_resume_warns_on_problem_mismatch(self, _ptc, tmp_path, caplog):
+        """Resuming with a different problem should log a warning."""
+        config = AgentConfig(
+            max_iterations=5,
+            best_of_n=1,
+            enable_code_execution=False,
+            verbose=False,
+        )
+        agent = MathAgent(config=config)
+        agent.client = MagicMock()
+        agent.client.messages.create.side_effect = [
+            _mock_response("resumed solution"),
+            _mock_response(CORRECT_HIGH),
+        ]
+
+        # Create a checkpoint with "original problem"
+        session_dir = str(tmp_path / "session")
+        Path(session_dir).mkdir(parents=True)
+        (Path(session_dir) / "worklog").mkdir()
+        checkpoint_data = {
+            "status": "checkpoint",
+            "problem": "original problem",
+            "current_iteration": 2,
+            "best_confidence": 0.6,
+            "failed_approaches": [],
+            "stall_state": {},
+            "token_ledger": {"input_tokens": 5000, "output_tokens": 2000, "api_calls": 4},
+            "config": {"max_iterations": 5, "confidence_threshold": 0.9},
+        }
+        (Path(session_dir) / "session.json").write_text(json.dumps(checkpoint_data))
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="alethic.agent"):
+            result = agent.solve("different problem", resume_from=session_dir)
+
+        assert "mismatch" in caplog.text.lower()
+        assert result.solved  # still proceeds despite mismatch
