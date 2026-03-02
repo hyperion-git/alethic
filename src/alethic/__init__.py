@@ -29,6 +29,12 @@ Usage:
 """
 
 from alethic.agent import MathAgent
+from alethic.exceptions import (
+    AlethicError,
+    CheckpointError,
+    ContextExhaustedError,
+    TruncatedResponseError,
+)
 from alethic.models import (
     AgentConfig,
     AgentEvent,
@@ -41,6 +47,7 @@ from alethic.models import (
     Revision,
     SectionConfidence,
     Solution,
+    TokenLedger,
     Verdict,
     VerificationResult,
     VerifierConfig,
@@ -49,23 +56,28 @@ from alethic.physics_agent import PhysicsAgent
 from alethic.verifier_agent import CheckerAgent, VerifierAgent
 
 __all__ = [
-    "CheckerAgent",
-    "MathAgent",
-    "PhysicsAgent",
-    "VerifierAgent",
     "AgentConfig",
     "AgentEvent",
     "AgentResult",
+    "AlethicError",
+    "CheckerAgent",
+    "CheckpointError",
     "ConsensusIssue",
     "ConsensusResult",
+    "ContextExhaustedError",
     "EventType",
     "Issue",
     "IssueSeverity",
+    "MathAgent",
+    "PhysicsAgent",
     "Revision",
     "SectionConfidence",
     "Solution",
+    "TokenLedger",
+    "TruncatedResponseError",
     "Verdict",
     "VerificationResult",
+    "VerifierAgent",
     "VerifierConfig",
 ]
 
