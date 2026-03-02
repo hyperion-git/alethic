@@ -526,7 +526,9 @@ def main(argv: list[str] | None = None) -> int:
         agent = MathAgent(config=config, api_key=args.api_key)
 
     try:
-        result = agent.solve(problem, balanced=not args.no_balanced)
+        result = agent.solve(
+            problem, balanced=not args.no_balanced, resume_from=args.resume
+        )
     except KeyboardInterrupt:
         print("\n[Interrupted by user]")
         return 130

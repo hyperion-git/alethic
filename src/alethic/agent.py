@@ -883,6 +883,38 @@ class MathAgent:
                 summary = _summarize_failed_approach(verification)
                 state.failed_approaches.append(summary)
 
+                # ── INCREMENTAL STATE PERSISTENCE ──
+                if session_dir:
+                    try:
+                        write_checkpoint(
+                            session_dir=session_dir,
+                            current_iteration=iteration,
+                            best_confidence=state.best_confidence,
+                            best_solution_text=(
+                                state.best_solution.solution_text
+                                if state.best_solution
+                                else None
+                            ),
+                            failed_approaches=state.failed_approaches,
+                            stall_state={
+                                "iterations_since_meaningful_improvement": (
+                                    state.iterations_since_meaningful_improvement
+                                ),
+                                "iteration_final_verdicts": [
+                                    v.value if isinstance(v, Verdict) else str(v)
+                                    for v in state.iteration_final_verdicts
+                                ],
+                                "resets_used": state.resets_used,
+                                "reset_cooldown_remaining": state.reset_cooldown_remaining,
+                            },
+                            token_ledger=ledger,
+                            status="running",
+                        )
+                    except (OSError, TypeError) as write_err:
+                        logger.warning(
+                            "Failed to write incremental checkpoint: %s", write_err
+                        )
+
             except ContextExhaustedError:
                 self._log(f"\n[CHECKPOINT] Context exhausted at iteration {iteration}")
                 checkpoint_path = session_dir

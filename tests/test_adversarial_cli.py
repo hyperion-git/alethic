@@ -222,7 +222,9 @@ class TestMainRouting:
 
         assert ret == 0
         mock_math_agent.assert_called_once()
-        mock_agent_instance.solve.assert_called_once_with("test problem", balanced=True)
+        mock_agent_instance.solve.assert_called_once_with(
+            "test problem", balanced=True, resume_from=None
+        )
 
     @patch("alethic.agent.MathAgent")
     def test_main_solve_subcommand_routes_to_math_agent(self, mock_math_agent):

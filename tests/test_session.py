@@ -50,11 +50,13 @@ class TestCreateSessionDir:
             base_dir=str(tmp_path),
         )
         data = json.loads((Path(session_dir) / "session.json").read_text())
+        assert data["schema_version"] == 1
         assert data["status"] == "running"
         assert data["domain"] == "physics"
         assert data["current_iteration"] == 0
         assert data["best_confidence"] == 0.0
         assert data["config"]["max_iterations"] == 5
+        assert data["completed_at"] is None
 
     def test_slug_generation(self, tmp_path):
         session_dir = create_session_dir(

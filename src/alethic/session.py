@@ -81,6 +81,7 @@ def create_session_dir(
 
     # Write session.json
     session_data: dict[str, Any] = {
+        "schema_version": 1,
         "status": "running",
         "domain": domain,
         "problem": problem,
@@ -96,6 +97,7 @@ def create_session_dir(
             "context_threshold": config.context_threshold,
         },
         "created_at": now.isoformat(),
+        "completed_at": None,
     }
     Path(session_dir, "session.json").write_text(json.dumps(session_data, indent=2))
 
