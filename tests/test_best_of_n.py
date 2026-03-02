@@ -31,22 +31,12 @@ def _mock_response(text: str):
     return resp
 
 
-CORRECT_HIGH = (
-    "VERDICT: correct\nCONFIDENCE: 0.95\n\n"
-    "CRITIQUE:\nPerfect.\n\nISSUES:\nNone"
-)
-CORRECT_MED = (
-    "VERDICT: correct\nCONFIDENCE: 0.88\n\n"
-    "CRITIQUE:\nGood but unsure.\n\nISSUES:\nNone"
-)
+CORRECT_HIGH = "VERDICT: correct\nCONFIDENCE: 0.95\n\nCRITIQUE:\nPerfect.\n\nISSUES:\nNone"
+CORRECT_MED = "VERDICT: correct\nCONFIDENCE: 0.88\n\nCRITIQUE:\nGood but unsure.\n\nISSUES:\nNone"
 MINOR_ISSUES = (
-    "VERDICT: minor_issues\nCONFIDENCE: 0.6\n\n"
-    "CRITIQUE:\nSmall error.\n\nISSUES:\n- Sign error"
+    "VERDICT: minor_issues\nCONFIDENCE: 0.6\n\nCRITIQUE:\nSmall error.\n\nISSUES:\n- Sign error"
 )
-MAJOR_FLAW = (
-    "VERDICT: major_flaw\nCONFIDENCE: 0.2\n\n"
-    "CRITIQUE:\nWrong.\n\nISSUES:\n- Logic error"
-)
+MAJOR_FLAW = "VERDICT: major_flaw\nCONFIDENCE: 0.2\n\nCRITIQUE:\nWrong.\n\nISSUES:\n- Logic error"
 
 
 # ── Config tests ─────────────────────────────────────────────────────
@@ -214,9 +204,9 @@ class TestBestOfNSelectsBest:
             _mock_response("Candidate B"),
             _mock_response("Candidate C"),
             # Verifications — B gets highest confidence
-            _mock_response(MINOR_ISSUES),        # candidate A → 0.6
-            _mock_response(CORRECT_HIGH),         # candidate B → 0.95
-            _mock_response(CORRECT_MED),           # candidate C → 0.88
+            _mock_response(MINOR_ISSUES),  # candidate A → 0.6
+            _mock_response(CORRECT_HIGH),  # candidate B → 0.95
+            _mock_response(CORRECT_MED),  # candidate C → 0.88
         ]
 
         agent = MathAgent(config=config)
@@ -255,8 +245,8 @@ class TestBestOfNWithRevision:
             _mock_response("Candidate A"),
             _mock_response("Candidate B"),
             # Verify both — best is minor_issues at 0.6
-            _mock_response(MAJOR_FLAW),          # candidate A → 0.2
-            _mock_response(MINOR_ISSUES),         # candidate B → 0.6
+            _mock_response(MAJOR_FLAW),  # candidate A → 0.2
+            _mock_response(MINOR_ISSUES),  # candidate B → 0.6
             # Revise best (candidate B)
             _mock_response("CHANGES MADE:\nFixed.\n\nREVISED SOLUTION:\nFixed B"),
             # Re-verify revision → correct

@@ -56,10 +56,7 @@ class TestPhysicsPromptsInRevisionLoop:
                 "ISSUES:\n- Sign error in kinetic term"
             ),
             # Revise
-            _mock_response(
-                "CHANGES MADE:\nFixed sign.\n\n"
-                "REVISED SOLUTION:\nCorrected derivation"
-            ),
+            _mock_response("CHANGES MADE:\nFixed sign.\n\nREVISED SOLUTION:\nCorrected derivation"),
             # Re-verify -> correct
             _mock_response(
                 "VERDICT: correct\nCONFIDENCE: 0.95\n\n"

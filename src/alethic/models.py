@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from dataclasses import fields as dataclass_fields
 from typing import Any, ClassVar
 
-
 MODEL_CONTEXT_LIMITS: dict[str, int] = {
     "claude-opus-4-6": 200_000,
     "claude-sonnet-4-6": 200_000,
@@ -164,18 +163,23 @@ class AgentConfig:
         if self.max_iterations < 1:
             raise ValueError(f"max_iterations must be >= 1, got {self.max_iterations}")
         if self.max_revisions_per_cycle < 0:
-            raise ValueError(f"max_revisions_per_cycle must be >= 0, got {self.max_revisions_per_cycle}")
+            raise ValueError(
+                f"max_revisions_per_cycle must be >= 0, got {self.max_revisions_per_cycle}"
+            )
         valid_tools = {"sympy", "numpy", "scipy", "matplotlib"}
         invalid = self.tool_guidance - valid_tools
         if invalid:
             raise ValueError(
-                f"Unknown tool_guidance values: {invalid}. "
-                f"Valid values: {valid_tools}"
+                f"Unknown tool_guidance values: {invalid}. Valid values: {valid_tools}"
             )
         if not 0.0 <= self.confidence_threshold <= 1.0:
-            raise ValueError(f"confidence_threshold must be in [0.0, 1.0], got {self.confidence_threshold}")
+            raise ValueError(
+                f"confidence_threshold must be in [0.0, 1.0], got {self.confidence_threshold}"
+            )
         if self.temperature_generator < 0:
-            raise ValueError(f"temperature_generator must be >= 0, got {self.temperature_generator}")
+            raise ValueError(
+                f"temperature_generator must be >= 0, got {self.temperature_generator}"
+            )
         if self.temperature_verifier < 0:
             raise ValueError(f"temperature_verifier must be >= 0, got {self.temperature_verifier}")
         if self.temperature_reviser < 0:
@@ -191,7 +195,9 @@ class AgentConfig:
         if self.reset_n_boost < 0:
             raise ValueError(f"reset_n_boost must be >= 0, got {self.reset_n_boost}")
         if not 0.0 < self.context_threshold <= 1.0:
-            raise ValueError(f"context_threshold must be in (0.0, 1.0], got {self.context_threshold}")
+            raise ValueError(
+                f"context_threshold must be in (0.0, 1.0], got {self.context_threshold}"
+            )
         if self.variant_b is not None:
             valid_field_names = {f.name for f in dataclass_fields(self)}
             invalid_keys = set(self.variant_b) - valid_field_names
@@ -291,8 +297,7 @@ class AgentConfig:
         """
         if name not in cls.PRESETS:
             raise ValueError(
-                f"Unknown preset '{name}'. "
-                f"Available presets: {', '.join(cls.PRESETS)}"
+                f"Unknown preset '{name}'. Available presets: {', '.join(cls.PRESETS)}"
             )
         params = dict(cls.PRESETS[name])
         params.update(overrides)
@@ -336,8 +341,18 @@ class VerifierConfig:
     PRESETS: ClassVar[dict[str, dict[str, Any]]] = {
         "quick": {"num_verifiers": 2, "extended_thinking": False, "max_tokens": 16384},
         "default": {"num_verifiers": 3, "extended_thinking": False, "max_tokens": 16384},
-        "thorough": {"num_verifiers": 5, "extended_thinking": True, "thinking_budget": 15000, "max_tokens": 32768},
-        "extreme": {"num_verifiers": 7, "extended_thinking": True, "thinking_budget": 40000, "max_tokens": 65536},
+        "thorough": {
+            "num_verifiers": 5,
+            "extended_thinking": True,
+            "thinking_budget": 15000,
+            "max_tokens": 32768,
+        },
+        "extreme": {
+            "num_verifiers": 7,
+            "extended_thinking": True,
+            "thinking_budget": 40000,
+            "max_tokens": 65536,
+        },
     }
 
     @classmethod
@@ -356,8 +371,7 @@ class VerifierConfig:
         """
         if name not in cls.PRESETS:
             raise ValueError(
-                f"Unknown preset '{name}'. "
-                f"Available presets: {', '.join(cls.PRESETS)}"
+                f"Unknown preset '{name}'. Available presets: {', '.join(cls.PRESETS)}"
             )
         params = dict(cls.PRESETS[name])
         params.update(overrides)
@@ -390,14 +404,8 @@ class VerificationResult:
     corrected_solution: str | None = None  # For FIXABLE verdicts
 
     def is_acceptable(self, threshold: float = 0.90) -> bool:
-        has_critical = any(
-            issue.severity == IssueSeverity.CRITICAL for issue in self.issues
-        )
-        return (
-            self.verdict == Verdict.CORRECT
-            and self.confidence >= threshold
-            and not has_critical
-        )
+        has_critical = any(issue.severity == IssueSeverity.CRITICAL for issue in self.issues)
+        return self.verdict == Verdict.CORRECT and self.confidence >= threshold and not has_critical
 
     def needs_revision(self, threshold: float = 0.90) -> bool:
         return self.verdict in (Verdict.MINOR_ISSUES, Verdict.FIXABLE, Verdict.MAJOR_FLAW) or (
@@ -497,10 +505,7 @@ class AgentResult:
             DeprecationWarning,
             stacklevel=2,
         )
-        return [
-            {"phase": e.type.value, "iteration": e.iteration, **e.data}
-            for e in self.events
-        ]
+        return [{"phase": e.type.value, "iteration": e.iteration, **e.data} for e in self.events]
 
     def __str__(self) -> str:
         status = "SOLVED" if self.solved else "UNSOLVED"
@@ -515,10 +520,12 @@ class AgentResult:
             lines.append(f"Candidates per iteration: {self.candidates_per_iteration}")
         if self.failed_approaches:
             lines.append(f"Failed approaches: {len(self.failed_approaches)}")
-        lines.extend([
-            f"Time: {self.elapsed_seconds:.1f}s",
-            f"{'=' * 60}",
-        ])
+        lines.extend(
+            [
+                f"Time: {self.elapsed_seconds:.1f}s",
+                f"{'=' * 60}",
+            ]
+        )
         if self.solution:
             lines.append("")
             lines.append(self.solution)

@@ -48,8 +48,7 @@ class TestMathAgentUsesDefaultMathPrompts:
 
         solution_resp = _mock_response("Solution text")
         verify_resp = _mock_response(
-            "VERDICT: correct\nCONFIDENCE: 0.95\n\n"
-            "CRITIQUE:\nAll good.\n\nISSUES:\nNone"
+            "VERDICT: correct\nCONFIDENCE: 0.95\n\nCRITIQUE:\nAll good.\n\nISSUES:\nNone"
         )
 
         mock_client = MagicMock()
@@ -69,9 +68,7 @@ class TestMathAgentUsesDefaultMathPrompts:
         assert "mathematical problem solver" in system_prompt.lower(), (
             "Generator system prompt should be the math prompt"
         )
-        assert "physics" not in system_prompt.lower(), (
-            "MathAgent must NOT use physics prompts"
-        )
+        assert "physics" not in system_prompt.lower(), "MathAgent must NOT use physics prompts"
 
 
 # ---------------------------------------------------------------------------
@@ -89,9 +86,7 @@ class TestMathAgentPromptKwargs:
         from alethic.agent import MathAgent
 
         # Make mock_generate return a Solution and set up verify to approve
-        mock_generate.return_value = Solution(
-            problem="test", solution_text="answer", iteration=1
-        )
+        mock_generate.return_value = Solution(problem="test", solution_text="answer", iteration=1)
 
         config = AgentConfig(
             max_iterations=1,
@@ -122,12 +117,8 @@ class TestMathAgentPromptKwargs:
         assert "mathematical problem solver" in system_prompt.lower(), (
             "system_prompt should start with the math GENERATOR_SYSTEM"
         )
-        assert "SymPy" in system_prompt, (
-            "system_prompt should include SymPy tool guidance"
-        )
-        assert "NumPy" in system_prompt, (
-            "system_prompt should include NumPy tool guidance"
-        )
+        assert "SymPy" in system_prompt, "system_prompt should include SymPy tool guidance"
+        assert "NumPy" in system_prompt, "system_prompt should include NumPy tool guidance"
         assert call_kwargs.kwargs.get("user_template") is None, (
             "MathAgent must NOT inject a custom user_template into generate()"
         )
@@ -153,9 +144,7 @@ class TestGenerateDefaultPrompt:
         generate(mock_client, "test problem", config, iteration=1)
 
         call_kwargs = mock_client.messages.create.call_args
-        system_prompt = call_kwargs.kwargs.get(
-            "system", call_kwargs[1].get("system", "")
-        )
+        system_prompt = call_kwargs.kwargs.get("system", call_kwargs[1].get("system", ""))
         assert "mathematical problem solver" in system_prompt.lower()
 
 
@@ -182,9 +171,7 @@ class TestVerifyDefaultPrompt:
         verify(mock_client, "test problem", solution, config)
 
         call_kwargs = mock_client.messages.create.call_args
-        system_prompt = call_kwargs.kwargs.get(
-            "system", call_kwargs[1].get("system", "")
-        )
+        system_prompt = call_kwargs.kwargs.get("system", call_kwargs[1].get("system", ""))
         assert "mathematical proof verifier" in system_prompt.lower(), (
             f"Verifier system prompt should contain 'mathematical proof verifier', got: {system_prompt[:200]}"
         )
@@ -219,9 +206,7 @@ class TestReviseDefaultPrompt:
         revise(mock_client, "test problem", solution, verification, config, revision_number=1)
 
         call_kwargs = mock_client.messages.create.call_args
-        system_prompt = call_kwargs.kwargs.get(
-            "system", call_kwargs[1].get("system", "")
-        )
+        system_prompt = call_kwargs.kwargs.get("system", call_kwargs[1].get("system", ""))
         assert "mathematical solution reviser" in system_prompt.lower(), (
             f"Reviser system prompt should contain 'mathematical solution reviser', got: {system_prompt[:200]}"
         )
@@ -393,9 +378,7 @@ class TestAgentConfigPresetsUnchanged:
         assert c.best_of_n == 5
 
     def test_exactly_four_presets(self):
-        assert set(AgentConfig.PRESETS.keys()) == {
-            "quick", "default", "thorough", "extreme"
-        }
+        assert set(AgentConfig.PRESETS.keys()) == {"quick", "default", "thorough", "extreme"}
 
 
 # ---------------------------------------------------------------------------
@@ -410,10 +393,22 @@ class TestAllowedModulesSuperset:
         from alethic.tools import _ALLOWED_MODULES
 
         original_modules = {
-            "math", "cmath", "fractions", "decimal", "itertools",
-            "functools", "collections", "operator", "random",
-            "statistics", "re", "string", "textwrap", "numbers",
-            "numpy", "sympy",
+            "math",
+            "cmath",
+            "fractions",
+            "decimal",
+            "itertools",
+            "functools",
+            "collections",
+            "operator",
+            "random",
+            "statistics",
+            "re",
+            "string",
+            "textwrap",
+            "numbers",
+            "numpy",
+            "sympy",
         }
         missing = original_modules - _ALLOWED_MODULES
         assert not missing, (

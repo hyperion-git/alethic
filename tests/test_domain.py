@@ -1,4 +1,5 @@
 """Tests for domain auto-detection."""
+
 from __future__ import annotations
 
 from alethic.domain import detect_domain

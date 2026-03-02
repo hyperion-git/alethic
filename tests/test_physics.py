@@ -97,9 +97,7 @@ class TestPhysicsPrompts:
         assert "REVISED SOLUTION:" in PHYSICS_REVISER_SYSTEM
 
     def test_reviser_user_template(self):
-        msg = PHYSICS_REVISER_USER.format(
-            problem="P", solution="S", critique="C", issues="I"
-        )
+        msg = PHYSICS_REVISER_USER.format(problem="P", solution="S", critique="C", issues="I")
         assert "P" in msg
         assert "PREVIOUS DERIVATION:" in PHYSICS_REVISER_USER
 
@@ -227,8 +225,7 @@ class TestPhysicsAgentIntegration:
             "E_n = hbar*omega*(n + 1/2)\n\nCONCLUSION: E_n = hbar*omega*(n + 1/2)"
         )
         verification_response = self._mock_response(
-            "VERDICT: correct\nCONFIDENCE: 0.95\n\n"
-            "CRITIQUE:\nDerivation is sound.\n\nISSUES:\nNone"
+            "VERDICT: correct\nCONFIDENCE: 0.95\n\nCRITIQUE:\nDerivation is sound.\n\nISSUES:\nNone"
         )
 
         mock_client = MagicMock()
@@ -260,8 +257,7 @@ class TestPhysicsAgentIntegration:
 
         solution_response = self._mock_response("E = mc^2\n\nCONCLUSION: E = mc^2")
         verification_response = self._mock_response(
-            "VERDICT: correct\nCONFIDENCE: 0.96\n\n"
-            "CRITIQUE:\nCorrect.\n\nISSUES:\nNone"
+            "VERDICT: correct\nCONFIDENCE: 0.96\n\nCRITIQUE:\nCorrect.\n\nISSUES:\nNone"
         )
 
         mock_client = MagicMock()
@@ -394,7 +390,10 @@ class TestPromptKwargs:
         config = AgentConfig(enable_code_execution=False, verbose=False)
         sol = Solution(problem="test", solution_text="old answer", iteration=1)
         ver = VerificationResult(
-            verdict=Verdict.MINOR_ISSUES, critique="Fix it", confidence=0.7, issues=[Issue(text="Bug")]
+            verdict=Verdict.MINOR_ISSUES,
+            critique="Fix it",
+            confidence=0.7,
+            issues=[Issue(text="Bug")],
         )
 
         result = revise(

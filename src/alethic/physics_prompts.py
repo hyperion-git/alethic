@@ -355,6 +355,12 @@ especially valuable when symbolic simplification is inconclusive or times out.
 """
 
 PHYSICS_TOOL_GUIDANCE = {
-    "sympy": {"generator": PHYSICS_SYMPY_GENERATOR_GUIDANCE, "verifier": PHYSICS_SYMPY_VERIFIER_GUIDANCE},
-    "numpy": {"generator": PHYSICS_NUMPY_GENERATOR_GUIDANCE, "verifier": PHYSICS_NUMPY_VERIFIER_GUIDANCE},
+    "sympy": {
+        "generator": PHYSICS_SYMPY_GENERATOR_GUIDANCE,
+        "verifier": PHYSICS_SYMPY_VERIFIER_GUIDANCE,
+    },
+    "numpy": {
+        "generator": PHYSICS_NUMPY_GENERATOR_GUIDANCE,
+        "verifier": PHYSICS_NUMPY_VERIFIER_GUIDANCE,
+    },
 }

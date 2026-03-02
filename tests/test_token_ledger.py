@@ -29,7 +29,7 @@ class TestTokenLedger:
 
     def test_record_accumulates(self):
         ledger = TokenLedger()
-        for i in range(3):
+        for _i in range(3):
             usage = MagicMock()
             usage.input_tokens = 1000
             usage.output_tokens = 400

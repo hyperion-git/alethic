@@ -8,7 +8,9 @@ from alethic.exceptions import ContextExhaustedError, TruncatedResponseError
 from alethic.models import AgentConfig, TokenLedger
 
 
-def _mock_response(text: str, stop_reason: str = "end_turn", input_tokens: int = 500, output_tokens: int = 200):
+def _mock_response(
+    text: str, stop_reason: str = "end_turn", input_tokens: int = 500, output_tokens: int = 200
+):
     """Create a mock Anthropic response with usage and stop_reason."""
     block = MagicMock()
     block.type = "text"
@@ -28,12 +30,15 @@ class TestTokenTracking:
         from alethic.subagents import _call_model
 
         client = MagicMock()
-        client.messages.create.return_value = _mock_response("hello", input_tokens=1000, output_tokens=300)
+        client.messages.create.return_value = _mock_response(
+            "hello", input_tokens=1000, output_tokens=300
+        )
         config = AgentConfig(verbose=False, enable_code_execution=False)
         ledger = TokenLedger()
 
-        _call_model(client, system="sys", user_message="hi", config=config,
-                     temperature=1.0, ledger=ledger)
+        _call_model(
+            client, system="sys", user_message="hi", config=config, temperature=1.0, ledger=ledger
+        )
 
         assert ledger.input_tokens == 1000
         assert ledger.output_tokens == 300
@@ -48,8 +53,9 @@ class TestTokenTracking:
         client.messages.create.return_value = _mock_response("hello")
         config = AgentConfig(verbose=False, enable_code_execution=False)
 
-        result = _call_model(client, system="sys", user_message="hi",
-                             config=config, temperature=1.0)
+        result = _call_model(
+            client, system="sys", user_message="hi", config=config, temperature=1.0
+        )
         assert result == "hello"
 
 
@@ -65,8 +71,7 @@ class TestTruncatedResponseDetection:
         config = AgentConfig(verbose=False, enable_code_execution=False)
 
         with pytest.raises(TruncatedResponseError, match="max_tokens"):
-            _call_model(client, system="sys", user_message="hi",
-                        config=config, temperature=1.0)
+            _call_model(client, system="sys", user_message="hi", config=config, temperature=1.0)
 
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     def test_end_turn_does_not_raise(self, _ptc):
@@ -76,8 +81,9 @@ class TestTruncatedResponseDetection:
         client.messages.create.return_value = _mock_response("full output", stop_reason="end_turn")
         config = AgentConfig(verbose=False, enable_code_execution=False)
 
-        result = _call_model(client, system="sys", user_message="hi",
-                             config=config, temperature=1.0)
+        result = _call_model(
+            client, system="sys", user_message="hi", config=config, temperature=1.0
+        )
         assert result == "full output"
 
     @patch("alethic.subagents.process_tool_calls", return_value=[])
@@ -93,8 +99,14 @@ class TestTruncatedResponseDetection:
         ledger = TokenLedger()
 
         with pytest.raises(TruncatedResponseError):
-            _call_model(client, system="sys", user_message="hi",
-                        config=config, temperature=1.0, ledger=ledger)
+            _call_model(
+                client,
+                system="sys",
+                user_message="hi",
+                config=config,
+                temperature=1.0,
+                ledger=ledger,
+            )
 
         assert ledger.input_tokens == 5000
         assert ledger.api_calls == 1
@@ -112,9 +124,15 @@ class TestPreFlightEstimate:
         big_message = "x" * 800_000
 
         with pytest.raises(ContextExhaustedError, match="estimated"):
-            _call_model(client, system="sys", user_message=big_message,
-                        config=config, temperature=1.0, context_limit=200_000,
-                        context_threshold=0.8)
+            _call_model(
+                client,
+                system="sys",
+                user_message=big_message,
+                config=config,
+                temperature=1.0,
+                context_limit=200_000,
+                context_threshold=0.8,
+            )
 
         # API was never called
         client.messages.create.assert_not_called()
@@ -127,7 +145,13 @@ class TestPreFlightEstimate:
         client.messages.create.return_value = _mock_response("ok")
         config = AgentConfig(verbose=False, enable_code_execution=False)
 
-        result = _call_model(client, system="sys", user_message="short",
-                             config=config, temperature=1.0, context_limit=200_000,
-                             context_threshold=0.8)
+        result = _call_model(
+            client,
+            system="sys",
+            user_message="short",
+            config=config,
+            temperature=1.0,
+            context_limit=200_000,
+            context_threshold=0.8,
+        )
         assert result == "ok"

@@ -9,10 +9,12 @@ import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from alethic.exceptions import CheckpointError
-from alethic.models import AgentConfig, TokenLedger
+
+if TYPE_CHECKING:
+    from alethic.models import AgentConfig, TokenLedger
 
 logger = logging.getLogger(__name__)
 
@@ -61,10 +63,7 @@ def create_session_dir(
     """
     if base_dir is None:
         git_root = _find_git_root()
-        if git_root:
-            base_dir = os.path.join(git_root, ".alethic")
-        else:
-            base_dir = f"/tmp/alethic-{os.getpid()}"
+        base_dir = os.path.join(git_root, ".alethic") if git_root else f"/tmp/alethic-{os.getpid()}"
 
     now = datetime.now(timezone.utc)
     slug = _slugify(problem)
@@ -126,10 +125,7 @@ def write_checkpoint(
         session_json_path = session_path / "session.json"
 
         # Read existing session.json and update
-        if session_json_path.exists():
-            data = json.loads(session_json_path.read_text())
-        else:
-            data = {}
+        data = json.loads(session_json_path.read_text()) if session_json_path.exists() else {}
 
         data["status"] = status
         data["current_iteration"] = current_iteration
@@ -185,9 +181,7 @@ def load_checkpoint(session_dir: str) -> dict[str, Any]:
 
     # Read best solution if available
     best_solution_path = session_path / "worklog" / "best_solution.md"
-    best_solution_text = (
-        best_solution_path.read_text() if best_solution_path.exists() else None
-    )
+    best_solution_text = best_solution_path.read_text() if best_solution_path.exists() else None
 
     return {
         "current_iteration": data.get("current_iteration", 0),
@@ -229,13 +223,15 @@ def scan_incomplete_sessions(alethic_dir: str) -> list[dict[str, Any]]:
 
         status = data.get("status", "unknown")
         if status in ("running", "checkpoint"):
-            results.append({
-                "session_dir": str(child),
-                "problem": data.get("problem", ""),
-                "current_iteration": data.get("current_iteration", 0),
-                "best_confidence": data.get("best_confidence", 0.0),
-                "status": status,
-                "config": data.get("config", {}),
-            })
+            results.append(
+                {
+                    "session_dir": str(child),
+                    "problem": data.get("problem", ""),
+                    "current_iteration": data.get("current_iteration", 0),
+                    "best_confidence": data.get("best_confidence", 0.0),
+                    "status": status,
+                    "config": data.get("config", {}),
+                }
+            )
 
     return results

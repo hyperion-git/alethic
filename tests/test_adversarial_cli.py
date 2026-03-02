@@ -118,17 +118,13 @@ class TestDetectSubcommandAdversarial:
         because --preset is in _FLAGS_WITH_VALUE.
         """
         cmd, remaining = _detect_subcommand(["--preset", "derive", "problem"])
-        assert cmd is None, (
-            "'derive' is the value for --preset, not a subcommand"
-        )
+        assert cmd is None, "'derive' is the value for --preset, not a subcommand"
         assert remaining == ["--preset", "derive", "problem"]
 
     def test_flag_value_solve_not_misdetected(self):
         """FIXED: ["--preset", "solve", "problem"] -- same fix for 'solve'."""
         cmd, remaining = _detect_subcommand(["--preset", "solve", "problem"])
-        assert cmd is None, (
-            "'solve' is the value for --preset, not a subcommand"
-        )
+        assert cmd is None, "'solve' is the value for --preset, not a subcommand"
         assert remaining == ["--preset", "solve", "problem"]
 
     # 8. Double subcommand: ["solve", "derive", "problem"].
@@ -176,9 +172,7 @@ class TestDetectSubcommandAdversarial:
         """["-p", "derive", "problem"] -- -p consumes 'derive' as its value,
         so no subcommand is detected."""
         cmd, remaining = _detect_subcommand(["-p", "derive", "problem"])
-        assert cmd is None, (
-            "'derive' is the value for -p, not a subcommand"
-        )
+        assert cmd is None, "'derive' is the value for -p, not a subcommand"
         assert remaining == ["-p", "derive", "problem"]
 
     # 9c. Equals syntax does not skip the next token.
@@ -228,9 +222,7 @@ class TestMainRouting:
 
         assert ret == 0
         mock_math_agent.assert_called_once()
-        mock_agent_instance.solve.assert_called_once_with(
-            "test problem", balanced=True
-        )
+        mock_agent_instance.solve.assert_called_once_with("test problem", balanced=True)
 
     @patch("alethic.agent.MathAgent")
     def test_main_solve_subcommand_routes_to_math_agent(self, mock_math_agent):

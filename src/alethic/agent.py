@@ -679,7 +679,11 @@ class MathAgent:
                 n_expected = n_this_iter if is_reset else self.config.best_of_n
                 n_failed = n_expected - len(candidates)
                 if n_failed > 0:
-                    log.emit(EventType.ERROR, iteration, error=f"{n_failed}/{n_expected} candidates failed")
+                    log.emit(
+                        EventType.ERROR,
+                        iteration,
+                        error=f"{n_failed}/{n_expected} candidates failed",
+                    )
                     logger.info(
                         "Generated %d/%d candidates (%d failed)",
                         len(candidates),

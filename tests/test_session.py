@@ -147,9 +147,16 @@ class TestLoadCheckpoint:
         session_dir = str(tmp_path / "session")
         Path(session_dir).mkdir()
         (Path(session_dir) / "worklog").mkdir()
-        data = {"status": "checkpoint", "current_iteration": 4, "best_confidence": 0.7,
-                "failed_approaches": [], "stall_state": {}, "token_ledger": {},
-                "config": {}, "problem": "test"}
+        data = {
+            "status": "checkpoint",
+            "current_iteration": 4,
+            "best_confidence": 0.7,
+            "failed_approaches": [],
+            "stall_state": {},
+            "token_ledger": {},
+            "config": {},
+            "problem": "test",
+        }
         (Path(session_dir) / "session.json").write_text(json.dumps(data))
 
         checkpoint = load_checkpoint(session_dir)
@@ -184,8 +191,13 @@ class TestScanIncompleteSessions:
         alethic_dir.mkdir()
         session_dir = alethic_dir / "test-20260302-ab12"
         session_dir.mkdir()
-        data = {"status": "running", "problem": "Is 17 prime?", "current_iteration": 2,
-                "best_confidence": 0.7, "config": {"max_iterations": 5}}
+        data = {
+            "status": "running",
+            "problem": "Is 17 prime?",
+            "current_iteration": 2,
+            "best_confidence": 0.7,
+            "config": {"max_iterations": 5},
+        }
         (session_dir / "session.json").write_text(json.dumps(data))
 
         results = scan_incomplete_sessions(str(alethic_dir))
@@ -198,8 +210,13 @@ class TestScanIncompleteSessions:
         alethic_dir.mkdir()
         session_dir = alethic_dir / "test-20260302-cd34"
         session_dir.mkdir()
-        data = {"status": "checkpoint", "problem": "Prove X", "current_iteration": 5,
-                "best_confidence": 0.88, "config": {"max_iterations": 8}}
+        data = {
+            "status": "checkpoint",
+            "problem": "Prove X",
+            "current_iteration": 5,
+            "best_confidence": 0.88,
+            "config": {"max_iterations": 8},
+        }
         (session_dir / "session.json").write_text(json.dumps(data))
 
         results = scan_incomplete_sessions(str(alethic_dir))

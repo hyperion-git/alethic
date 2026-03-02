@@ -46,6 +46,8 @@ def resolve_session_input(path: str) -> tuple[str | None, str]:
                 break
 
     if solution is None:
-        raise ValueError(f"Session has no solution found in output.md or worklog/solution.md: {path}")
+        raise ValueError(
+            f"Session has no solution found in output.md or worklog/solution.md: {path}"
+        )
 
     return problem, solution

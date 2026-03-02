@@ -1,4 +1,5 @@
 """Domain auto-detection for verify/check commands."""
+
 from __future__ import annotations
 
 import json

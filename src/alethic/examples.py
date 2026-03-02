@@ -61,15 +61,9 @@ EXAMPLES = [
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Alethic example problems")
-    parser.add_argument(
-        "--pick", type=int, help="Run only the specified example (1-indexed)"
-    )
-    parser.add_argument(
-        "--list", action="store_true", help="List available examples"
-    )
-    parser.add_argument(
-        "--iterations", "-n", type=int, default=3, help="Max iterations"
-    )
+    parser.add_argument("--pick", type=int, help="Run only the specified example (1-indexed)")
+    parser.add_argument("--list", action="store_true", help="List available examples")
+    parser.add_argument("--iterations", "-n", type=int, default=3, help="Max iterations")
     args = parser.parse_args()
 
     if args.list:

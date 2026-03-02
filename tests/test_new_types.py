@@ -666,14 +666,7 @@ class TestSeverityParsing:
         from alethic.subagents import _parse_verification
 
         text = (
-            "VERDICT: correct\n"
-            "CONFIDENCE: 0.95\n"
-            "\n"
-            "CRITIQUE:\n"
-            "Perfect solution.\n"
-            "\n"
-            "ISSUES:\n"
-            "None\n"
+            "VERDICT: correct\nCONFIDENCE: 0.95\n\nCRITIQUE:\nPerfect solution.\n\nISSUES:\nNone\n"
         )
         result = _parse_verification(text)
         assert result.issues == []
@@ -716,16 +709,7 @@ class TestSectionConfidenceParsing:
     def test_missing_section_confidences(self):
         from alethic.subagents import _parse_verification
 
-        text = (
-            "VERDICT: correct\n"
-            "CONFIDENCE: 0.95\n"
-            "\n"
-            "CRITIQUE:\n"
-            "All good.\n"
-            "\n"
-            "ISSUES:\n"
-            "None\n"
-        )
+        text = "VERDICT: correct\nCONFIDENCE: 0.95\n\nCRITIQUE:\nAll good.\n\nISSUES:\nNone\n"
         result = _parse_verification(text)
         assert result.section_confidences == []
 
@@ -877,7 +861,9 @@ class TestReviserSectionTargeting:
             issues=[Issue(text="Induction hypothesis not applied correctly")],
             section_confidences=[
                 SectionConfidence(section="Setup", confidence=0.95),
-                SectionConfidence(section="Induction step", confidence=0.45, note="Shaky reasoning"),
+                SectionConfidence(
+                    section="Induction step", confidence=0.45, note="Shaky reasoning"
+                ),
             ],
         )
 

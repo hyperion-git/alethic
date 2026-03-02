@@ -110,13 +110,15 @@ def _extract_preset_table(text: str) -> list[dict]:
                 continue
             if stripped.startswith("|") and "`" in stripped:
                 cells = [c.strip().strip("`") for c in stripped.split("|")[1:-1]]
-                rows.append({
-                    "preset": cells[0],
-                    "iters": cells[1],
-                    "revs": cells[2],
-                    "threshold": cells[3],
-                    "budget": cells[4],
-                })
+                rows.append(
+                    {
+                        "preset": cells[0],
+                        "iters": cells[1],
+                        "revs": cells[2],
+                        "threshold": cells[3],
+                        "budget": cells[4],
+                    }
+                )
             else:
                 break
     return rows
@@ -274,7 +276,8 @@ class TestOrchestratorStructure:
         lines = orchestrator.split("\n")
         # Allow "mathematical" only in the balanced addendum reference or examples
         occurrences = [
-            i for i, line in enumerate(lines[20:], start=21)
+            i
+            for i, line in enumerate(lines[20:], start=21)
             if "mathematical" in line.lower()
             and "balanced" not in line.lower()
             and "example" not in line.lower()
@@ -295,30 +298,28 @@ class TestOrchestratorDomainNeutral:
         """No 'proof' outside documentation/examples."""
         lines = orchestrator.split("\n")
         bad_lines = [
-            i for i, line in enumerate(lines, start=1)
+            i
+            for i, line in enumerate(lines, start=1)
             if re.search(r"\bproof\b", line, re.IGNORECASE)
             and not line.strip().startswith("|")
             and not line.strip().startswith("-")
             and "example" not in line.lower()
             and "e.g." not in line.lower()
         ]
-        assert not bad_lines, (
-            f"orchestrator.md has hardcoded 'proof' at lines: {bad_lines}"
-        )
+        assert not bad_lines, f"orchestrator.md has hardcoded 'proof' at lines: {bad_lines}"
 
     def test_no_hardcoded_derivation_in_instructions(self, orchestrator: str):
         """No 'derivation' outside documentation table."""
         lines = orchestrator.split("\n")
         bad_lines = [
-            i for i, line in enumerate(lines, start=1)
+            i
+            for i, line in enumerate(lines, start=1)
             if re.search(r"\bderivation\b", line, re.IGNORECASE)
             and not line.strip().startswith("|")
             and "example" not in line.lower()
             and "e.g." not in line.lower()
         ]
-        assert not bad_lines, (
-            f"orchestrator.md has hardcoded 'derivation' at lines: {bad_lines}"
-        )
+        assert not bad_lines, f"orchestrator.md has hardcoded 'derivation' at lines: {bad_lines}"
 
 
 # ── 5. Both SKILL.md files load the orchestrator ─────────────────────
@@ -328,14 +329,10 @@ class TestOrchestratorLoading:
     """Both thin SKILL.md files should have orchestrator loading instructions."""
 
     def test_solve_loads_orchestrator(self, solve_skill: str):
-        assert "orchestrator.md" in solve_skill, (
-            "solve/SKILL.md should reference orchestrator.md"
-        )
+        assert "orchestrator.md" in solve_skill, "solve/SKILL.md should reference orchestrator.md"
 
     def test_derive_loads_orchestrator(self, derive_skill: str):
-        assert "orchestrator.md" in derive_skill, (
-            "derive/SKILL.md should reference orchestrator.md"
-        )
+        assert "orchestrator.md" in derive_skill, "derive/SKILL.md should reference orchestrator.md"
 
     def test_solve_has_find_command(self, solve_skill: str):
         assert "find" in solve_skill, "solve/SKILL.md should use find for path resolution"
@@ -408,9 +405,7 @@ class TestPhysicsSpecificity:
 
     def test_verifier_mentions_physics(self):
         ver = _read(os.path.join(DERIVE_REFS, "verifier.md")).lower()
-        assert "physics" in ver, (
-            "derive verifier prompt should mention 'physics'"
-        )
+        assert "physics" in ver, "derive verifier prompt should mention 'physics'"
 
     def test_reviser_mentions_derivation_or_physics(self):
         rev = _read(os.path.join(DERIVE_REFS, "reviser.md")).lower()
@@ -426,9 +421,7 @@ class TestSolveMathLanguage:
     """Solve reference prompts should use math-specific language."""
 
     def test_solve_skill_says_mathematical(self, solve_skill: str):
-        assert "mathematical" in solve_skill.lower(), (
-            "solve/SKILL.md should contain 'mathematical'"
-        )
+        assert "mathematical" in solve_skill.lower(), "solve/SKILL.md should contain 'mathematical'"
 
     def test_solve_generator_not_physics(self):
         gen = _read(os.path.join(SOLVE_REFS, "generator.md"))
@@ -459,9 +452,7 @@ class TestBeautifierPhysicsSymbols:
     @pytest.mark.parametrize("symbol", PHYSICS_SYMBOLS)
     def test_derive_beautifier_has_symbol(self, symbol: str):
         beautifier = _read(os.path.join(DERIVE_REFS, "beautifier.md"))
-        assert symbol in beautifier, (
-            f"derive beautifier prompt missing physics symbol: {symbol}"
-        )
+        assert symbol in beautifier, f"derive beautifier prompt missing physics symbol: {symbol}"
 
     @pytest.mark.parametrize("symbol", PHYSICS_SYMBOLS)
     def test_solve_beautifier_lacks_symbol(self, symbol: str):
@@ -569,15 +560,11 @@ class TestSolveBeautifierStructure:
 
     def test_solve_beautifier_has_proof_strategy(self):
         beautifier = _read(os.path.join(SOLVE_REFS, "beautifier.md"))
-        assert "Proof strategy" in beautifier, (
-            "solve beautifier should mention 'Proof strategy'"
-        )
+        assert "Proof strategy" in beautifier, "solve beautifier should mention 'Proof strategy'"
 
     def test_solve_beautifier_has_body(self):
         beautifier = _read(os.path.join(SOLVE_REFS, "beautifier.md"))
-        assert "Body" in beautifier, (
-            "solve beautifier should mention 'Body'"
-        )
+        assert "Body" in beautifier, "solve beautifier should mention 'Body'"
 
     def test_solve_beautifier_has_conclusion_with_blacksquare(self):
         beautifier = _read(os.path.join(SOLVE_REFS, "beautifier.md"))
@@ -602,9 +589,7 @@ class TestVerifierExtendedReturn:
     @pytest.mark.parametrize("skill", ["alethic-solve", "alethic-derive"])
     def test_verifier_has_top_issue_field(self, skill: str):
         verifier = _read(os.path.join(BASE, skill, "references", "verifier.md"))
-        assert "TOP_ISSUE" in verifier, (
-            f"{skill}/verifier.md missing TOP_ISSUE in return line"
-        )
+        assert "TOP_ISSUE" in verifier, f"{skill}/verifier.md missing TOP_ISSUE in return line"
 
     @pytest.mark.parametrize("skill", ["alethic-solve", "alethic-derive"])
     def test_verifier_has_severity_tags(self, skill: str):
@@ -626,19 +611,13 @@ class TestOrchestratorVerificationFeatures:
         )
 
     def test_events_jsonl_logging(self, orchestrator: str):
-        assert "events.jsonl" in orchestrator, (
-            "orchestrator should log events to events.jsonl"
-        )
+        assert "events.jsonl" in orchestrator, "orchestrator should log events to events.jsonl"
 
     def test_failed_approaches_tracking(self, orchestrator: str):
-        assert "failed_approaches" in orchestrator, (
-            "orchestrator should track failed_approaches"
-        )
+        assert "failed_approaches" in orchestrator, "orchestrator should track failed_approaches"
 
     def test_elapsed_seconds(self, orchestrator: str):
-        assert "elapsed_seconds" in orchestrator, (
-            "orchestrator should track elapsed_seconds"
-        )
+        assert "elapsed_seconds" in orchestrator, "orchestrator should track elapsed_seconds"
 
 
 # ── 17. Orchestrator CLI flags ────────────────────────────────────────
@@ -788,11 +767,15 @@ class TestToolOverlays:
     def test_sympy_overlays_mention_sp_preimport(self, skill_refs: str):
         for f in ["sympy-generator.md", "sympy-verifier.md"]:
             content = _read(os.path.join(skill_refs, "tools", f))
-            assert "pre-imported as `sp`" in content, f"{skill_refs}/tools/{f} missing sp pre-import note"
+            assert "pre-imported as `sp`" in content, (
+                f"{skill_refs}/tools/{f} missing sp pre-import note"
+            )
 
     # --- All NumPy overlays mention np is pre-imported ---
     @pytest.mark.parametrize("skill_refs", [SOLVE_REFS, DERIVE_REFS])
     def test_numpy_overlays_mention_np_preimport(self, skill_refs: str):
         for f in ["numpy-generator.md", "numpy-verifier.md"]:
             content = _read(os.path.join(skill_refs, "tools", f))
-            assert "pre-imported as `np`" in content, f"{skill_refs}/tools/{f} missing np pre-import note"
+            assert "pre-imported as `np`" in content, (
+                f"{skill_refs}/tools/{f} missing np pre-import note"
+            )

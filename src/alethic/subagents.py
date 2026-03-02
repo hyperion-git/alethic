@@ -185,9 +185,7 @@ def _call_model(
         kwargs["messages"] = messages
 
         # Re-estimate context after tool round
-        total_chars = sum(
-            len(str(m.get("content", ""))) for m in messages
-        ) + len(system)
+        total_chars = sum(len(str(m.get("content", ""))) for m in messages) + len(system)
         re_estimated = total_chars // 4
         if re_estimated > context_threshold * context_limit:
             raise ContextExhaustedError(

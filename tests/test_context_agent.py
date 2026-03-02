@@ -4,15 +4,14 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from alethic.agent import MathAgent
-from alethic.exceptions import ContextExhaustedError, TruncatedResponseError
+from alethic.exceptions import ContextExhaustedError
 from alethic.models import AgentConfig, Verdict
 
 
-def _mock_response(text: str, stop_reason: str = "end_turn",
-                   input_tokens: int = 500, output_tokens: int = 200):
+def _mock_response(
+    text: str, stop_reason: str = "end_turn", input_tokens: int = 500, output_tokens: int = 200
+):
     block = MagicMock()
     block.type = "text"
     block.text = text
@@ -25,18 +24,17 @@ def _mock_response(text: str, stop_reason: str = "end_turn",
     return resp
 
 
-CORRECT_HIGH = (
-    "VERDICT: correct\nCONFIDENCE: 0.95\n\n"
-    "CRITIQUE:\nPerfect.\n\nISSUES:\nNone"
-)
+CORRECT_HIGH = "VERDICT: correct\nCONFIDENCE: 0.95\n\nCRITIQUE:\nPerfect.\n\nISSUES:\nNone"
 
 
 class TestTokenLedgerIntegration:
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     def test_solve_populates_ledger(self, _ptc, tmp_path):
         config = AgentConfig(
-            max_iterations=1, best_of_n=1,
-            enable_code_execution=False, verbose=False,
+            max_iterations=1,
+            best_of_n=1,
+            enable_code_execution=False,
+            verbose=False,
         )
         agent = MathAgent(config=config)
         agent.client = MagicMock()
@@ -57,8 +55,10 @@ class TestTokenLedgerIntegration:
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     def test_session_dir_populated(self, _ptc, tmp_path):
         config = AgentConfig(
-            max_iterations=1, best_of_n=1,
-            enable_code_execution=False, verbose=False,
+            max_iterations=1,
+            best_of_n=1,
+            enable_code_execution=False,
+            verbose=False,
         )
         agent = MathAgent(config=config)
         agent.client = MagicMock()
@@ -81,8 +81,10 @@ class TestContextExhaustedCheckpoint:
     def test_checkpoint_on_context_exhaustion(self, _ptc, tmp_path):
         """When ContextExhaustedError fires, agent checkpoints and returns."""
         config = AgentConfig(
-            max_iterations=5, best_of_n=1,
-            enable_code_execution=False, verbose=False,
+            max_iterations=5,
+            best_of_n=1,
+            enable_code_execution=False,
+            verbose=False,
         )
         agent = MathAgent(config=config)
         agent.client = MagicMock()
@@ -125,8 +127,10 @@ class TestTruncatedResponseHandling:
     def test_generator_truncation_skips_candidate(self, _ptc, tmp_path):
         """A truncated generator response should skip that candidate, not crash."""
         config = AgentConfig(
-            max_iterations=1, best_of_n=1,
-            enable_code_execution=False, verbose=False,
+            max_iterations=1,
+            best_of_n=1,
+            enable_code_execution=False,
+            verbose=False,
         )
         agent = MathAgent(config=config)
         agent.client = MagicMock()
@@ -149,8 +153,10 @@ class TestResumeFromCheckpoint:
     def test_resume_starts_from_saved_iteration(self, _ptc, tmp_path):
         """Resume should start from current_iteration + 1."""
         config = AgentConfig(
-            max_iterations=5, best_of_n=1,
-            enable_code_execution=False, verbose=False,
+            max_iterations=5,
+            best_of_n=1,
+            enable_code_execution=False,
+            verbose=False,
         )
         agent = MathAgent(config=config)
         agent.client = MagicMock()

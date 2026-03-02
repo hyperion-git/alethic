@@ -16,17 +16,12 @@ def _mock_response(text: str):
     return resp
 
 
-CORRECT_HIGH = (
-    "VERDICT: correct\nCONFIDENCE: 0.95\n\n"
-    "CRITIQUE:\nPerfect.\n\nISSUES:\nNone"
-)
+CORRECT_HIGH = "VERDICT: correct\nCONFIDENCE: 0.95\n\nCRITIQUE:\nPerfect.\n\nISSUES:\nNone"
 MINOR_060 = (
-    "VERDICT: minor_issues\nCONFIDENCE: 0.60\n\n"
-    "CRITIQUE:\nSmall error.\n\nISSUES:\n- Sign error"
+    "VERDICT: minor_issues\nCONFIDENCE: 0.60\n\nCRITIQUE:\nSmall error.\n\nISSUES:\n- Sign error"
 )
 MAJOR_020 = (
-    "VERDICT: major_flaw\nCONFIDENCE: 0.20\n\n"
-    "CRITIQUE:\nWrong approach.\n\nISSUES:\n- Logic error"
+    "VERDICT: major_flaw\nCONFIDENCE: 0.20\n\nCRITIQUE:\nWrong approach.\n\nISSUES:\n- Logic error"
 )
 
 
@@ -300,12 +295,18 @@ class TestStallResetIntegration:
         )
 
         responses = [
-            _mock_response("A1"), _mock_response(MINOR_060),
-            _mock_response("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nV1"), _mock_response(MINOR_060),
-            _mock_response("A2"), _mock_response(MINOR_060),
-            _mock_response("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nV2"), _mock_response(MINOR_060),
-            _mock_response("A3"), _mock_response(MINOR_060),
-            _mock_response("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nV3"), _mock_response(MINOR_060),
+            _mock_response("A1"),
+            _mock_response(MINOR_060),
+            _mock_response("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nV1"),
+            _mock_response(MINOR_060),
+            _mock_response("A2"),
+            _mock_response(MINOR_060),
+            _mock_response("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nV2"),
+            _mock_response(MINOR_060),
+            _mock_response("A3"),
+            _mock_response(MINOR_060),
+            _mock_response("CHANGES MADE:\nFix\n\nREVISED SOLUTION:\nV3"),
+            _mock_response(MINOR_060),
         ]
 
         mock_client = MagicMock()
