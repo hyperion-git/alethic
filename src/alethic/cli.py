@@ -195,6 +195,17 @@ Examples:
         action="store_true",
         help="Disable variant B generation even if preset enables it",
     )
+    parser.add_argument(
+        "--context-threshold",
+        type=float,
+        default=None,
+        help="Context window utilization threshold before checkpoint (default: 0.8)",
+    )
+    parser.add_argument(
+        "--resume",
+        default=None,
+        help="Resume from a checkpoint session directory",
+    )
 
     # verify/check specific arguments
     parser.add_argument(
@@ -238,6 +249,7 @@ _FLAG_TO_CONFIG = {
     "best_of_n": "best_of_n",
     "stall_window": "stall_window",
     "stall_epsilon": "stall_epsilon",
+    "context_threshold": "context_threshold",
 }
 
 
@@ -314,6 +326,8 @@ _FLAGS_WITH_VALUE = frozenset(
         "--stall-window",
         "--stall-epsilon",
         "--variant-b-model",
+        "--context-threshold",
+        "--resume",
         "--problem-text",
         "-P",
         "--problem-file",
@@ -536,6 +550,12 @@ def main(argv: list[str] | None = None) -> int:
                 for e in result.events
             ],
         }
+        if result.token_ledger:
+            output["token_usage"] = result.token_ledger.to_dict()
+        if result.session_dir:
+            output["session_dir"] = result.session_dir
+        if result.checkpoint_path:
+            output["checkpoint_path"] = result.checkpoint_path
         print(json.dumps(output, indent=2))
     else:
         print(result)
