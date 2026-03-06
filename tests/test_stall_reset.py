@@ -352,8 +352,8 @@ class TestNegativePrompting:
         assert "a1" not in ctx  # oldest entry pruned at 5-cap
 
     def test_physics_reset_context_uses_do_not_language(self):
-        from alethic.physics_agent import PhysicsAgent
         from alethic.models import AgentConfig
+        from alethic.physics_agent import PhysicsAgent
 
         agent = PhysicsAgent(config=AgentConfig(verbose=False))
         ctx = agent._build_reset_context(["tried Lagrangian"])
