@@ -461,6 +461,35 @@ class ConsensusResult:
         agree = sum(1 for r in self.individual_results if r.verdict == self.verdict)
         return f"{agree}/{len(self.individual_results)}"
 
+    def to_dict(self) -> dict:
+        """Return a JSON-serializable dict representation."""
+        return {
+            "verdict": self.verdict.value,
+            "confidence": self.confidence,
+            "confidence_range": list(self.confidence_range),
+            "consensus_ratio": self.consensus_ratio,
+            "critique": self.critique,
+            "issues": [
+                {
+                    "text": i.text,
+                    "severity": i.severity.value,
+                    "flagged_by": i.flagged_by,
+                }
+                for i in self.issues
+            ],
+            "domain_detected": self.domain_detected,
+            "num_verifiers": self.num_verifiers,
+            "elapsed_seconds": self.elapsed_seconds,
+            "individual_results": [
+                {
+                    "verdict": r.verdict.value,
+                    "confidence": r.confidence,
+                    "critique": r.critique,
+                }
+                for r in self.individual_results
+            ],
+        }
+
 
 @dataclass
 class Revision:
@@ -533,3 +562,35 @@ class AgentResult:
             lines.append("")
             lines.append("[Agent admitted failure — problem could not be solved reliably]")
         return "\n".join(lines)
+
+    def to_dict(self) -> dict:
+        """Return a JSON-serializable dict representation."""
+        d: dict = {
+            "problem": self.problem,
+            "solved": self.solved,
+            "verdict": self.verdict.value,
+            "confidence": self.confidence,
+            "iterations_used": self.iterations_used,
+            "total_revisions": self.total_revisions,
+            "candidates_per_iteration": self.candidates_per_iteration,
+            "admitted_failure": self.admitted_failure,
+            "elapsed_seconds": self.elapsed_seconds,
+            "solution": self.solution,
+            "failed_approaches": self.failed_approaches,
+            "events": [
+                {
+                    "type": e.type.value,
+                    "iteration": e.iteration,
+                    "timestamp": e.timestamp,
+                    **e.data,
+                }
+                for e in self.events
+            ],
+        }
+        if self.token_ledger:
+            d["token_usage"] = self.token_ledger.to_dict()
+        if self.session_dir:
+            d["session_dir"] = self.session_dir
+        if self.checkpoint_path:
+            d["checkpoint_path"] = self.checkpoint_path
+        return d

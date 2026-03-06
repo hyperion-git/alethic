@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hyperion-git/alethic/schemas/consensus-result.json",
+  "title": "ConsensusResult",
+  "description": "Output schema for alethic verify/check commands",
+  "type": "object",
+  "required": ["verdict", "confidence", "confidence_range", "consensus_ratio",
+               "critique", "issues", "domain_detected", "num_verifiers",
+               "elapsed_seconds", "individual_results"],
+  "properties": {
+    "verdict": { "type": "string", "enum": ["correct", "minor_issues", "fixable", "major_flaw", "unsolved"] },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "confidence_range": {
+      "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2
+    },
+    "consensus_ratio": { "type": "string", "pattern": "^\\d+/\\d+$" },
+    "critique": { "type": "string" },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["text", "severity", "flagged_by"],
+        "properties": {
+          "text": { "type": "string" },
+          "severity": { "type": "string", "enum": ["critical", "major", "minor"] },
+          "flagged_by": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "domain_detected": { "type": "string", "enum": ["math", "physics"] },
+    "num_verifiers": { "type": "integer", "minimum": 1 },
+    "elapsed_seconds": { "type": "number", "minimum": 0 },
+    "individual_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["verdict", "confidence", "critique"],
+        "properties": {
+          "verdict": { "type": "string" },
+          "confidence": { "type": "number" },
+          "critique": { "type": "string" }
+        }
+      }
+    }
+  }
+}

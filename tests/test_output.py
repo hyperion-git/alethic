@@ -102,3 +102,60 @@ class TestFormatQuiet:
         assert "0.91" in output
         assert "2/2" in output
         assert "math" in output
+
+
+class TestToDict:
+    """4.5: AgentResult and ConsensusResult must have to_dict() methods."""
+
+    def test_agent_result_to_dict_has_required_keys(self):
+        from alethic.models import AgentResult, Verdict
+
+        result = AgentResult(
+            problem="test",
+            solution="sol",
+            verdict=Verdict.CORRECT,
+            confidence=0.95,
+            iterations_used=2,
+            total_revisions=1,
+            admitted_failure=False,
+        )
+        d = result.to_dict()
+        required = {
+            "problem", "solved", "verdict", "confidence",
+            "iterations_used", "total_revisions", "admitted_failure",
+            "elapsed_seconds", "solution", "failed_approaches", "events",
+        }
+        assert required <= d.keys()
+
+    def test_agent_result_to_dict_verdict_is_string(self):
+        from alethic.models import AgentResult, Verdict
+
+        result = AgentResult(
+            problem="p", solution=None, verdict=Verdict.UNSOLVED,
+            confidence=0.1, iterations_used=1, total_revisions=0,
+            admitted_failure=True,
+        )
+        assert result.to_dict()["verdict"] == "unsolved"
+
+    def test_consensus_result_to_dict_matches_existing_json(self):
+        """to_dict() must produce the same data as the current _format_json."""
+        import json
+
+        from alethic.models import ConsensusResult, Verdict
+        from alethic.output import format_consensus
+
+        result = ConsensusResult(
+            verdict=Verdict.CORRECT,
+            confidence=0.9,
+            confidence_range=(0.85, 0.95),
+            critique="looks good",
+            issues=[],
+            individual_results=[],
+            domain_detected="math",
+            num_verifiers=3,
+        )
+        existing_json = json.loads(format_consensus(result, mode="json"))
+        new_dict = result.to_dict()
+        assert existing_json["verdict"] == new_dict["verdict"]
+        assert existing_json["confidence"] == new_dict["confidence"]
+        assert existing_json["domain_detected"] == new_dict["domain_detected"]

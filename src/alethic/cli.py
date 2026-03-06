@@ -535,30 +535,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Output
     if args.json_output:
-        output = {
-            "problem": result.problem,
-            "solved": result.solved,
-            "verdict": result.verdict.value,
-            "confidence": result.confidence,
-            "iterations_used": result.iterations_used,
-            "total_revisions": result.total_revisions,
-            "candidates_per_iteration": result.candidates_per_iteration,
-            "admitted_failure": result.admitted_failure,
-            "elapsed_seconds": result.elapsed_seconds,
-            "solution": result.solution,
-            "failed_approaches": result.failed_approaches,
-            "events": [
-                {"type": e.type.value, "iteration": e.iteration, "timestamp": e.timestamp, **e.data}
-                for e in result.events
-            ],
-        }
-        if result.token_ledger:
-            output["token_usage"] = result.token_ledger.to_dict()
-        if result.session_dir:
-            output["session_dir"] = result.session_dir
-        if result.checkpoint_path:
-            output["checkpoint_path"] = result.checkpoint_path
-        print(json.dumps(output, indent=2))
+        print(json.dumps(result.to_dict(), indent=2))
     else:
         print(result)
 

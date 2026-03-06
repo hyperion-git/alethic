@@ -86,33 +86,7 @@ def _format_text(
 
 
 def _format_json(result: ConsensusResult) -> str:
-    data = {
-        "verdict": result.verdict.value,
-        "confidence": result.confidence,
-        "confidence_range": list(result.confidence_range),
-        "consensus_ratio": result.consensus_ratio,
-        "critique": result.critique,
-        "issues": [
-            {
-                "text": i.text,
-                "severity": i.severity.value,
-                "flagged_by": i.flagged_by,
-            }
-            for i in result.issues
-        ],
-        "domain_detected": result.domain_detected,
-        "num_verifiers": result.num_verifiers,
-        "elapsed_seconds": result.elapsed_seconds,
-        "individual_results": [
-            {
-                "verdict": r.verdict.value,
-                "confidence": r.confidence,
-                "critique": r.critique,
-            }
-            for r in result.individual_results
-        ],
-    }
-    return json.dumps(data, indent=2)
+    return json.dumps(result.to_dict(), indent=2)
 
 
 def _format_quiet(result: ConsensusResult) -> str:

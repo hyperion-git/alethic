@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hyperion-git/alethic/schemas/agent-result.json",
+  "title": "AgentResult",
+  "description": "Output schema for alethic solve/derive commands",
+  "type": "object",
+  "required": ["problem", "solved", "verdict", "confidence", "iterations_used",
+               "total_revisions", "admitted_failure", "elapsed_seconds",
+               "solution", "failed_approaches", "events"],
+  "properties": {
+    "problem": { "type": "string" },
+    "solved": { "type": "boolean" },
+    "verdict": { "type": "string", "enum": ["correct", "minor_issues", "fixable", "major_flaw", "unsolved"] },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "iterations_used": { "type": "integer", "minimum": 0 },
+    "total_revisions": { "type": "integer", "minimum": 0 },
+    "candidates_per_iteration": { "type": "integer", "minimum": 1 },
+    "admitted_failure": { "type": "boolean" },
+    "elapsed_seconds": { "type": "number", "minimum": 0 },
+    "solution": { "type": ["string", "null"] },
+    "failed_approaches": { "type": "array", "items": { "type": "string" } },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "iteration", "timestamp"],
+        "properties": {
+          "type": { "type": "string", "enum": ["generate", "verify", "revise", "error", "accept", "fail", "stall_reset"] },
+          "iteration": { "type": "integer" },
+          "timestamp": { "type": "number" }
+        }
+      }
+    },
+    "token_usage": {
+      "type": "object",
+      "properties": {
+        "input_tokens": { "type": "integer" },
+        "output_tokens": { "type": "integer" },
+        "api_calls": { "type": "integer" }
+      }
+    },
+    "session_dir": { "type": "string" },
+    "checkpoint_path": { "type": "string" }
+  }
+}
