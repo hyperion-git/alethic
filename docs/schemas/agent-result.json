@@ -5,8 +5,9 @@
   "description": "Output schema for alethic solve/derive commands",
   "type": "object",
   "required": ["problem", "solved", "verdict", "confidence", "iterations_used",
-               "total_revisions", "admitted_failure", "elapsed_seconds",
-               "solution", "failed_approaches", "events"],
+               "total_revisions", "candidates_per_iteration", "admitted_failure",
+               "elapsed_seconds", "solution", "failed_approaches", "events"],
+  "additionalProperties": false,
   "properties": {
     "problem": { "type": "string" },
     "solved": { "type": "boolean" },
@@ -33,6 +34,7 @@
     },
     "token_usage": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "input_tokens": { "type": "integer" },
         "output_tokens": { "type": "integer" },

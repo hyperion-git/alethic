@@ -7,6 +7,7 @@
   "required": ["verdict", "confidence", "confidence_range", "consensus_ratio",
                "critique", "issues", "domain_detected", "num_verifiers",
                "elapsed_seconds", "individual_results"],
+  "additionalProperties": false,
   "properties": {
     "verdict": { "type": "string", "enum": ["correct", "minor_issues", "fixable", "major_flaw", "unsolved"] },
     "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
@@ -20,6 +21,7 @@
       "items": {
         "type": "object",
         "required": ["text", "severity", "flagged_by"],
+        "additionalProperties": false,
         "properties": {
           "text": { "type": "string" },
           "severity": { "type": "string", "enum": ["critical", "major", "minor"] },
@@ -35,8 +37,9 @@
       "items": {
         "type": "object",
         "required": ["verdict", "confidence", "critique"],
+        "additionalProperties": false,
         "properties": {
-          "verdict": { "type": "string" },
+          "verdict": { "type": "string", "enum": ["correct", "minor_issues", "fixable", "major_flaw", "unsolved"] },
           "confidence": { "type": "number" },
           "critique": { "type": "string" }
         }
