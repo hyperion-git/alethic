@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from typing import TYPE_CHECKING, Any
 
@@ -540,8 +541,6 @@ def main(argv: list[str] | None = None) -> int:
         print(result)
         # Print autopsy path hint if session dir exists and loop failed
         if not result.solved and result.session_dir:
-            import os
-
             autopsy_path = os.path.join(result.session_dir, "worklog", "autopsy.md")
             if os.path.exists(autopsy_path):
                 print(f"\n[AUTOPSY] Failure analysis written to: {autopsy_path}")

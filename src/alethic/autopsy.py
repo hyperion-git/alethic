@@ -13,6 +13,7 @@ import os
 import anthropic
 
 from alethic.models import AgentResult, EventType
+from alethic.subagents import _create_with_retry, _extract_text
 
 
 def _classify_failure_pattern(result: AgentResult) -> str:
@@ -24,9 +25,23 @@ def _classify_failure_pattern(result: AgentResult) -> str:
     - "regression": confidence peaked then fell significantly
     - "stall": confidence barely moved throughout
     """
-    verify_events = [e for e in result.events if e.type == EventType.VERIFY]
-    if not verify_events:
+    raw_verify_events = [e for e in result.events if e.type == EventType.VERIFY]
+    if not raw_verify_events:
         return "stall"
+
+    # In best-of-N mode, multiple VERIFY events are emitted per iteration.
+    # Keep only the best (highest confidence) candidate per iteration so
+    # the classifier reflects the winning candidate's trajectory.
+    iterations_seen = {e.iteration for e in raw_verify_events}
+    has_multi = any("candidate" in e.data for e in raw_verify_events)
+    if has_multi and len(iterations_seen) < len(raw_verify_events):
+        verify_events = []
+        for it in sorted(iterations_seen):
+            it_events = [e for e in raw_verify_events if e.iteration == it]
+            best = max(it_events, key=lambda e: float(e.data.get("confidence", 0.0)))
+            verify_events.append(best)
+    else:
+        verify_events = raw_verify_events
 
     verdicts = [e.data.get("verdict", "") for e in verify_events]
     confidences = [float(e.data.get("confidence", 0.0)) for e in verify_events]
@@ -53,8 +68,20 @@ def _classify_failure_pattern(result: AgentResult) -> str:
 
 def _build_autopsy_context(result: AgentResult, pattern: str) -> str:
     """Build the structured context passed to the LLM for synthesis."""
-    verify_events = [e for e in result.events if e.type == EventType.VERIFY]
-    stall_events = [e for e in result.events if e.type.value == "stall_reset"]
+    raw_verify_events = [e for e in result.events if e.type == EventType.VERIFY]
+    stall_events = [e for e in result.events if e.type == EventType.STALL_RESET]
+
+    # Use the same best-candidate-per-iteration filtering as the classifier.
+    iterations_seen = {e.iteration for e in raw_verify_events}
+    has_multi = any("candidate" in e.data for e in raw_verify_events)
+    if has_multi and len(iterations_seen) < len(raw_verify_events):
+        verify_events = []
+        for it in sorted(iterations_seen):
+            it_events = [e for e in raw_verify_events if e.iteration == it]
+            best = max(it_events, key=lambda e: float(e.data.get("confidence", 0.0)))
+            verify_events.append(best)
+    else:
+        verify_events = raw_verify_events
 
     conf_trajectory = " → ".join(
         f"{e.data.get('confidence', 0.0):.2f}" for e in verify_events
@@ -129,15 +156,18 @@ def generate_autopsy(
     )
 
     client = anthropic.Anthropic(api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"))
-    response = client.messages.create(
-        model=model,
-        max_tokens=1024,
-        system=_AUTOPSY_SYSTEM,
-        messages=[{"role": "user", "content": user}],
+    response = _create_with_retry(
+        client,
+        {
+            "model": model,
+            "max_tokens": 1024,
+            "system": _AUTOPSY_SYSTEM,
+            "messages": [{"role": "user", "content": user}],
+        },
     )
-    synthesis = response.content[0].text.strip()
+    synthesis = _extract_text(response).strip()
 
-    stall_count = sum(1 for e in result.events if e.type.value == "stall_reset")
+    stall_count = sum(1 for e in result.events if e.type == EventType.STALL_RESET)
     lines = [
         "# Autopsy Report",
         "",
