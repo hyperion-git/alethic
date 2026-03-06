@@ -108,3 +108,4 @@ class TestGenerateAutopsy:
 
         assert "Iterations" in report
         assert "Best Confidence" in report
+        assert "Stall Resets" in report
