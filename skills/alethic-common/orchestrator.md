@@ -562,7 +562,83 @@ If all iterations are exhausted or budget is hit without an accepted solution:
 2. Read `{session_dir}/worklog/best_solution.md` (if it exists).
 3. Read the corresponding verification file for the best solution to extract outstanding issues.
 4. Update `session.json` with `"status": "unsolved"`, final `task_calls`, and `best_confidence`.
-5. Go to **Step 4: Format Output**, then **Step 5: Present Results** with `solved = false`.
+5. Go to **Step 3a: Autopsy**, then **Step 4: Format Output**, then **Step 5: Present Results** with `solved = false`.
+
+### Step 3a: Post-loop Autopsy (UNSOLVED only)
+
+After failure admission and before formatting, generate a structured autopsy report to help the user understand why the loop failed and what to try next.
+
+1. Read `{session_dir}/worklog/events.jsonl` to extract the verdict and confidence trajectory.
+
+2. Classify the failure pattern deterministically from the events:
+   - **persistent_flaw**: every VERIFY event returned `major_flaw`
+   - **oscillation**: verdict changed in > 60% of consecutive-event transitions (check before regression)
+   - **regression**: confidence peaked early (peak index < last index) then dropped by > 0.15
+   - **stall**: none of the above (confidence barely improved)
+
+3. Spawn a Task sub-agent:
+   ```
+   Task(
+     model: "{model}",
+     subagent_type: "general-purpose",
+     description: "Generate autopsy report for failed loop",
+     prompt: |
+       You are an expert diagnostician for AI reasoning systems.
+       Given a failed solve loop's statistics, write a concise autopsy report
+       with exactly these sections:
+
+       ## Failure Analysis
+       One paragraph explaining what went wrong based on the pattern and trajectory.
+
+       ## Confidence Trajectory Analysis
+       Interpret the confidence numbers — what does the pattern suggest about
+       where the loop got stuck?
+
+       ## Dominant Error Types
+       Based on the failed approaches, what categories of errors kept recurring?
+
+       ## Recommended Next Steps
+       3-5 concrete, actionable suggestions. Examples:
+       - Reformulate the problem with additional constraints or hints
+       - Increase best-of-N (--best-of 3) to diversify candidate solutions
+       - Use --preset thorough for extended thinking budget
+       - Break the problem into smaller lemmas and solve each independently
+       - Provide a partial proof scaffold or known intermediate result in the problem
+
+       Keep the total report under 350 words. Be direct and specific.
+
+       ---
+
+       PROBLEM: {first 500 chars of problem}
+
+       FAILURE PATTERN: {pattern}
+       ITERATIONS USED: {iterations_used}
+       CONFIDENCE TRAJECTORY: {space-separated confidence values from events.jsonl}
+       STALL RESETS TRIGGERED: {count of stall_reset events}
+       BEST CONFIDENCE REACHED: {best_confidence}
+
+       FAILED APPROACHES (last 5):
+       {list of failed_approaches from session.json, last 5 entries}
+
+       Write the autopsy report to `{session_dir}/worklog/autopsy.md` with this header:
+
+       # Autopsy Report
+
+       **Failure Pattern:** {pattern title-cased}
+       **Iterations:** {iterations_used}
+       **Best Confidence:** {best_confidence}
+       **Stall Resets:** {stall_reset_count}
+
+       [then the four sections above]
+   )
+   ```
+
+4. If the Task sub-agent succeeds, print:
+   ```
+   [AUTOPSY] Failure analysis written to {session_dir}/worklog/autopsy.md
+   ```
+
+5. If the Task sub-agent fails (error, timeout, or no output file), log a warning and continue — autopsy failure must never block the main result from being presented.
 
 ---
 

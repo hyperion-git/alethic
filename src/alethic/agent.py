@@ -993,7 +993,7 @@ class MathAgent:
         )
 
         best_text = state.best_solution.solution_text if state.best_solution else None
-        return self._make_result(
+        result = self._make_result(
             problem=problem,
             solution=best_text,
             verdict=Verdict.UNSOLVED,
@@ -1005,6 +1005,22 @@ class MathAgent:
             token_ledger=ledger,
             session_dir=session_dir,
         )
+
+        # Write autopsy for failed loops (1.4)
+        if result.session_dir:
+            try:
+                from alethic.autopsy import generate_autopsy
+
+                autopsy = generate_autopsy(result, api_key=self._api_key, model=self.config.model)
+                autopsy_path = os.path.join(result.session_dir, "worklog", "autopsy.md")
+                os.makedirs(os.path.dirname(autopsy_path), exist_ok=True)
+                with open(autopsy_path, "w", encoding="utf-8") as f:
+                    f.write(autopsy)
+                logger.info("[AUTOPSY] Written to %s", autopsy_path)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[AUTOPSY] Failed to generate autopsy: %s", exc)
+
+        return result
 
     def _log(self, message: str) -> None:
         if self.config.verbose:

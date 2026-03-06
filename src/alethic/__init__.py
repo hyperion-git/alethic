@@ -29,6 +29,7 @@ Usage:
 """
 
 from alethic.agent import MathAgent
+from alethic.autopsy import generate_autopsy
 from alethic.exceptions import (
     AlethicError,
     CheckpointError,
@@ -79,6 +80,7 @@ __all__ = [
     "VerificationResult",
     "VerifierAgent",
     "VerifierConfig",
+    "generate_autopsy",
 ]
 
 __version__ = "3.1.0"

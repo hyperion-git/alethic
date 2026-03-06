@@ -538,6 +538,13 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(result.to_dict(), indent=2))
     else:
         print(result)
+        # Print autopsy path hint if session dir exists and loop failed
+        if not result.solved and result.session_dir:
+            import os
+
+            autopsy_path = os.path.join(result.session_dir, "worklog", "autopsy.md")
+            if os.path.exists(autopsy_path):
+                print(f"\n[AUTOPSY] Failure analysis written to: {autopsy_path}")
 
     return 0 if result.solved else 1
 
