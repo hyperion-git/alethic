@@ -978,3 +978,37 @@ class TestParseVerificationWithCustomPrompts:
         assert result.confidence == 0.05
         assert "premise is false" in result.reason.lower()
         assert len(result.issues) == 2
+
+
+# ---------------------------------------------------------------------------
+# 11. Generator prompt hardening (feature 1.7, Woodruff et al. arXiv:2602.03837)
+# ---------------------------------------------------------------------------
+
+
+class TestPromptHardening:
+    """1.7: Generator prompts must contain hardening language."""
+
+    def test_balanced_addendum_contains_minimal_dimension_heuristic(self):
+        from alethic.prompts import BALANCED_GENERATOR_ADDENDUM
+        text = BALANCED_GENERATOR_ADDENDUM.lower()
+        assert "smallest" in text or "minimal" in text or "n=2" in text or "n = 2" in text
+
+    def test_physics_balanced_addendum_contains_minimal_dimension_heuristic(self):
+        from alethic.physics_prompts import BALANCED_PHYSICS_ADDENDUM
+        text = BALANCED_PHYSICS_ADDENDUM.lower()
+        assert "smallest" in text or "simplest" in text or "limiting" in text
+
+    def test_generator_system_has_confidence_framing(self):
+        from alethic.prompts import GENERATOR_SYSTEM
+        text = GENERATOR_SYSTEM.lower()
+        # Should NOT contain discouraging language
+        assert "open problem" not in text
+        assert "beyond reach" not in text
+        # Should contain confidence framing
+        assert "solvable" in text or "assume" in text or "treat" in text
+
+    def test_physics_generator_system_has_confidence_framing(self):
+        from alethic.physics_prompts import PHYSICS_GENERATOR_SYSTEM
+        text = PHYSICS_GENERATOR_SYSTEM.lower()
+        assert "open problem" not in text
+        assert "beyond reach" not in text

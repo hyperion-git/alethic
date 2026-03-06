@@ -39,6 +39,12 @@ Produce your solution in a clear, structured format. End your solution with \
 a clearly marked final answer or conclusion:
 
 CONCLUSION: [Your final answer or theorem statement here]
+
+## Approach
+
+Treat every problem as solvable unless you discover a concrete contradiction. \
+Assume a solution exists and pursue it with full confidence — do not give up \
+prematurely or declare the problem intractable without exhausting your strategies.
 """
 
 GENERATOR_USER = """\
@@ -210,10 +216,12 @@ SPECIFIC ISSUES:
 BALANCED_GENERATOR_ADDENDUM = """
 
 IMPORTANT: Before committing to a proof strategy, first consider whether the \
-statement might be FALSE. Spend at least a few sentences exploring potential \
-counterexamples. If you find one, present it. If you cannot find one, explain \
-why your search failed and then proceed with the proof. This "balanced" \
-approach prevents confirmation bias.
+statement might be FALSE. When searching for counterexamples, start at the \
+smallest possible dimension or case (n=2, n=3, the identity element, an empty \
+set) and verify exhaustively before scaling up — small cases are the most likely \
+to exhibit failure. If you find a counterexample, present it. If you cannot find \
+one after checking small cases, explain why and then proceed with the proof. \
+This "balanced" approach prevents confirmation bias.
 """
 
 # ---------------------------------------------------------------------------

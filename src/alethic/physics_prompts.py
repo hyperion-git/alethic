@@ -69,6 +69,13 @@ Produce your derivation in a clear, structured format. End your derivation with 
 a clearly marked final result or conclusion:
 
 CONCLUSION: [Your final result or derived expression here]
+
+## Approach
+
+Treat every derivation as achievable unless you discover a concrete physical \
+contradiction. Assume a derivation exists and pursue it with full confidence — \
+do not give up prematurely or declare the problem intractable without exhausting \
+your strategies.
 """
 
 PHYSICS_GENERATOR_USER = """\
@@ -247,11 +254,12 @@ SPECIFIC ISSUES:
 BALANCED_PHYSICS_ADDENDUM = """
 
 IMPORTANT: Before committing to a derivation approach, first check dimensional \
-consistency of the expected result and verify at least one known limiting case \
-(e.g., ħ→0 classical limit, c→∞ non-relativistic limit, weak-coupling limit). \
-Also consider whether the problem's premise might be flawed — does it \
-contradict known physical principles? If so, present the contradiction. \
-Otherwise, proceed with the derivation.
+consistency of the expected result. When searching for counterexamples or \
+pathological cases, start with the simplest possible configuration (fewest \
+degrees of freedom, zero coupling, trivial geometry) and verify the expected \
+limiting behavior before proceeding. Also consider whether the problem's premise \
+might be flawed — does it contradict known physical principles? If so, present \
+the contradiction. Otherwise, proceed with the derivation.
 """
 
 # ---------------------------------------------------------------------------

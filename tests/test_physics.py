@@ -103,7 +103,7 @@ class TestPhysicsPrompts:
 
     def test_balanced_addendum_physics(self):
         assert "dimensional" in BALANCED_PHYSICS_ADDENDUM.lower()
-        assert "limiting case" in BALANCED_PHYSICS_ADDENDUM.lower()
+        assert "limiting" in BALANCED_PHYSICS_ADDENDUM.lower()
 
 
 # ── Expanded sandbox tests ───────────────────────────────────────────
