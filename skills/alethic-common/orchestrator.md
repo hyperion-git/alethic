@@ -314,7 +314,7 @@ Before generating candidates, check whether a stall-triggered strategy reset sho
    - Determine reason: `"major_flaw_streak"` if detector 2 matched, else `"no_progress"`
    - Set `n_this_iter = best_of_n + reset_n_boost` (override candidate count for this iteration)
    - Set `max_revisions_this_iter = 1` (cap revisions to minimize wasted budget)
-   - Build `reset_context`: format the `{strategy_reset_addendum}` text, replacing `{failed_approaches}` with the last 2 entries from the `failed_approaches` list (formatted as bullet points: `- Iter {N}: {strategy} -> {verdict} ({confidence}): {top_issue}`). If fewer than 2 entries exist, use all available. If none, use `- (none recorded)`.
+   - Build `reset_context`: format the `{strategy_reset_addendum}` text, replacing `{failed_approaches}` with the last 5 entries from the `failed_approaches` list (formatted as bullet points: `- Iter {N}: {strategy} -> {verdict} ({confidence}): {top_issue}`). If fewer than 5 entries exist, use all available. If none, use `- (none recorded)`.
    - Increment `resets_used`, set `reset_cooldown_remaining = 1`
    - **Log event**: `{"type":"stall_reset","iteration":{N},"reason":"{reason}","n_override":{n_this_iter},"resets_used":{resets_used},"stall_counter":{iterations_since_meaningful_improvement},"timestamp":"..."}`
    - Print: `[STALL RESET] Triggered (reason: {reason}) — N={n_this_iter}, max_revisions=1`

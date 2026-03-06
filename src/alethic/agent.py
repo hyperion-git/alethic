@@ -198,7 +198,7 @@ class MathAgent:
 
     def _build_reset_context(self, failed_approaches: list[str]) -> str:
         """Build the strategy-reset prompt overlay for a reset iteration."""
-        recent = failed_approaches[-2:] if len(failed_approaches) > 2 else failed_approaches
+        recent = failed_approaches[-5:] if len(failed_approaches) > 5 else failed_approaches
         approaches_text = "\n".join(f"- {a}" for a in recent) if recent else "- (none recorded)"
         return self._reset_addendum().replace("{failed_approaches}", approaches_text)
 

@@ -39,11 +39,15 @@ The user's input is: $ARGUMENTS
 
 ## STRATEGY RESET — Previous approaches exhausted
 
-The following high-level strategies have been tried and failed:
+The methods listed below have been attempted and FAILED. You are FORBIDDEN from using them.
+
 {failed_approaches}
 
+For each method above: DO NOT use it. DO NOT adapt it. DO NOT build on it.
+If your plan uses any of these methods, you MUST change your plan.
+Reflect on your approach — if it resembles any of the above, choose a different one.
+
 You MUST use a categorically different proof technique.
-Do NOT refine, extend, or repair any previous approach.
 Start from a completely different mathematical foundation.
 Consider approaches from a different branch of mathematics entirely.
 
