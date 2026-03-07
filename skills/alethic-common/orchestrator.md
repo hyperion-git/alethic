@@ -323,6 +323,42 @@ Before generating candidates, check whether a stall-triggered strategy reset sho
 
 5. **If NOT triggered**: Set `n_this_iter = best_of_n`, `max_revisions_this_iter = max_revisions`, `reset_context = null`. If `reset_cooldown_remaining > 0`, decrement it.
 
+### Step 2-pre-b: Adaptive Compute — Dynamic N and Adaptive Revision Budget
+
+This step runs **only when NOT a stall reset** (i.e., step 2-pre did not trigger). It adjusts `n_this_iter` and `max_revisions_this_iter` based on the difficulty signal from the previous iteration.
+
+**Error category classification** (apply to the previous iteration's verifier critique text, or "general" for iteration 1):
+
+Apply keyword matching in priority order — first match wins:
+- `algebra`: sign error, wrong sign, arithmetic, calculation error, simplif, expand, factor, distribut, algebraic error, incorrect step, wrong value, computation error
+- `logic`: does not follow, non sequitur, circular, logical gap, invalid inference, unjustified, not proven, assumption not established
+- `citation`: citation, cite, well known, standard result, it can be shown, no source, no reference, vague appeal
+- `interpretation`: misinterpret, misread, premise, wrong problem, reinterpret, different question, weaker problem
+- `units`: unit, dimension, dimensional, si unit, conversion, does not balance, inconsistent units
+- `missing_case`: missing case, edge case, counterexample, special case, boundary case, not handled, case analysis
+- `general`: (fallback — no keyword matched)
+
+**Note**: If the previous iteration's solution contained `ALETHIC_L0_CHECK: FAILURE` or `ALETHIC_L1_CHECK: FAILURE`, treat the error category as `units` (physics) or `logic` (math) respectively, regardless of the critique text — these are structural failures requiring a fundamentally different approach.
+
+**Dynamic N** (applies when preset is `thorough` or `extreme`, i.e., `adaptive_compute = true`, AND iteration > 1):
+
+| Error category | Action |
+|---------------|--------|
+| `logic`, `missing_case`, `interpretation`, `units` | Set `n_this_iter = best_of_n` (full escalation — need diverse approaches) |
+| `algebra`, `citation` | Set `n_this_iter = 1` (revise-first — fixable in place) |
+| any, if `best_confidence < confidence_threshold * 0.75` | Set `n_this_iter = best_of_n` (hard problem regardless of category) |
+| otherwise | Set `n_this_iter = 1` |
+
+For iteration 1, always use `n_this_iter = 1` (probe pass) when `adaptive_compute = true`.
+
+**Adaptive revision budget** (applies when preset is `default`, i.e., `adaptive_revision_budget = true`):
+
+| Condition | Action |
+|-----------|--------|
+| `error_category` in {`algebra`, `citation`} AND `best_confidence >= 0.80` | Set `max_revisions_this_iter = 1` (quick patch likely sufficient) |
+| `best_confidence < 0.70` | Set `max_revisions_this_iter = min(preset_revisions + 1, 5)` (harder problem, more repair needed) |
+| otherwise | Keep `max_revisions_this_iter = preset_revisions` |
+
 ### Step 2a: Generate
 
 1. Use Bash: `mkdir -p {session_dir}/worklog/iter{N}/`
