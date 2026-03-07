@@ -76,6 +76,22 @@ Treat every derivation as achievable unless you discover a concrete physical \
 contradiction. Assume a derivation exists and pursue it with full confidence — \
 do not give up prematurely or declare the problem intractable without exhausting \
 your strategies.
+
+## Numerical step verification
+
+For each **major intermediate result** (key integral, dimensional factor, series \
+expansion coefficient, boundary condition application, normalization integral, \
+non-trivial algebraic step):
+
+1. Write a `verify_step_N(...)` Python function that evaluates the result numerically, \
+   using SymPy or NumPy/SciPy where appropriate.
+2. For physics results, additionally verify **dimensional consistency** at each step: \
+   include a comment confirming the units of the computed quantity.
+3. Call it immediately via the code tool.
+4. Embed the output inline: `Numerical check: verify_step_N() = {value} ✓`
+
+Steps that cannot be numerically verified (e.g., purely symmetry-based arguments) \
+should be flagged as "analytically only — dimensional analysis confirms plausibility".
 """
 
 PHYSICS_GENERATOR_USER = """\
@@ -131,6 +147,11 @@ and rigorous.
    reinterprets the problem in a way that makes it trivially solvable, derives \
    a weaker/different result than asked, or exploits ambiguity to avoid the \
    core difficulty.
+10. **Trust step-verified results.** The derivation may contain inline "Numerical check" \
+    lines (`verify_step_N() = {value} ✓`). Trust these as ground truth for the numerical \
+    value at that step — the sandbox executed them. Still verify dimensional consistency \
+    and the analytical derivation of the expression. Flag major steps that lack numerical \
+    checks as higher risk.
 
 ## Output format (you MUST follow this exactly)
 

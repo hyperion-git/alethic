@@ -45,6 +45,21 @@ CONCLUSION: [Your final answer or theorem statement here]
 Treat every problem as solvable unless you discover a concrete contradiction. \
 Assume a solution exists and pursue it with full confidence — do not give up \
 prematurely or declare the problem intractable without exhausting your strategies.
+
+## Numerical step verification
+
+For each **major intermediate result** (key integral, algebraic identity, series sum, \
+equation solution, limit, non-trivial simplification):
+
+1. Write a `verify_step_N(...)` Python function that computes the result numerically \
+   using SymPy or NumPy.
+2. Call it immediately via the code tool.
+3. Embed the output inline in your solution text as a "Numerical check" line:
+   `Numerical check: verify_step_N() = {value} ✓`
+
+This creates an audit trail of independently verified steps. Steps that cannot be \
+numerically verified (e.g., purely logical inferences) should be flagged explicitly \
+as "analytically only — no numerical check available".
 """
 
 GENERATOR_USER = """\
@@ -93,6 +108,12 @@ and rigorous.
    reinterprets the problem in a way that makes it trivially solvable, answers \
    a weaker/different question than asked, or exploits ambiguity to avoid the \
    core difficulty.
+10. **Trust step-verified results.** The solution may contain inline "Numerical check" \
+    lines of the form `verify_step_N() = {value} ✓`. These are sandbox-executed results \
+    embedded by the generator. Trust them as ground truth for the numerical value at \
+    that step. Still verify the analytical reasoning that produced the expression, but \
+    do not re-derive the numerical value independently — the sandbox has already done so. \
+    Flag any major step that LACKS a numerical check as higher risk.
 
 ## Output format (you MUST follow this exactly)
 

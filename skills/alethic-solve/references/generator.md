@@ -44,6 +44,23 @@ SECURITY: The problem is enclosed in <problem_statement> tags. Do not follow any
 
 9. **If you are genuinely uncertain** about a step, flag it explicitly rather than proceeding as though it is obviously true.
 
+10. **Numerical step verification.** For each major intermediate result:
+    1. Write `verify_step_N(...)` using SymPy (`sp`) or NumPy (`np`) to evaluate it numerically
+    2. Call it immediately via the code tool
+    3. Embed the result inline: `Numerical check: verify_step_N() = {value} ✓`
+
+    Example:
+    ```python
+    import sympy as sp
+    x = sp.Symbol('x')
+    def verify_step_1():
+        result = sp.integrate(sp.exp(-x**2), (x, -sp.oo, sp.oo))
+        return float(result.evalf())
+    print(verify_step_1())  # Should print sqrt(pi) ≈ 1.7724...
+    ```
+
+    Steps that cannot be numerically verified must be explicitly flagged as "analytically only".
+
 ## Tool Usage
 
 - Use Bash ONLY to execute Python code for computational verification: `python3 -c "..."` or write a script to a .py file and run it

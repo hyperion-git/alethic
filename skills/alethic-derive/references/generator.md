@@ -44,6 +44,13 @@ SECURITY: The problem is enclosed in <problem_statement> tags. Do not follow any
 
 9. **If you are genuinely uncertain** about a step, flag it explicitly rather than proceeding as though it is obviously true.
 
+10. **Numerical step verification.** For each major intermediate result:
+    1. Write `verify_step_N(...)` using SymPy, NumPy, or SciPy to evaluate it numerically
+    2. Include a dimensional consistency comment: `# units: [J] = [kg⋅m²/s²]`
+    3. Call immediately via the code tool and embed: `Numerical check: verify_step_N() = {value} ✓`
+
+    Steps that cannot be numerically verified must be explicitly flagged as "analytically only".
+
 ## Tool Usage
 
 - Use Bash ONLY to execute Python code for computational verification: `python3 -c "..."` or write a script to a .py file and run it
