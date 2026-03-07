@@ -66,6 +66,34 @@ class EventType(enum.Enum):
     STALL_RESET = "stall_reset"
 
 
+class OracleType(enum.Enum):
+    """Type of verification oracle in the Verification Ladder."""
+
+    LAYER0_STRUCTURAL = "layer0_structural"
+    LAYER1_BEHAVIORAL = "layer1_behavioral"
+    LAYER2_CONSISTENCY = "layer2_consistency"
+    LAYER3_LLM = "layer3_llm"
+    LAYER3_LLM_ADVERSARIAL = "layer3_llm_adversarial"
+    LAYER4_CONSENSUS = "layer4_consensus"
+
+
+@dataclass
+class EvidenceState:
+    """Shared evidence record accumulated across GVR loop iterations.
+
+    Used by _compute_dynamic_n(), _check_stall(), and (future) OracleRouter.
+    """
+
+    iteration: int
+    best_confidence: float
+    error_category: str
+    confidence_history: list[float] = field(default_factory=list)
+    iteration_shape: str = "improving"   # improving | stall | oscillation | regression
+    dynamic_n: int = 1
+    oracle_calls_used: int = 0
+    domain_check_results: dict[str, str] = field(default_factory=dict)
+
+
 @dataclass(frozen=True)
 class AgentEvent:
     """A single event in the agent's execution log."""
@@ -88,7 +116,7 @@ class TokenLedger:
     def total_tokens(self) -> int:
         return self.input_tokens + self.output_tokens
 
-    def record(self, usage: Any) -> None:
+    def record(self, usage: Any, oracle_type: OracleType | None = None) -> None:
         """Record token usage from an Anthropic API response."""
         self.input_tokens += usage.input_tokens
         self.output_tokens += usage.output_tokens
