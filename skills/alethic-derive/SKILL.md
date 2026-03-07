@@ -26,6 +26,7 @@ The user's input is: $ARGUMENTS
 | agent_title | Physics Derivation |
 | session_skill | alethic-derive |
 | strategy_reset_addendum | (from "Strategy Reset Addendum" section below) |
+| adversarial_verifier | true for thorough/extreme presets; false otherwise — enables 5-round adversarial self-correction in all verifier Task calls |
 
 ## Balanced Approach Addendum
 

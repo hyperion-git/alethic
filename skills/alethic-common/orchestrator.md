@@ -61,6 +61,8 @@ If `--preset` is given, apply these values first, then let explicit flags overri
 
 Extract `max_iterations`, `max_revisions`, `max_budget`, `confidence_threshold`, `best_of_n`, `stall_reset`, `stall_window`, `stall_epsilon`, `reset_n_boost`, and `textbook` from flags (or defaults/preset). The remaining text is the problem statement.
 
+Also set `adversarial_verifier = true` when preset is `thorough` or `extreme`, else `false`. This enables the 5-round adversarial self-correction protocol in all verifier Task calls (Step 2b, Step 2c re-verify, Step 2d re-verify).
+
 **Validation:** If `max_iterations` < 1, set to 1 and warn the user. If `max_revisions` < 0, set to 0. If `max_budget` < 3, set to 3. If `confidence_threshold` is outside (0, 1], clamp to [0.50, 1.0]. If `best_of_n` < 1, set to 1. If `stall_window` < 1, set to 1. If `stall_epsilon` < 0.0, set to 0.0. If `--no-stall-reset` is set, set `stall_reset` to false (overrides preset). If no problem statement is found, ask the user to provide one. If `--textbook` is set, increase `max_budget` by the textbook budget supplement: quick -> +5, default -> +7, thorough -> +10, extreme -> +12 (or +7 if no preset). If `--model` is not one of "haiku", "sonnet", "opus", default to "opus" and warn. If `--file` is set, Read the file. If it doesn't exist, ask the user to provide a valid path.
 
 ---
@@ -362,7 +364,7 @@ Before generating candidates, check whether a stall-triggered strategy reset sho
 
 **This is the critical decoupling point.** When constructing the Verifier prompt, do NOT reference any information from the Generator — no summaries, no strategies, no return values. Construct the prompt solely from the Verifier template and file paths.
 
-**Read the Verifier prompt** from `{references_dir}/verifier.md`. Then, for each tool in the `--tools` list, read `{references_dir}/tools/{tool}-verifier.md` (if it exists) and append its contents to the prompt.
+**Read the Verifier prompt** from `{references_dir}/verifier.md`. Then, for each tool in the `--tools` list, read `{references_dir}/tools/{tool}-verifier.md` (if it exists) and append its contents to the prompt. If `adversarial_verifier` is true, also read `skills/alethic-common/references/adversarial-verifier.md` and append its contents to the Verifier prompt (after tool overlays).
 
 **Verify each candidate.** For each successfully generated candidate C:
 
@@ -451,7 +453,7 @@ The "Reset" column shows "STALL" when a stall reset was triggered for that itera
   - If `corrected_solution` is not null:
     1. Write `corrected_solution` to `{session_dir}/worklog/iter{N}/corrected.md`.
     2. **Record the FIXABLE verdict for stall tracking BEFORE re-verification** — append "fixable" to `iteration_final_verdicts` now. Do not wait for re-verification, which could overwrite the original verdict.
-    3. **Re-verify the corrected solution**: Read the Verifier prompt from `{references_dir}/verifier.md`. Append tool overlays (same procedure as Step 2b). Increment `task_calls`. Spawn a fresh Verifier Task with:
+    3. **Re-verify the corrected solution**: Read the Verifier prompt from `{references_dir}/verifier.md`. Append tool overlays (same procedure as Step 2b). If `adversarial_verifier` is true, also append `skills/alethic-common/references/adversarial-verifier.md` to the prompt. Increment `task_calls`. Spawn a fresh Verifier Task with:
        - The problem from `problem.md`
        - The corrected solution from `worklog/iter{N}/corrected.md` (NOT the original solution)
        - Same decoupling rules as Step 2b
@@ -482,13 +484,33 @@ For revision M = 1 to `max_revisions_this_iter` (which equals `max_revisions` no
    - If M == 1: solution = `worklog/iter{N}/solution.md`, verification = `worklog/iter{N}/verification.md`
    - If M > 1: solution = `worklog/iter{N}/revision_{M-1}.md`, verification = `worklog/iter{N}/verification_rev{M-1}.md`
 
+1b. **Error category classification** (keyword match — no extra API call): Read the verification file at `{verification_path}` (from step 1). Apply keyword classification to its content (case-insensitive), checking in this priority order:
+    - If text contains any of: "sign error", "wrong sign", "arithmetic", "calculation error", "simplif", "factor", "distribut", "algebraic error", "coefficient" → `algebra`
+    - If text contains any of: "does not follow", "circular", "implication", "gap in", "logical gap", "invalid inference", "unjustified" → `logic`
+    - If text contains any of: "citation", "cite", "well known", "standard result", "it can be shown", "no source", "vague appeal" → `citation`
+    - If text contains any of: "misinterpret", "misread", "premise", "reinterpret", "weaker problem", "specification" → `interpretation`
+    - If text contains any of: "unit", "dimension", "dimensional", "conversion", "does not balance" → `units`
+    - If text contains any of: "missing case", "edge case", "boundary case", "case analysis", "exhaustive", "not handled" → `missing_case`
+    - Default: `general`
+
+    Set `revision_strategy` to the corresponding addendum string:
+    - `algebra`: `"**Revision focus — algebraic correctness**: Re-derive each algebraic step from scratch; do not copy expressions from the previous attempt. Verify each result numerically. Check every sign, exponent, and distribution."`
+    - `logic`: `"**Revision focus — logical rigor**: For every inference, write explicit justification: 'This follows because…'. Do not skip steps. If you cannot rigorously justify an inference, treat it as an open sub-problem and solve it first."`
+    - `citation`: `"**Revision focus — citation accuracy**: For every theorem or known result invoked: either (a) prove it inline, or (b) cite it by its exact conventional name. Remove all 'it is well known' and 'by a standard result' phrasing."`
+    - `interpretation`: `"**Revision focus — problem interpretation**: Re-read the problem statement before writing a single line. Restate the problem in your own words at the top to confirm you understand it. Verify your conclusion directly answers the question asked."`
+    - `units`: `"**Revision focus — dimensional consistency**: At every step, write the units of each quantity explicitly (e.g., [J], [m/s²]). Before finalising, verify both sides of every equation have identical dimensions."`
+    - `missing_case`: `"**Revision focus — case completeness**: Begin by enumerating all possible cases explicitly. For each case, provide a complete argument. Pay special attention to: n=0 or n=1 base cases, empty sets, zero vectors, boundary conditions, and degenerate configurations."`
+    - `general`: `""` (no addendum)
+
+    If `revision_strategy` is non-empty, it will be appended to the Reviser prompt in step 2.
+
 2. Increment `task_calls`. Spawn a Task sub-agent:
    ```
    Task(
      model: "{model}",
      subagent_type: "general-purpose",
      description: "Revise {noun} iter {N} rev {M}",
-     prompt: [Reviser prompt content read above] + task-specific instructions
+     prompt: [Reviser prompt content read above] + [revision_strategy if non-empty] + task-specific instructions
    )
    ```
 
@@ -506,7 +528,7 @@ For revision M = 1 to `max_revisions_this_iter` (which equals `max_revisions` no
 
 5. Print: `[Iter {N}] Reviser (rev {M}): {summary}`
 
-6. **Re-verify the revision** — Read the Verifier prompt from `{references_dir}/verifier.md`. Append tool overlays for each tool in `--tools` (same procedure as Step 2b). Increment `task_calls`, spawn a fresh Verifier Task with `model: "{model}"`:
+6. **Re-verify the revision** — Read the Verifier prompt from `{references_dir}/verifier.md`. Append tool overlays for each tool in `--tools` (same procedure as Step 2b). If `adversarial_verifier` is true, also append `skills/alethic-common/references/adversarial-verifier.md` to the prompt. Increment `task_calls`, spawn a fresh Verifier Task with `model: "{model}"`:
    - Problem file: `{session_dir}/problem.md`
    - Solution file: `{session_dir}/worklog/iter{N}/revision_{M}.md` (the clean revision, NOT the changelog)
    - Verification output: `{session_dir}/worklog/iter{N}/verification_rev{M}.md`
