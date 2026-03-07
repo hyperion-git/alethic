@@ -7,6 +7,8 @@ addendum that guides the reviser toward the most effective repair strategy.
 
 from __future__ import annotations
 
+from alethic.models import OracleType
+
 # Keyword -> category mapping. Checked in priority order; first match wins.
 # Keys are category names; values are lists of lowercase substrings to search for.
 _TAXONOMY_KEYWORDS: dict[str, list[str]] = {
@@ -115,3 +117,27 @@ def get_revision_addendum(category: str) -> str:
     Returns "" for unknown categories and "general".
     """
     return REVISION_ADDENDA.get(category, "")
+
+
+# Oracle routing table: error_category -> (OracleType, force_adversarial)
+_ORACLE_ROUTING: dict[str, tuple[OracleType, bool]] = {
+    "algebra": (OracleType.LAYER2_CONSISTENCY, False),
+    "logic": (OracleType.LAYER3_LLM_ADVERSARIAL, True),
+    "citation": (OracleType.LAYER3_LLM, False),
+    "interpretation": (OracleType.LAYER3_LLM, False),
+    "units": (OracleType.LAYER0_STRUCTURAL, False),
+    "missing_case": (OracleType.LAYER1_BEHAVIORAL, False),
+    "general": (OracleType.LAYER3_LLM, False),
+}
+
+
+def classify_errors_routed(critique: str) -> tuple[str, OracleType, bool]:
+    """Classify critique and return (category, next_oracle, force_adversarial).
+
+    Extends classify_errors() with routing information for the Verification Ladder.
+    The agent.py orchestrator reads next_oracle to decide verifier configuration
+    for the next iteration.
+    """
+    category = classify_errors(critique)
+    oracle, force_adv = _ORACLE_ROUTING.get(category, (OracleType.LAYER3_LLM, False))
+    return category, oracle, force_adv

@@ -88,3 +88,61 @@ class TestGetRevisionAddendum:
         for category, addendum in REVISION_ADDENDA.items():
             if category != "general":
                 assert len(addendum) > 20, f"Category '{category}' has empty addendum"
+
+
+class TestClassifyErrorsRouted:
+    """classify_errors_routed() must return (category, OracleType, force_adversarial)."""
+
+    def test_routed_algebra_error(self):
+        from alethic.error_taxonomy import classify_errors_routed
+        from alethic.models import OracleType
+
+        category, oracle, force_adv = classify_errors_routed("sign error in step 3")
+        assert category == "algebra"
+        assert oracle == OracleType.LAYER2_CONSISTENCY
+        assert force_adv is False
+
+    def test_routed_logic_error(self):
+        from alethic.error_taxonomy import classify_errors_routed
+        from alethic.models import OracleType
+
+        category, oracle, force_adv = classify_errors_routed("logical gap in the proof")
+        assert category == "logic"
+        assert oracle == OracleType.LAYER3_LLM_ADVERSARIAL
+        assert force_adv is True
+
+    def test_routed_units_error(self):
+        from alethic.error_taxonomy import classify_errors_routed
+        from alethic.models import OracleType
+
+        category, oracle, force_adv = classify_errors_routed("dimensional mismatch found")
+        assert category == "units"
+        assert oracle == OracleType.LAYER0_STRUCTURAL
+        assert force_adv is False
+
+    def test_routed_citation_error(self):
+        from alethic.error_taxonomy import classify_errors_routed
+        from alethic.models import OracleType
+
+        category, oracle, force_adv = classify_errors_routed("no citation for this result")
+        assert category == "citation"
+        assert oracle == OracleType.LAYER3_LLM
+        assert force_adv is False
+
+    def test_routed_missing_case(self):
+        from alethic.error_taxonomy import classify_errors_routed
+        from alethic.models import OracleType
+
+        category, oracle, force_adv = classify_errors_routed("missing edge case n=0")
+        assert category == "missing_case"
+        assert oracle == OracleType.LAYER1_BEHAVIORAL
+        assert force_adv is False
+
+    def test_routed_general(self):
+        from alethic.error_taxonomy import classify_errors_routed
+        from alethic.models import OracleType
+
+        category, oracle, force_adv = classify_errors_routed("unclear solution")
+        assert category == "general"
+        assert oracle == OracleType.LAYER3_LLM
+        assert force_adv is False
