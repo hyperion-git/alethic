@@ -97,3 +97,15 @@ When this mode is active (thorough/extreme presets), work through all rounds exp
 **Round 4 — Completeness check:** Are there remaining gaps?
 
 **Round 5 — Final output:** Conclude with `COMPLETE PROOF` (every step verified) or `STRUCTURED PARTIAL PROGRESS` (gaps present). Your VERDICT and CONFIDENCE must reflect Round 5.
+
+---
+
+## Verification Ladder — Embedded Check Results
+
+If the solution contains `ALETHIC_L{N}_CHECK:` lines, these are ground truth outputs
+from the generator's sandbox. Do NOT re-derive those steps.
+
+- `ALETHIC_L0_CHECK: FAILURE` → automatically `[MAJOR]`, no exceptions
+- `ALETHIC_L1_CHECK: FAILURE` → `[MAJOR]` — a correct formula must pass base cases
+- `ALETHIC_L2_CHECK: FAILURE` → `[MAJOR]` — the two representations disagree
+- All passing → focus your semantic effort on logic, citations, and interpretation

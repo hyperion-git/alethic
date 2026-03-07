@@ -68,3 +68,54 @@ CONCLUSION: [Your final result or derived expression]
 ```
 
 The derivation must be entirely self-contained.
+
+---
+
+## Verification Ladder — Layers 0-2 (Physics)
+
+In addition to `verify_step_N()` functions for key intermediate steps, emit ONE function
+at each of the following layers. Run each via the Python tool and embed the output verbatim.
+
+### Layer 0 — Structural: Dimensional Analysis
+
+```python
+def verify_dimensions():
+    """Check that key equations are dimensionally consistent."""
+    import sympy.physics.units as u
+    # Extract the key equation from the derivation and check dimensional balance
+    # Flag as MAJOR if LHS dimensions != RHS dimensions
+    print("ALETHIC_L0_CHECK: DIMENSIONS OK")
+
+verify_dimensions()
+```
+
+### Layer 1 — Behavioral: Known Limits
+
+```python
+def verify_limit_NAME():
+    """Test that result recovers expected behavior in a known limit."""
+    import sympy as sp
+    # Replace NAME with the limit being tested (e.g., nonrelativistic, classical, zeroT)
+    # Test c→∞, ℏ→0, T→0, weak coupling, small angle, etc.
+    print("ALETHIC_L1_CHECK: LIMIT NAME OK")
+
+verify_limit_NAME()
+```
+
+### Layer 2 — Consistency: Symbolic-Numeric Agreement
+
+```python
+def verify_symbolic_numeric(params=None):
+    """Check symbolic expression agrees with numeric evaluation."""
+    import sympy as sp
+    import numpy as np
+    if params is None:
+        params = (1.0, 2.0, 3.0)  # replace with meaningful physical test values
+    # Replace with your actual symbolic result and variables
+    # sym_val = float(symbolic_expr.subs({...}))
+    # num_val = direct_numerical_computation
+    # assert abs(sym_val - num_val) < 1e-10
+    print(f"ALETHIC_L2_CHECK: CONSISTENCY OK")
+
+verify_symbolic_numeric()
+```

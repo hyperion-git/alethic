@@ -78,3 +78,53 @@ CONCLUSION: [Your final answer or theorem statement]
 ```
 
 The solution must be entirely self-contained.
+
+---
+
+## Verification Ladder — Layers 0-2 (Math)
+
+In addition to `verify_step_N()` functions for key intermediate steps, emit ONE function
+at each of the following layers. Run each via the Python tool and embed the output verbatim.
+
+### Layer 0 — Structural: Degree and Type Consistency
+
+```python
+def verify_structure():
+    """Check formula is well-typed (correct degree, polynomial form, etc.)."""
+    import sympy as sp
+    n = sp.Symbol('n', positive=True, integer=True)
+    result = YOUR_FORMULA_HERE
+    # Add appropriate structural assertions
+    print("ALETHIC_L0_CHECK: STRUCTURE OK")
+
+verify_structure()
+```
+
+### Layer 1 — Behavioral: Base Cases
+
+```python
+def verify_base_cases():
+    """Verify formula for n=0,1,2,3 and at least one larger value."""
+    formula = lambda k: YOUR_FORMULA_HERE
+    expected = {0: DIRECT_0, 1: DIRECT_1, 2: DIRECT_2, 3: DIRECT_3}
+    for k, exp in expected.items():
+        got = int(formula(k))
+        assert got == exp, f"n={k}: expected {exp}, got {got}"
+    print(f"ALETHIC_L1_CHECK: BASE CASES OK (n=0..{max(expected)})")
+
+verify_base_cases()
+```
+
+### Layer 2 — Consistency: Dual Representation
+
+```python
+def verify_dual_representation(n_test=10):
+    """Verify closed form matches direct computation."""
+    formula = lambda k: YOUR_CLOSED_FORM
+    direct = YOUR_DIRECT_COMPUTATION_FOR_n_test
+    closed = formula(n_test)
+    assert direct == closed, f"Dual check failed: {direct} != {closed}"
+    print(f"ALETHIC_L2_CHECK: CONSISTENCY OK at n={n_test} ({direct}=={closed})")
+
+verify_dual_representation()
+```
