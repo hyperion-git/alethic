@@ -1407,8 +1407,7 @@ REASON: N/A
 
     # ── T7: Verifier exception resilience ────────────────────────────
 
-    @patch("alethic.subagents.process_tool_calls", return_value=[])
-    def test_consensus_survives_one_verifier_exception(self, mock_tools):
+    def test_consensus_survives_one_verifier_exception(self):
         """When one of K verifier futures raises, consensus should still complete with K-1."""
         from alethic.verifier_agent import VerifierAgent
 
@@ -1418,38 +1417,28 @@ REASON: N/A
             verbose=False,
         )
 
-        # Build good VerificationResult responses
-        good_verify_text = (
-            "VERDICT: correct\nCONFIDENCE: 0.92\n\nCRITIQUE:\nAll good.\n\nISSUES:\nNone"
-        )
-        good_response = self._mock_response(good_verify_text)
-
-        # Synthesizer response
+        # Synthesizer uses client.messages.create directly
         synth_response = self._mock_response("Unified critique: all good.")
-
         mock_client = MagicMock()
-        # 2 successful verify calls + 1 synthesize call
-        mock_client.messages.create.side_effect = [
-            good_response,
-            good_response,
-            synth_response,
-        ]
+        mock_client.messages.create.return_value = synth_response
 
         agent = VerifierAgent(config=config)
         agent.client = mock_client
 
-        # Patch _run_single_verify to make one raise, two succeed
+        # Patch verify_subagent to make one call raise, two succeed
         call_count = 0
-        original_run = agent._run_single_verify
+        good_result = VerificationResult(
+            verdict=Verdict.CORRECT, critique="All good.", confidence=0.92
+        )
 
-        def _patched_run(*args, **kwargs):
+        def _patched_verify(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             if call_count == 2:
                 raise RuntimeError("Simulated verifier crash")
-            return original_run(*args, **kwargs)
+            return good_result
 
-        with patch.object(agent, "_run_single_verify", side_effect=_patched_run):
+        with patch("alethic.verifier_agent.verify_subagent", side_effect=_patched_verify):
             result = agent.verify(
                 problem="Is 1+1=2?",
                 solution="Yes, 1+1=2 by Peano axioms.",

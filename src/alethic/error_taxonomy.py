@@ -139,5 +139,5 @@ def classify_errors_routed(critique: str) -> tuple[str, OracleType, bool]:
     for the next iteration.
     """
     category = classify_errors(critique)
-    oracle, force_adv = _ORACLE_ROUTING.get(category, (OracleType.LAYER3_LLM, False))
+    oracle, force_adv = _ORACLE_ROUTING[category]
     return category, oracle, force_adv

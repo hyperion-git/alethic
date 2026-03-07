@@ -9,10 +9,12 @@ from __future__ import annotations
 from alethic.agent import MathAgent
 from alethic.physics_prompts import (
     BALANCED_PHYSICS_ADDENDUM,
+    PHYSICS_ADVERSARIAL_VERIFIER_ADDENDUM,
     PHYSICS_GENERATOR_SYSTEM,
     PHYSICS_GENERATOR_USER,
     PHYSICS_REVISER_SYSTEM,
     PHYSICS_REVISER_USER,
+    PHYSICS_STRATEGY_RESET_ADDENDUM,
     PHYSICS_TOOL_GUIDANCE,
     PHYSICS_VERIFIER_SYSTEM,
     PHYSICS_VERIFIER_USER,
@@ -50,15 +52,11 @@ class PhysicsAgent(MathAgent):
         return PHYSICS_TOOL_GUIDANCE
 
     def _reset_addendum(self) -> str:
-        from alethic.physics_prompts import PHYSICS_STRATEGY_RESET_ADDENDUM
-
         return PHYSICS_STRATEGY_RESET_ADDENDUM
 
     def _adversarial_addendum(self) -> str | None:
         if not self.config.adversarial_self_correction:
             return None
-        from alethic.physics_prompts import PHYSICS_ADVERSARIAL_VERIFIER_ADDENDUM
-
         return PHYSICS_ADVERSARIAL_VERIFIER_ADDENDUM
 
     def _log_header(self) -> str:

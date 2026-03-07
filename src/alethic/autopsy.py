@@ -16,6 +16,26 @@ from alethic.models import AgentResult, EventType
 from alethic.subagents import _create_with_retry, _extract_text
 
 
+def _best_per_iteration(raw_verify_events: list) -> list:
+    """Filter VERIFY events to one per iteration (highest confidence).
+
+    In best-of-N mode, multiple VERIFY events are emitted per iteration.
+    This keeps only the winning candidate's event so downstream analysis
+    reflects the actual trajectory.  Returns the list unchanged when
+    best-of-N is not detected.
+    """
+    iterations_seen = {e.iteration for e in raw_verify_events}
+    has_multi = any("candidate" in e.data for e in raw_verify_events)
+    if not (has_multi and len(iterations_seen) < len(raw_verify_events)):
+        return raw_verify_events
+
+    best = []
+    for it in sorted(iterations_seen):
+        it_events = [e for e in raw_verify_events if e.iteration == it]
+        best.append(max(it_events, key=lambda e: float(e.data.get("confidence", 0.0))))
+    return best
+
+
 def _classify_failure_pattern(result: AgentResult) -> str:
     """Classify the failure pattern from agent events.
 
@@ -29,19 +49,7 @@ def _classify_failure_pattern(result: AgentResult) -> str:
     if not raw_verify_events:
         return "stall"
 
-    # In best-of-N mode, multiple VERIFY events are emitted per iteration.
-    # Keep only the best (highest confidence) candidate per iteration so
-    # the classifier reflects the winning candidate's trajectory.
-    iterations_seen = {e.iteration for e in raw_verify_events}
-    has_multi = any("candidate" in e.data for e in raw_verify_events)
-    if has_multi and len(iterations_seen) < len(raw_verify_events):
-        verify_events = []
-        for it in sorted(iterations_seen):
-            it_events = [e for e in raw_verify_events if e.iteration == it]
-            best = max(it_events, key=lambda e: float(e.data.get("confidence", 0.0)))
-            verify_events.append(best)
-    else:
-        verify_events = raw_verify_events
+    verify_events = _best_per_iteration(raw_verify_events)
 
     verdicts = [e.data.get("verdict", "") for e in verify_events]
     confidences = [float(e.data.get("confidence", 0.0)) for e in verify_events]
@@ -69,19 +77,8 @@ def _classify_failure_pattern(result: AgentResult) -> str:
 def _build_autopsy_context(result: AgentResult, pattern: str) -> str:
     """Build the structured context passed to the LLM for synthesis."""
     raw_verify_events = [e for e in result.events if e.type == EventType.VERIFY]
-    stall_events = [e for e in result.events if e.type == EventType.STALL_RESET]
-
-    # Use the same best-candidate-per-iteration filtering as the classifier.
-    iterations_seen = {e.iteration for e in raw_verify_events}
-    has_multi = any("candidate" in e.data for e in raw_verify_events)
-    if has_multi and len(iterations_seen) < len(raw_verify_events):
-        verify_events = []
-        for it in sorted(iterations_seen):
-            it_events = [e for e in raw_verify_events if e.iteration == it]
-            best = max(it_events, key=lambda e: float(e.data.get("confidence", 0.0)))
-            verify_events.append(best)
-    else:
-        verify_events = raw_verify_events
+    verify_events = _best_per_iteration(raw_verify_events)
+    stall_count = sum(1 for e in result.events if e.type == EventType.STALL_RESET)
 
     conf_trajectory = " → ".join(
         f"{e.data.get('confidence', 0.0):.2f}" for e in verify_events
@@ -94,7 +91,7 @@ def _build_autopsy_context(result: AgentResult, pattern: str) -> str:
         f"FAILURE PATTERN: {pattern}\n"
         f"ITERATIONS USED: {result.iterations_used}\n"
         f"CONFIDENCE TRAJECTORY: {conf_trajectory}\n"
-        f"STALL RESETS TRIGGERED: {len(stall_events)}\n"
+        f"STALL RESETS TRIGGERED: {stall_count}\n"
         f"BEST CONFIDENCE REACHED: {result.confidence:.2f}\n"
         f"\nFAILED APPROACHES (last 5):\n{approaches_text}\n"
     )

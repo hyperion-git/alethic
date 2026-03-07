@@ -64,23 +64,6 @@ class VerifierAgent:
         "See instructions embedded in the verification task."
     )
 
-    def _run_single_verify(
-        self, problem: str, solution_text: str, system: str, user_template: str
-    ) -> VerificationResult:
-        """Run one independent verification."""
-        agent_config = self._build_agent_config()
-        sol = Solution(problem=problem, solution_text=solution_text, iteration=0)
-        extra_system = self._LADDER_PROMPT if self.config.verification_ladder else None
-        return verify_subagent(
-            self.client,
-            problem=problem,
-            solution=sol,
-            config=agent_config,
-            system_prompt=system,
-            user_template=user_template,
-            extra_system=extra_system,
-        )
-
     def _run_consensus(
         self, problem: str, solution: str, detection_text: str, label: str
     ) -> ConsensusResult:
@@ -96,16 +79,27 @@ class VerifierAgent:
         domain = detect_domain(detection_text, override=self.config.domain)
         system, user_template = self._select_prompts(domain)
         k = self.config.num_verifiers
+        agent_config = self._build_agent_config()
+        sol = Solution(problem=problem, solution_text=solution, iteration=0)
+        extra_system = self._LADDER_PROMPT if self.config.verification_ladder else None
 
         if self.config.verbose:
             print(f"Running {k} independent {label} (domain: {domain})...")
 
+        def run_one() -> VerificationResult:
+            return verify_subagent(
+                self.client,
+                problem=problem,
+                solution=sol,
+                config=agent_config,
+                system_prompt=system,
+                user_template=user_template,
+                extra_system=extra_system,
+            )
+
         results: list[VerificationResult] = []
         with ThreadPoolExecutor(max_workers=k) as executor:
-            futures = [
-                executor.submit(self._run_single_verify, problem, solution, system, user_template)
-                for _ in range(k)
-            ]
+            futures = [executor.submit(run_one) for _ in range(k)]
             for future in as_completed(futures):
                 try:
                     results.append(future.result())

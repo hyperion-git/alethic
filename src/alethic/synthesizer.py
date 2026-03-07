@@ -88,10 +88,10 @@ def _similar(a: str, b: str) -> bool:
 
 def _find_similar_index(issue_text: str, merged: list[ConsensusIssue]) -> int | None:
     """Return the index of a similar issue in merged, or None if no match."""
-    for idx, mi in enumerate(merged):
-        if _similar(issue_text, mi.text):
-            return idx
-    return None
+    return next(
+        (idx for idx, mi in enumerate(merged) if _similar(issue_text, mi.text)),
+        None,
+    )
 
 
 def _most_severe(a: IssueSeverity, b: IssueSeverity) -> IssueSeverity:
@@ -112,12 +112,9 @@ def aggregate_mechanical(results: list[VerificationResult]) -> dict[str, Any]:
 
     # Majority-vote verdict (ties broken by severity)
     verdict_counts = Counter(r.verdict for r in results)
-    most_common = verdict_counts.most_common()
-    if len(most_common) == 1 or most_common[0][1] > most_common[1][1]:
-        verdict = most_common[0][0]
-    else:
-        tied = [v for v, c in most_common if c == most_common[0][1]]
-        verdict = min(tied, key=lambda v: _VERDICT_SEVERITY.get(v, 99))
+    top_count = verdict_counts.most_common(1)[0][1]
+    tied = [v for v, c in verdict_counts.items() if c == top_count]
+    verdict = min(tied, key=lambda v: _VERDICT_SEVERITY.get(v, 99))
 
     # Mean confidence
     confidences = [r.confidence for r in results]
@@ -163,11 +160,10 @@ def synthesize_critique(
 
     Does NOT override verdict or confidence.
     """
-    issues_lines = [
+    issues_text = "\n".join(
         f"- [{issue.severity.value.upper()}] {issue.text} ({issue.flagged_by}/{len(results)})"
         for issue in aggregation["issues"]
-    ]
-    issues_text = "\n".join(issues_lines) if issues_lines else "None"
+    ) or "None"
 
     reports_text = "\n\n".join(
         f"### Verifier {i}: {r.verdict.value.upper()} ({r.confidence:.2f})\n\n{r.critique}"
@@ -194,7 +190,6 @@ def synthesize_critique(
         return "\n".join(parts) if parts else "[Synthesis failed]"
     except Exception as e:
         logger.warning("Synthesis failed, falling back to concatenation: %s", e)
-        fallback_parts = []
-        for i, r in enumerate(results, 1):
-            fallback_parts.append(f"--- Verifier {i} ---\n{r.critique}")
-        return "\n\n".join(fallback_parts)
+        return "\n\n".join(
+            f"--- Verifier {i} ---\n{r.critique}" for i, r in enumerate(results, 1)
+        )

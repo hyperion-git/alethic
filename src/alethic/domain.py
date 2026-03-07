@@ -7,15 +7,29 @@ import re
 from importlib import resources
 
 _TIER_WEIGHTS = {"strong": 3, "moderate": 2, "weak": 1}
-_KEYWORDS: dict | None = None
+
+# Cached compiled patterns: list of (domain, weight, compiled_regex) per keyword.
+_PATTERNS: list[tuple[str, int, re.Pattern[str]]] | None = None
 
 
-def _load_keywords() -> dict:
-    global _KEYWORDS
-    if _KEYWORDS is None:
-        ref = resources.files("alethic.data").joinpath("domain-keywords.json")
-        _KEYWORDS = json.loads(ref.read_text(encoding="utf-8"))
-    return _KEYWORDS
+def _load_patterns() -> list[tuple[str, int, re.Pattern[str]]]:
+    """Load domain keywords and compile word-boundary regexes (once)."""
+    global _PATTERNS
+    if _PATTERNS is not None:
+        return _PATTERNS
+
+    ref = resources.files("alethic.data").joinpath("domain-keywords.json")
+    keywords = json.loads(ref.read_text(encoding="utf-8"))
+
+    patterns: list[tuple[str, int, re.Pattern[str]]] = []
+    for domain, tiers in keywords.items():
+        for tier_name, terms in tiers.items():
+            weight = _TIER_WEIGHTS.get(tier_name, 1)
+            for term in terms:
+                pattern = re.compile(r"\b" + re.escape(term.lower()) + r"\b")
+                patterns.append((domain, weight, pattern))
+    _PATTERNS = patterns
+    return _PATTERNS
 
 
 def detect_domain(text: str, *, override: str | None = None) -> str:
@@ -36,20 +50,12 @@ def detect_domain(text: str, *, override: str | None = None) -> str:
     if not text.strip():
         return "math"
 
-    keywords = _load_keywords()
     text_lower = text.lower()
+    scores: dict[str, float] = {"math": 0.0, "physics": 0.0}
+    for domain, weight, pattern in _load_patterns():
+        if pattern.search(text_lower):
+            scores[domain] += weight
 
-    scores: dict[str, float] = {}
-    for domain, tiers in keywords.items():
-        score = 0.0
-        for tier_name, terms in tiers.items():
-            weight = _TIER_WEIGHTS.get(tier_name, 1)
-            for term in terms:
-                # Word-boundary match, case-insensitive
-                if re.search(r"\b" + re.escape(term.lower()) + r"\b", text_lower):
-                    score += weight
-        scores[domain] = score
-
-    if scores.get("physics", 0) > scores.get("math", 0):
+    if scores["physics"] > scores["math"]:
         return "physics"
     return "math"  # tie or math wins -> default to math

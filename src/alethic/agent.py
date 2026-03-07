@@ -47,7 +47,9 @@ from alethic.models import (
     VerificationResult,
 )
 from alethic.prompts import (
+    ADVERSARIAL_VERIFIER_ADDENDUM,
     GENERATOR_SYSTEM,
+    STRATEGY_RESET_ADDENDUM,
     TOOL_GUIDANCE,
     VERIFIER_SYSTEM,
 )
@@ -88,6 +90,24 @@ class RunState:
     iteration_final_verdicts: deque = field(default_factory=lambda: deque(maxlen=2))
     resets_used: int = 0
     reset_cooldown_remaining: int = 0
+
+    @property
+    def best_solution_text(self) -> str | None:
+        """Return the best solution text, or None if no solution has been recorded."""
+        return self.best_solution.solution_text if self.best_solution else None
+
+    def stall_state_dict(self) -> dict:
+        """Serialize stall detection state for checkpoint persistence."""
+        return {
+            "iterations_since_meaningful_improvement": (
+                self.iterations_since_meaningful_improvement
+            ),
+            "iteration_final_verdicts": [
+                v.value if isinstance(v, Verdict) else str(v) for v in self.iteration_final_verdicts
+            ],
+            "resets_used": self.resets_used,
+            "reset_cooldown_remaining": self.reset_cooldown_remaining,
+        }
 
 
 @dataclass
@@ -187,8 +207,6 @@ class MathAgent:
 
         Override in subclasses to use domain-specific reset prompts.
         """
-        from alethic.prompts import STRATEGY_RESET_ADDENDUM
-
         return STRATEGY_RESET_ADDENDUM
 
     def _adversarial_addendum(self) -> str | None:
@@ -198,8 +216,6 @@ class MathAgent:
         """
         if not self.config.adversarial_self_correction:
             return None
-        from alethic.prompts import ADVERSARIAL_VERIFIER_ADDENDUM
-
         return ADVERSARIAL_VERIFIER_ADDENDUM
 
     def _check_stall(self, state: RunState) -> bool:
@@ -263,7 +279,7 @@ class MathAgent:
 
     def _build_reset_context(self, failed_approaches: list[str]) -> str:
         """Build the strategy-reset prompt overlay for a reset iteration."""
-        recent = failed_approaches[-5:] if len(failed_approaches) > 5 else failed_approaches
+        recent = failed_approaches[-5:]
         approaches_text = "\n".join(f"- {a}" for a in recent) if recent else "- (none recorded)"
         return self._reset_addendum().replace("{failed_approaches}", approaches_text)
 
@@ -482,8 +498,7 @@ class MathAgent:
 
         for rev_num in range(1, effective_max_revisions + 1):
             self._log(f"[REVISE] Revision {rev_num}/{effective_max_revisions}...")
-            _error_category = classify_errors(verification.critique)
-            _revision_addendum = get_revision_addendum(_error_category)
+            revision_addendum = get_revision_addendum(classify_errors(verification.critique))
             current_solution = revise(
                 self.client,
                 problem=problem,
@@ -493,7 +508,7 @@ class MathAgent:
                 revision_number=rev_num,
                 system_prompt=prompts.get("reviser_system"),
                 user_template=prompts.get("reviser_user"),
-                critique_addendum=_revision_addendum if _revision_addendum else None,
+                critique_addendum=revision_addendum or None,
                 ledger=ledger,
                 context_limit=context_limit,
                 context_threshold=context_threshold,
@@ -762,22 +777,21 @@ class MathAgent:
                     log.emit(EventType.ERROR, iteration, error="all candidates failed")
                     continue
 
-                n_expected = n_this_iter if is_reset else self.config.best_of_n
-                n_failed = n_expected - len(candidates)
+                n_failed = n_this_iter - len(candidates)
                 if n_failed > 0:
                     log.emit(
                         EventType.ERROR,
                         iteration,
-                        error=f"{n_failed}/{n_expected} candidates failed",
+                        error=f"{n_failed}/{n_this_iter} candidates failed",
                     )
                     logger.info(
                         "Generated %d/%d candidates (%d failed)",
                         len(candidates),
-                        n_expected,
+                        n_this_iter,
                         n_failed,
                     )
                     self._log(
-                        f"[GENERATE] Warning: {len(candidates)}/{n_expected} candidates "
+                        f"[GENERATE] Warning: {len(candidates)}/{n_this_iter} candidates "
                         f"succeeded ({n_failed} failed)"
                     )
 
@@ -824,11 +838,11 @@ class MathAgent:
                 iteration_verdict = verification.verdict
 
                 # Update EvidenceState for adaptive compute (next iter) and revision budget
-                _error_cat = classify_errors(verification.critique)
+                error_cat = classify_errors(verification.critique)
                 evidence_state = EvidenceState(
                     iteration=iteration,
                     best_confidence=state.best_confidence,
-                    error_category=_error_cat,
+                    error_category=error_cat,
                     confidence_history=(
                         evidence_state.confidence_history + [state.best_confidence]
                         if evidence_state is not None
@@ -950,13 +964,12 @@ class MathAgent:
 
                 # ── REVISE (best candidate) ──
                 if verification.needs_revision(threshold):
-                    _revisions_this_iter: int | None = 1 if is_reset else None
-                    if (
-                        not is_reset
-                        and self.config.adaptive_revision_budget
-                        and evidence_state is not None
-                    ):
-                        _revisions_this_iter = self._compute_adaptive_revisions(evidence_state)
+                    if is_reset:
+                        revisions_this_iter: int | None = 1
+                    elif self.config.adaptive_revision_budget and evidence_state is not None:
+                        revisions_this_iter = self._compute_adaptive_revisions(evidence_state)
+                    else:
+                        revisions_this_iter = None
                     result = self._run_revision_loop(
                         problem=problem,
                         solution=solution,
@@ -966,7 +979,7 @@ class MathAgent:
                         state=state,
                         log=log,
                         threshold=threshold,
-                        max_revisions=_revisions_this_iter,
+                        max_revisions=revisions_this_iter,
                         ledger=ledger,
                         context_limit=context_limit,
                         context_threshold=self.config.context_threshold,
@@ -997,21 +1010,9 @@ class MathAgent:
                             session_dir=session_dir,
                             current_iteration=iteration,
                             best_confidence=state.best_confidence,
-                            best_solution_text=(
-                                state.best_solution.solution_text if state.best_solution else None
-                            ),
+                            best_solution_text=state.best_solution_text,
                             failed_approaches=state.failed_approaches,
-                            stall_state={
-                                "iterations_since_meaningful_improvement": (
-                                    state.iterations_since_meaningful_improvement
-                                ),
-                                "iteration_final_verdicts": [
-                                    v.value if isinstance(v, Verdict) else str(v)
-                                    for v in state.iteration_final_verdicts
-                                ],
-                                "resets_used": state.resets_used,
-                                "reset_cooldown_remaining": state.reset_cooldown_remaining,
-                            },
+                            stall_state=state.stall_state_dict(),
                             token_ledger=ledger,
                             status="running",
                         )
@@ -1027,21 +1028,9 @@ class MathAgent:
                             session_dir=session_dir,
                             current_iteration=iteration,
                             best_confidence=state.best_confidence,
-                            best_solution_text=(
-                                state.best_solution.solution_text if state.best_solution else None
-                            ),
+                            best_solution_text=state.best_solution_text,
                             failed_approaches=state.failed_approaches,
-                            stall_state={
-                                "iterations_since_meaningful_improvement": (
-                                    state.iterations_since_meaningful_improvement
-                                ),
-                                "iteration_final_verdicts": [
-                                    v.value if isinstance(v, Verdict) else str(v)
-                                    for v in state.iteration_final_verdicts
-                                ],
-                                "resets_used": state.resets_used,
-                                "reset_cooldown_remaining": state.reset_cooldown_remaining,
-                            },
+                            stall_state=state.stall_state_dict(),
                             token_ledger=ledger,
                             status="checkpoint",
                         )
@@ -1051,19 +1040,15 @@ class MathAgent:
                     logger.warning("Failed to write checkpoint: %s", cp_err)
                     checkpoint_path = None
 
-                best_text = state.best_solution.solution_text if state.best_solution else None
-                return AgentResult(
+                return self._make_result(
                     problem=problem,
-                    solution=best_text,
+                    solution=state.best_solution_text,
                     verdict=Verdict.UNSOLVED,
                     confidence=state.best_confidence,
                     iterations_used=iteration,
-                    total_revisions=state.total_revisions,
                     admitted_failure=False,
-                    events=log.events,
-                    elapsed_seconds=time.time() - state.start_time,
-                    candidates_per_iteration=self.config.best_of_n,
-                    failed_approaches=state.failed_approaches,
+                    state=state,
+                    log=log,
                     token_ledger=ledger,
                     session_dir=session_dir,
                     checkpoint_path=checkpoint_path,
@@ -1092,10 +1077,9 @@ class MathAgent:
             reason="max_iterations_exhausted",
         )
 
-        best_text = state.best_solution.solution_text if state.best_solution else None
         result = self._make_result(
             problem=problem,
-            solution=best_text,
+            solution=state.best_solution_text,
             verdict=Verdict.UNSOLVED,
             confidence=state.best_confidence,
             iterations_used=self.config.max_iterations,

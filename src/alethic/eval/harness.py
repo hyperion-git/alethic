@@ -36,7 +36,7 @@ def load_benchmark(path: str) -> dict[str, Any]:
     """
     data = cast("dict[str, Any]", json.loads(Path(path).read_text(encoding="utf-8")))
     for problem in data.get("problems", []):
-        missing = _REQUIRED_PROBLEM_FIELDS - set(problem.keys())
+        missing = _REQUIRED_PROBLEM_FIELDS - problem.keys()
         if missing:
             raise ValueError(
                 f"Problem {problem.get('id', '?')} missing required field(s): {missing}"
@@ -72,24 +72,23 @@ def run_benchmark(
     for problem_spec in benchmark["problems"]:
         pid = problem_spec["id"]
         domain = problem_spec.get("domain", "math")
-        problem_text = problem_spec["problem"]
         expected_solvable = problem_spec["expected_solvable"]
 
         if verbose:
             print(f"[{pid}] Running ({domain})...")
 
-        agent: MathAgent
-        if domain == "physics":
-            agent = PhysicsAgent(config=config, api_key=api_key)
-        else:
-            agent = MathAgent(config=config, api_key=api_key)
+        agent_cls = PhysicsAgent if domain == "physics" else MathAgent
+        agent = agent_cls(config=config, api_key=api_key)
+
+        outcome: dict[str, Any] = {
+            "id": pid,
+            "domain": domain,
+            "expected_solvable": expected_solvable,
+        }
 
         try:
-            result = agent.solve(problem_text)
-            outcome = {
-                "id": pid,
-                "domain": domain,
-                "expected_solvable": expected_solvable,
+            result = agent.solve(problem_spec["problem"])
+            outcome |= {
                 "solved": result.solved,
                 "verdict": result.verdict.value,
                 "confidence": result.confidence,
@@ -98,10 +97,7 @@ def run_benchmark(
                 "error": None,
             }
         except Exception as exc:  # noqa: BLE001
-            outcome = {
-                "id": pid,
-                "domain": domain,
-                "expected_solvable": expected_solvable,
+            outcome |= {
                 "solved": False,
                 "verdict": "error",
                 "confidence": 0.0,
@@ -116,19 +112,17 @@ def run_benchmark(
             print(f"  {status} verdict={outcome['verdict']} conf={outcome['confidence']:.2f}")
 
     elapsed = time.time() - start
-    solved_count = sum(1 for r in results if r["solved"])
     total = len(results)
-    confidences = [r["confidence"] for r in results]
-    iterations = [r["iterations_used"] for r in results]
+    solved_count = sum(1 for r in results if r["solved"])
 
     return {
         "benchmark": benchmark.get("name", Path(path).stem),
         "preset": preset,
         "total": total,
         "solved": solved_count,
-        "solve_rate": solved_count / total if total > 0 else 0.0,
-        "avg_confidence": sum(confidences) / len(confidences) if confidences else 0.0,
-        "avg_iterations": sum(iterations) / len(iterations) if iterations else 0.0,
+        "solve_rate": solved_count / total if total else 0.0,
+        "avg_confidence": sum(r["confidence"] for r in results) / total if total else 0.0,
+        "avg_iterations": sum(r["iterations_used"] for r in results) / total if total else 0.0,
         "elapsed_seconds": round(elapsed, 2),
         "results": results,
     }

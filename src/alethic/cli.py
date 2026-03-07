@@ -398,6 +398,7 @@ def _build_verifier_config(args: argparse.Namespace) -> VerifierConfig:
     if args.tools == "none":
         overrides["tool_guidance"] = frozenset()
     elif args.tools == "sympy,numpy":
+        # Default: expand to the full verifier set (includes scipy, matplotlib)
         overrides["tool_guidance"] = _VERIFIER_DEFAULT_TOOLS
     else:
         overrides["tool_guidance"] = frozenset(args.tools.split(","))
@@ -497,7 +498,7 @@ def _eval_handler(argv: list[str]) -> int:
     eval_run_parser.add_argument(
         "--preset",
         "-p",
-        choices=["quick", "default", "thorough", "extreme"],
+        choices=list(AgentConfig.PRESETS),
         default="quick",
         help="Agent preset to use (default: quick)",
     )
@@ -559,7 +560,7 @@ def main(argv: list[str] | None = None) -> int:
     # Get problem text
     if args.file:
         try:
-            with open(args.file) as f:
+            with open(args.file, encoding="utf-8") as f:
                 problem = f.read().strip()
         except OSError as e:
             parser.error(f"Cannot read file '{args.file}': {e}")
@@ -586,9 +587,7 @@ def main(argv: list[str] | None = None) -> int:
         agent = MathAgent(config=config, api_key=args.api_key)
 
     try:
-        result = agent.solve(
-            problem, balanced=not args.no_balanced, resume_from=args.resume
-        )
+        result = agent.solve(problem, balanced=not args.no_balanced, resume_from=args.resume)
     except KeyboardInterrupt:
         print("\n[Interrupted by user]")
         return 130

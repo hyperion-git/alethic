@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from dataclasses import fields as dataclass_fields
 from typing import Any, ClassVar
 
+VALID_TOOL_GUIDANCE: frozenset[str] = frozenset({"sympy", "numpy", "scipy", "matplotlib"})
+
 MODEL_CONTEXT_LIMITS: dict[str, int] = {
     "claude-opus-4-6": 200_000,
     "claude-sonnet-4-6": 200_000,
@@ -116,7 +118,7 @@ class TokenLedger:
     def total_tokens(self) -> int:
         return self.input_tokens + self.output_tokens
 
-    def record(self, usage: Any, oracle_type: OracleType | None = None) -> None:
+    def record(self, usage: Any) -> None:
         """Record token usage from an Anthropic API response."""
         self.input_tokens += usage.input_tokens
         self.output_tokens += usage.output_tokens
@@ -198,11 +200,11 @@ class AgentConfig:
             raise ValueError(
                 f"max_revisions_per_cycle must be >= 0, got {self.max_revisions_per_cycle}"
             )
-        valid_tools = {"sympy", "numpy", "scipy", "matplotlib"}
-        invalid = self.tool_guidance - valid_tools
+        invalid = self.tool_guidance - VALID_TOOL_GUIDANCE
         if invalid:
             raise ValueError(
-                f"Unknown tool_guidance values: {invalid}. Valid values: {valid_tools}"
+                f"Unknown tool_guidance values: {invalid}. "
+                f"Valid values: {VALID_TOOL_GUIDANCE}"
             )
         if not 0.0 <= self.confidence_threshold <= 1.0:
             raise ValueError(
@@ -369,10 +371,12 @@ class VerifierConfig:
     def __post_init__(self) -> None:
         if self.num_verifiers < 1:
             raise ValueError(f"num_verifiers must be >= 1, got {self.num_verifiers}")
-        valid_tools = {"sympy", "numpy", "scipy", "matplotlib"}
-        invalid = self.tool_guidance - valid_tools
+        invalid = self.tool_guidance - VALID_TOOL_GUIDANCE
         if invalid:
-            raise ValueError(f"Unknown tool_guidance values: {invalid}. Valid: {valid_tools}")
+            raise ValueError(
+                f"Unknown tool_guidance values: {invalid}. "
+                f"Valid: {VALID_TOOL_GUIDANCE}"
+            )
         if self.max_tokens < 1:
             raise ValueError(f"max_tokens must be >= 1, got {self.max_tokens}")
         if self.temperature < 0:

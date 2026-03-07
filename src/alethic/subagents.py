@@ -57,11 +57,7 @@ _SEVERITY_MAP: dict[str, IssueSeverity] = {
 
 def _extract_text(response) -> str:
     """Extract concatenated text blocks from an Anthropic response."""
-    parts = [
-        b.text
-        for b in response.content
-        if hasattr(b, "text") and getattr(b, "type", None) == "text"
-    ]
+    parts = [b.text for b in response.content if getattr(b, "type", None) == "text"]
     return "\n".join(parts) if parts else "[No response generated]"
 
 
@@ -423,7 +419,7 @@ def _parse_verification(text: str) -> VerificationResult:
         issues=issues,
         reason=reason,
         section_confidences=section_confidences,
-        corrected_solution=corrected_solution if corrected_solution else None,
+        corrected_solution=corrected_solution,
     )
 
 
@@ -549,13 +545,9 @@ def revise(
     Returns:
         A new Solution containing the revised answer.
     """
-    issues_text = "\n".join(f"- {issue}" for issue in verification.issues)
-    if not issues_text:
-        issues_text = "See critique above."
+    issues_text = "\n".join(f"- {issue}" for issue in verification.issues) or "See critique above."
 
-    critique_text = verification.critique
-    if critique_addendum:
-        critique_text = critique_text + critique_addendum
+    critique_text = verification.critique + (critique_addendum or "")
 
     template = user_template if user_template is not None else REVISER_USER
     user_msg = _safe_format(
