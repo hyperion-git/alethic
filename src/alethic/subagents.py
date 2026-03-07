@@ -525,6 +525,7 @@ def revise(
     *,
     system_prompt: str | None = None,
     user_template: str | None = None,
+    critique_addendum: str | None = None,
     ledger: TokenLedger | None = None,
     context_limit: int = 200_000,
     context_threshold: float = 0.8,
@@ -548,12 +549,16 @@ def revise(
     if not issues_text:
         issues_text = "See critique above."
 
+    critique_text = verification.critique
+    if critique_addendum:
+        critique_text = critique_text + critique_addendum
+
     template = user_template if user_template is not None else REVISER_USER
     user_msg = _safe_format(
         template,
         problem=problem,
         solution=solution.solution_text,
-        critique=verification.critique,
+        critique=critique_text,
         issues=issues_text,
     )
 

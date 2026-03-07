@@ -30,6 +30,7 @@ Usage:
 
 from alethic.agent import MathAgent
 from alethic.autopsy import generate_autopsy
+from alethic.error_taxonomy import classify_errors
 from alethic.exceptions import (
     AlethicError,
     CheckpointError,
@@ -63,6 +64,7 @@ __all__ = [
     "AlethicError",
     "CheckerAgent",
     "CheckpointError",
+    "classify_errors",
     "ConsensusIssue",
     "ConsensusResult",
     "ContextExhaustedError",

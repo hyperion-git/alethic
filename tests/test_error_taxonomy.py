@@ -1,0 +1,90 @@
+"""Tests for error taxonomy-driven revision (feature 1.2)."""
+
+from __future__ import annotations
+
+
+class TestClassifyErrors:
+    """classify_errors() must map critique text to known categories."""
+
+    def test_algebra_keywords(self):
+        from alethic.error_taxonomy import classify_errors
+
+        assert classify_errors("There is a sign error in step 3") == "algebra"
+        assert classify_errors("The arithmetic is wrong: 2+2=5") == "algebra"
+        assert classify_errors("Incorrect simplification in the expansion") == "algebra"
+
+    def test_logic_keywords(self):
+        from alethic.error_taxonomy import classify_errors
+
+        assert classify_errors("This implication does not follow from the premises") == "logic"
+        assert classify_errors("The reasoning contains a circular argument") == "logic"
+        assert classify_errors("There is a gap in the logical chain") == "logic"
+
+    def test_citation_keywords(self):
+        from alethic.error_taxonomy import classify_errors
+
+        assert classify_errors("Vague appeal: 'it is well known' without citation") == "citation"
+        assert classify_errors("The referenced theorem is cited by vague description only") == "citation"
+        assert classify_errors("No source is given for this standard result") == "citation"
+
+    def test_interpretation_keywords(self):
+        from alethic.error_taxonomy import classify_errors
+
+        assert classify_errors("The solution misinterprets the problem statement") == "interpretation"
+        assert classify_errors("The problem premise was misread") == "interpretation"
+
+    def test_units_keywords(self):
+        from alethic.error_taxonomy import classify_errors
+
+        assert classify_errors("Dimensional inconsistency: units do not balance") == "units"
+        assert classify_errors("The SI unit conversion is wrong") == "units"
+
+    def test_missing_case_keywords(self):
+        from alethic.error_taxonomy import classify_errors
+
+        assert classify_errors("The edge case n=0 is not handled") == "missing_case"
+        assert classify_errors("Missing case: when x is negative") == "missing_case"
+        assert classify_errors("The boundary case is not considered") == "missing_case"
+
+    def test_general_fallback(self):
+        from alethic.error_taxonomy import classify_errors
+
+        assert classify_errors("The solution is incomplete.") == "general"
+        assert classify_errors("") == "general"
+
+    def test_case_insensitive(self):
+        from alethic.error_taxonomy import classify_errors
+
+        assert classify_errors("SIGN ERROR in the expansion") == "algebra"
+
+
+class TestGetRevisionAddendum:
+    """get_revision_addendum() must return non-empty strings for known categories."""
+
+    def test_algebra_addendum_nonempty(self):
+        from alethic.error_taxonomy import get_revision_addendum
+
+        assert len(get_revision_addendum("algebra")) > 20
+
+    def test_logic_addendum_nonempty(self):
+        from alethic.error_taxonomy import get_revision_addendum
+
+        assert len(get_revision_addendum("logic")) > 20
+
+    def test_general_addendum_is_empty(self):
+        from alethic.error_taxonomy import get_revision_addendum
+
+        # General category adds nothing — reviser gets standard prompt
+        assert get_revision_addendum("general") == ""
+
+    def test_unknown_category_returns_empty(self):
+        from alethic.error_taxonomy import get_revision_addendum
+
+        assert get_revision_addendum("nonexistent") == ""
+
+    def test_all_known_categories_have_addenda(self):
+        from alethic.error_taxonomy import REVISION_ADDENDA
+
+        for category, addendum in REVISION_ADDENDA.items():
+            if category != "general":
+                assert len(addendum) > 20, f"Category '{category}' has empty addendum"

@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 
 import anthropic
 
+from alethic.error_taxonomy import classify_errors, get_revision_addendum
 from alethic.exceptions import ContextExhaustedError, TruncatedResponseError
 from alethic.models import (
     MODEL_CONTEXT_LIMITS,
@@ -416,6 +417,8 @@ class MathAgent:
 
         for rev_num in range(1, effective_max_revisions + 1):
             self._log(f"[REVISE] Revision {rev_num}/{effective_max_revisions}...")
+            _error_category = classify_errors(verification.critique)
+            _revision_addendum = get_revision_addendum(_error_category)
             current_solution = revise(
                 self.client,
                 problem=problem,
@@ -425,6 +428,7 @@ class MathAgent:
                 revision_number=rev_num,
                 system_prompt=prompts.get("reviser_system"),
                 user_template=prompts.get("reviser_user"),
+                critique_addendum=_revision_addendum if _revision_addendum else None,
                 ledger=ledger,
                 context_limit=context_limit,
                 context_threshold=context_threshold,
