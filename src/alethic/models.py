@@ -364,6 +364,7 @@ class VerifierConfig:
     extended_thinking: bool = False
     thinking_budget: int = 15000
     verbose: bool = True
+    verification_ladder: bool = True  # inject verification-ladder.md into each K verifier
 
     def __post_init__(self) -> None:
         if self.num_verifiers < 1:

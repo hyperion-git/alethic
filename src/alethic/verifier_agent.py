@@ -56,12 +56,21 @@ class VerifierAgent:
             verbose=False,
         )
 
+    _LADDER_PROMPT = (
+        "\n\n## VERIFICATION LADDER REQUIRED\n\n"
+        "Before forming your verdict, execute structured Layer 0-2 checks using your "
+        "Python sandbox. Embed outputs as `[Layer N check]: {result}`. "
+        "A Layer 0 failure is immediately [MAJOR] regardless of the algebra quality. "
+        "See instructions embedded in the verification task."
+    )
+
     def _run_single_verify(
         self, problem: str, solution_text: str, system: str, user_template: str
     ) -> VerificationResult:
         """Run one independent verification."""
         agent_config = self._build_agent_config()
         sol = Solution(problem=problem, solution_text=solution_text, iteration=0)
+        extra_system = self._LADDER_PROMPT if self.config.verification_ladder else None
         return verify_subagent(
             self.client,
             problem=problem,
@@ -69,6 +78,7 @@ class VerifierAgent:
             config=agent_config,
             system_prompt=system,
             user_template=user_template,
+            extra_system=extra_system,
         )
 
     def _run_consensus(
