@@ -440,3 +440,13 @@ PHYSICS_TOOL_GUIDANCE = {
         "verifier": PHYSICS_NUMPY_VERIFIER_GUIDANCE,
     },
 }
+
+# ---------------------------------------------------------------------------
+# Verification Ladder — Layer 0-2 injection (feature 2.1)
+# ---------------------------------------------------------------------------
+
+from alethic.physics_checks import PHYSICS_CHECK_GUIDANCE  # noqa: E402
+from alethic.prompts import _VERIFIER_LAYER_GUIDANCE  # noqa: E402
+
+PHYSICS_GENERATOR_SYSTEM = PHYSICS_GENERATOR_SYSTEM + PHYSICS_CHECK_GUIDANCE
+PHYSICS_VERIFIER_SYSTEM = PHYSICS_VERIFIER_SYSTEM + _VERIFIER_LAYER_GUIDANCE

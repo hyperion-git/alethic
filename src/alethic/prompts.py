@@ -8,6 +8,8 @@ Each subagent receives carefully designed system prompts that define its role,
 constraints, and output format.
 """
 
+from alethic.physics_checks import MATH_CHECK_GUIDANCE
+
 # ---------------------------------------------------------------------------
 # Generator
 # ---------------------------------------------------------------------------
@@ -387,3 +389,26 @@ TOOL_GUIDANCE = {
     "sympy": {"generator": SYMPY_GENERATOR_GUIDANCE, "verifier": SYMPY_VERIFIER_GUIDANCE},
     "numpy": {"generator": NUMPY_GENERATOR_GUIDANCE, "verifier": NUMPY_VERIFIER_GUIDANCE},
 }
+
+# ---------------------------------------------------------------------------
+# Verification Ladder — Layer 0-2 injection (feature 2.1)
+# ---------------------------------------------------------------------------
+
+GENERATOR_SYSTEM = GENERATOR_SYSTEM + MATH_CHECK_GUIDANCE
+
+_VERIFIER_LAYER_GUIDANCE = """
+
+## Verification Ladder — Embedded Check Results
+
+If the solution contains `ALETHIC_L{N}_CHECK:` sentinel lines, these are ground truth
+outputs from the generator's Python sandbox. Do NOT re-derive the corresponding steps.
+
+- If `ALETHIC_L0_CHECK:` shows a failure (e.g., "DIMENSIONS MISMATCH"), this is
+  automatically a `[MAJOR]` issue regardless of how the algebra looks.
+- If `ALETHIC_L1_CHECK:` shows a failing base case, this is a `[MAJOR]` issue.
+- If `ALETHIC_L2_CHECK:` shows a consistency failure, this is a `[MAJOR]` issue.
+- If all Layer 0-2 checks pass, focus your semantic verification on logic, citations,
+  and problem interpretation — the computational steps have been mechanically verified.
+"""
+
+VERIFIER_SYSTEM = VERIFIER_SYSTEM + _VERIFIER_LAYER_GUIDANCE
