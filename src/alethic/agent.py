@@ -39,6 +39,7 @@ from alethic.models import (
     AgentConfig,
     AgentEvent,
     AgentResult,
+    EvidenceState,
     EventType,
     Solution,
     TokenLedger,
@@ -207,6 +208,43 @@ class MathAgent:
             and verdicts[-1] == Verdict.MAJOR_FLAW
             and verdicts[-2] == Verdict.MAJOR_FLAW
         )
+
+    def _compute_dynamic_n(self, evidence: EvidenceState) -> int:
+        """Compute dynamic N for the next iteration based on evidence.
+
+        Only called when config.adaptive_compute is True.
+        Iteration 1 always uses N=1 (probe); this method computes N for iter 2+.
+
+        Rules:
+        - algebra/citation errors: revise-first, keep N=1 (fixable in place)
+        - logic/missing_case/interpretation/units: need different approach, escalate to preset max
+        - Hard (confidence < threshold * 0.75): escalate to self.config.best_of_n
+        - Otherwise: keep N=1
+        """
+        _ESCALATE_CATEGORIES = {"logic", "missing_case", "interpretation", "units"}
+        base_n = self.config.best_of_n
+
+        if evidence.error_category in _ESCALATE_CATEGORIES:
+            return base_n  # full N — need diverse approaches
+        if evidence.error_category in {"algebra", "citation"}:
+            return 1  # revise-first — fixable in place
+        # confidence-based: hard = escalate, easy = stay at 1
+        if evidence.best_confidence < self.config.confidence_threshold * 0.75:
+            return base_n
+        return 1  # easy enough to try single candidate
+
+    def _compute_adaptive_revisions(self, evidence: EvidenceState) -> int:
+        """Compute adaptive revision budget for the current iteration.
+
+        Only called when config.adaptive_revision_budget is True.
+        Adapts max_revisions_per_cycle based on error category and confidence.
+        """
+        base = self.config.max_revisions_per_cycle
+        if evidence.error_category in {"algebra", "citation"} and evidence.best_confidence >= 0.80:
+            return 1  # quick patch is likely sufficient
+        if evidence.best_confidence < 0.70:
+            return min(base + 1, 5)  # harder problems need more repair
+        return base
 
     def _build_reset_context(self, failed_approaches: list[str]) -> str:
         """Build the strategy-reset prompt overlay for a reset iteration."""
@@ -631,6 +669,8 @@ class MathAgent:
         self._log(f"Problem: {problem[:200]}{'...' if len(problem) > 200 else ''}")
         self._log("")
 
+        evidence_state: EvidenceState | None = None
+
         for iteration in range(start_iteration, self.config.max_iterations + 1):
             self._log(f"{'─' * 40}")
             self._log(f"Iteration {iteration}/{self.config.max_iterations}")
@@ -669,7 +709,14 @@ class MathAgent:
                         stall_counter=state.iterations_since_meaningful_improvement,
                     )
                 else:
-                    n_this_iter = self.config.best_of_n
+                    if (
+                        self.config.adaptive_compute
+                        and iteration > 1
+                        and evidence_state is not None
+                    ):
+                        n_this_iter = self._compute_dynamic_n(evidence_state)
+                    else:
+                        n_this_iter = self.config.best_of_n
                     reset_context = None
                     if state.reset_cooldown_remaining > 0:
                         state.reset_cooldown_remaining -= 1
@@ -760,6 +807,19 @@ class MathAgent:
                 # Best candidate is first (sorted by confidence desc)
                 solution, verification, _, _, _ = verified[0]
                 iteration_verdict = verification.verdict
+
+                # Update EvidenceState for adaptive compute (next iter) and revision budget
+                _error_cat = classify_errors(verification.critique)
+                evidence_state = EvidenceState(
+                    iteration=iteration,
+                    best_confidence=state.best_confidence,
+                    error_category=_error_cat,
+                    confidence_history=(
+                        evidence_state.confidence_history + [state.best_confidence]
+                        if evidence_state is not None
+                        else [state.best_confidence]
+                    ),
+                )
 
                 self._log(
                     f"[VERIFY] Best: {verification.verdict.value} "
@@ -875,6 +935,13 @@ class MathAgent:
 
                 # ── REVISE (best candidate) ──
                 if verification.needs_revision(threshold):
+                    _revisions_this_iter: int | None = 1 if is_reset else None
+                    if (
+                        not is_reset
+                        and self.config.adaptive_revision_budget
+                        and evidence_state is not None
+                    ):
+                        _revisions_this_iter = self._compute_adaptive_revisions(evidence_state)
                     result = self._run_revision_loop(
                         problem=problem,
                         solution=solution,
@@ -884,7 +951,7 @@ class MathAgent:
                         state=state,
                         log=log,
                         threshold=threshold,
-                        max_revisions=1 if is_reset else None,
+                        max_revisions=_revisions_this_iter,
                         ledger=ledger,
                         context_limit=context_limit,
                         context_threshold=self.config.context_threshold,

@@ -185,6 +185,9 @@ class AgentConfig:
     context_threshold: float = 0.8
     variant_b: dict[str, Any] | None = None
     adversarial_self_correction: bool = False
+    adaptive_compute: bool = False          # enable N-probe at iter 1, escalate on hard problems
+    adaptive_revision_budget: bool = False  # adapt max_revisions_per_cycle per iter based on category
+    adaptive_budget_cap: int | None = None  # max total oracle calls; None = unlimited
 
     def __post_init__(self) -> None:
         if self.best_of_n < 1:
@@ -227,6 +230,10 @@ class AgentConfig:
             raise ValueError(
                 f"context_threshold must be in (0.0, 1.0], got {self.context_threshold}"
             )
+        if self.adaptive_budget_cap is not None and self.adaptive_budget_cap < 1:
+            raise ValueError(
+                f"adaptive_budget_cap must be >= 1, got {self.adaptive_budget_cap}"
+            )
         if self.variant_b is not None:
             valid_field_names = {f.name for f in dataclass_fields(self)}
             invalid_keys = set(self.variant_b) - valid_field_names
@@ -260,6 +267,7 @@ class AgentConfig:
             "stall_reset": True,
             "reset_n_boost": 1,
             "context_threshold": 0.8,
+            "adaptive_revision_budget": True,
         },
         "thorough": {
             "max_iterations": 8,
@@ -276,6 +284,7 @@ class AgentConfig:
             "context_threshold": 0.8,
             "variant_b": {"model": "claude-sonnet-4-6"},
             "adversarial_self_correction": True,
+            "adaptive_compute": True,
         },
         "extreme": {
             "max_iterations": 12,
@@ -292,6 +301,7 @@ class AgentConfig:
             "context_threshold": 0.75,
             "variant_b": {"model": "claude-sonnet-4-6"},
             "adversarial_self_correction": True,
+            "adaptive_compute": True,
         },
     }
 
