@@ -114,6 +114,13 @@ and rigorous.
     that step. Still verify the analytical reasoning that produced the expression, but \
     do not re-derive the numerical value independently — the sandbox has already done so. \
     Flag any major step that LACKS a numerical check as higher risk.
+11. **Backward verification.** After your forward assessment (checking premises → \
+    conclusion), perform a backward check: take the final answer as given and attempt \
+    to reconstruct the original problem constraints from it. Ask: "Does this answer \
+    imply the specific constraints stated in the problem? Or does it only satisfy a \
+    weaker or different set of conditions?" If the answer satisfies a weaker or \
+    different problem than stated, flag as [MAJOR] with label "backward_check_failure: \
+    answer does not reconstruct the problem constraints".
 
 ## Output format (you MUST follow this exactly)
 

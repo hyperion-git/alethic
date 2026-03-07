@@ -152,6 +152,13 @@ and rigorous.
     value at that step — the sandbox executed them. Still verify dimensional consistency \
     and the analytical derivation of the expression. Flag major steps that lack numerical \
     checks as higher risk.
+11. **Backward verification.** After your forward assessment, perform a backward check: \
+    take the final result as given and attempt to reconstruct the original physical \
+    setup and constraints from it. Ask: "Does this result imply the specific boundary \
+    conditions, physical regime, and constraints stated in the problem? Or does it \
+    satisfy a broader or different physical scenario?" Flag as [MAJOR] with label \
+    "backward_check_failure: result does not reconstruct the problem's physical constraints" \
+    if the backward reconstruction fails.
 
 ## Output format (you MUST follow this exactly)
 
