@@ -1,0 +1,78 @@
+{
+  "name": "math-sample-v1",
+  "version": "1.0",
+  "description": "Curated sample of math problems for regression testing. All have known ground truth.",
+  "problems": [
+    {
+      "id": "prime-17",
+      "domain": "math",
+      "problem": "Prove that 17 is prime.",
+      "expected_solvable": true,
+      "tags": ["number-theory", "elementary"]
+    },
+    {
+      "id": "sqrt2-irrational",
+      "domain": "math",
+      "problem": "Prove that sqrt(2) is irrational.",
+      "expected_solvable": true,
+      "tags": ["number-theory", "proof-by-contradiction"]
+    },
+    {
+      "id": "sum-arithmetic",
+      "domain": "math",
+      "problem": "Prove that the sum of the first n positive integers is n(n+1)/2.",
+      "expected_solvable": true,
+      "tags": ["combinatorics", "induction"]
+    },
+    {
+      "id": "infinite-primes",
+      "domain": "math",
+      "problem": "Prove that there are infinitely many prime numbers.",
+      "expected_solvable": true,
+      "tags": ["number-theory", "euclid"]
+    },
+    {
+      "id": "am-gm",
+      "domain": "math",
+      "problem": "Prove the AM-GM inequality: for positive reals a and b, (a+b)/2 >= sqrt(ab).",
+      "expected_solvable": true,
+      "tags": ["inequalities", "algebra"]
+    },
+    {
+      "id": "false-claim-even-odd",
+      "domain": "math",
+      "problem": "Prove that every even number greater than 2 is the sum of exactly three primes.",
+      "expected_solvable": false,
+      "tags": ["number-theory", "false-claim"],
+      "note": "False in general: 4 = 2+2 but that's two primes. The claim fails for 4."
+    },
+    {
+      "id": "geometric-series",
+      "domain": "math",
+      "problem": "Derive the formula for the sum of a finite geometric series: sum_{k=0}^{n-1} r^k = (1-r^n)/(1-r) for r != 1.",
+      "expected_solvable": true,
+      "tags": ["series", "algebra"]
+    },
+    {
+      "id": "triangle-inequality",
+      "domain": "math",
+      "problem": "Prove the triangle inequality: |a + b| <= |a| + |b| for real numbers a and b.",
+      "expected_solvable": true,
+      "tags": ["analysis", "inequalities"]
+    },
+    {
+      "id": "derivative-product-rule",
+      "domain": "math",
+      "problem": "Derive the product rule for derivatives: d/dx[f(x)g(x)] = f'(x)g(x) + f(x)g'(x) from first principles.",
+      "expected_solvable": true,
+      "tags": ["calculus", "derivatives"]
+    },
+    {
+      "id": "cantor-diagonal",
+      "domain": "math",
+      "problem": "Prove using Cantor's diagonal argument that the real numbers are uncountable.",
+      "expected_solvable": true,
+      "tags": ["set-theory", "cardinality"]
+    }
+  ]
+}

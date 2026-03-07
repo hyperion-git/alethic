@@ -362,7 +362,7 @@ def _detect_subcommand(argv: list[str]) -> tuple[str | None, list[str]]:
                 skip_next = True
             continue
         # First positional argument found
-        if arg in ("solve", "derive", "verify", "check"):
+        if arg in ("solve", "derive", "verify", "check", "eval"):
             return arg, argv[:i] + argv[i + 1 :]
         break
     return None, argv
@@ -484,11 +484,70 @@ def _verify_check_handler(args: argparse.Namespace, command: str) -> int:
     return 0 if result.verdict == Verdict.CORRECT else 1
 
 
+def _eval_handler(argv: list[str]) -> int:
+    """Handle the 'eval' subcommand with its own argument parser."""
+    eval_parser = argparse.ArgumentParser(
+        prog="alethic eval",
+        description="Benchmark evaluation commands",
+    )
+    eval_sub = eval_parser.add_subparsers(dest="eval_command", required=True)
+
+    eval_run_parser = eval_sub.add_parser("run", help="Run a benchmark file")
+    eval_run_parser.add_argument("benchmark_file", help="Path to benchmark JSON file")
+    eval_run_parser.add_argument(
+        "--preset",
+        "-p",
+        choices=["quick", "default", "thorough", "extreme"],
+        default="quick",
+        help="Agent preset to use (default: quick)",
+    )
+    eval_run_parser.add_argument(
+        "--output",
+        "-o",
+        help="Write JSON report to this file (default: stdout)",
+    )
+    eval_run_parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Print per-problem progress",
+    )
+    eval_run_parser.add_argument(
+        "--api-key",
+        default=None,
+        help="Anthropic API key (default: ANTHROPIC_API_KEY env var)",
+    )
+
+    args = eval_parser.parse_args(argv)
+
+    from alethic.eval.harness import run_benchmark
+
+    report = run_benchmark(
+        args.benchmark_file,
+        api_key=args.api_key,
+        preset=args.preset,
+        verbose=args.verbose,
+    )
+    output_json = json.dumps(report, indent=2)
+    if args.output:
+        from pathlib import Path
+
+        Path(args.output).write_text(output_json, encoding="utf-8")
+        print(f"Report written to: {args.output}")
+    else:
+        print(output_json)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
 
     command, argv = _detect_subcommand(argv)
+
+    # Dispatch eval to its own handler (has its own argument parser)
+    if command == "eval":
+        return _eval_handler(argv)
 
     parser = build_parser()
     args = parser.parse_args(argv)
