@@ -1,6 +1,6 @@
 """Tests for v3.4 models — OracleType enum and EvidenceState dataclass."""
 
-from alethic.models import OracleType, EvidenceState
+from alethic.models import EvidenceState, OracleType
 
 
 def test_oracle_type_values():

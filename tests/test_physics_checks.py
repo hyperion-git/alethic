@@ -1,8 +1,8 @@
 """Tests for physics_checks.py — Verification Ladder Layers 0-2 (feature 2.1)."""
 
 from alethic.physics_checks import (
-    PHYSICS_CHECK_GUIDANCE,
     MATH_CHECK_GUIDANCE,
+    PHYSICS_CHECK_GUIDANCE,
     parse_layer_results,
 )
 

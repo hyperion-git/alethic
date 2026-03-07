@@ -1,7 +1,7 @@
 """Tests for Layer 0-2 guidance injection into generator/verifier prompts (Task 6)."""
 
-from alethic.prompts import GENERATOR_SYSTEM, VERIFIER_SYSTEM
 from alethic.physics_prompts import PHYSICS_GENERATOR_SYSTEM, PHYSICS_VERIFIER_SYSTEM
+from alethic.prompts import GENERATOR_SYSTEM, VERIFIER_SYSTEM
 
 
 def test_math_generator_contains_layer_guidance():

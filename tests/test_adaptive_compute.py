@@ -1,6 +1,6 @@
 """Tests for adaptive compute — dynamic N and adaptive revision budget (feature 2.4)."""
 
-from alethic.models import AgentConfig, EvidenceState
+from alethic.models import AgentConfig
 
 
 def test_default_preset_has_adaptive_revision_not_compute():

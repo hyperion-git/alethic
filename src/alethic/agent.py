@@ -39,8 +39,8 @@ from alethic.models import (
     AgentConfig,
     AgentEvent,
     AgentResult,
-    EvidenceState,
     EventType,
+    EvidenceState,
     Solution,
     TokenLedger,
     Verdict,
@@ -236,10 +236,10 @@ class MathAgent:
         - Hard (confidence < threshold * 0.75): escalate to self.config.best_of_n
         - Otherwise: keep N=1
         """
-        _ESCALATE_CATEGORIES = {"logic", "missing_case", "interpretation", "units"}
+        _escalate_categories = {"logic", "missing_case", "interpretation", "units"}
         base_n = self.config.best_of_n
 
-        if evidence.error_category in _ESCALATE_CATEGORIES:
+        if evidence.error_category in _escalate_categories:
             return base_n  # full N — need diverse approaches
         if evidence.error_category in {"algebra", "citation"}:
             return 1  # revise-first — fixable in place

@@ -1,7 +1,7 @@
 """Tests for rank_candidates() module-level function (Task 4 — tree-search prep)."""
 
 from alethic.agent import rank_candidates
-from alethic.models import VerificationResult, Verdict
+from alethic.models import Verdict, VerificationResult
 
 
 def _make_vr(confidence: float, verdict: Verdict = Verdict.MINOR_ISSUES) -> VerificationResult:

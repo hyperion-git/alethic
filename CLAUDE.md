@@ -102,7 +102,7 @@ claude plugins add hyperion-git/alethic
 ### Manual installation (development)
 
 ```bash
-DEST=~/.claude/plugins/cache/local/alethic/3.3.1
+DEST=~/.claude/plugins/cache/local/alethic/3.4.0
 mkdir -p "$DEST"
 cp -r .claude-plugin skills "$DEST/"
 
