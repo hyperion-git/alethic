@@ -28,7 +28,7 @@ Usage:
     result = agent.solve("Derive the energy levels of the quantum harmonic oscillator.")
 """
 
-from alethic.agent import MathAgent
+from alethic.agent import MathAgent, rank_candidates
 from alethic.autopsy import generate_autopsy
 from alethic.error_taxonomy import classify_errors
 from alethic.exceptions import (
@@ -73,6 +73,7 @@ __all__ = [
     "IssueSeverity",
     "MathAgent",
     "PhysicsAgent",
+    "rank_candidates",
     "Revision",
     "SectionConfidence",
     "Solution",

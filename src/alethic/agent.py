@@ -59,6 +59,21 @@ logger = logging.getLogger("alethic")
 _EMPTY_REASONS = frozenset({"n/a", "na", "none", "not applicable", ""})
 
 
+def rank_candidates(verifications: list[VerificationResult]) -> int:
+    """Return the index of the best candidate by confidence score.
+
+    Pluggable scoring function — future versions will accept an EvidenceState
+    and apply PUCT scoring for tree-search compatibility.
+
+    Args:
+        verifications: List of VerificationResult for each candidate.
+
+    Returns:
+        Index of the highest-confidence candidate.
+    """
+    return max(range(len(verifications)), key=lambda i: verifications[i].confidence)
+
+
 @dataclass
 class RunState:
     """Mutable state accumulated across iterations of the GVR loop."""

@@ -217,6 +217,7 @@ def generate(
     ledger: TokenLedger | None = None,
     context_limit: int = 200_000,
     context_threshold: float = 0.8,
+    partial_solution: str | None = None,
 ) -> Solution:
     """Generate a candidate solution.
 
