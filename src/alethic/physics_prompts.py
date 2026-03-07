@@ -314,6 +314,42 @@ methods or symmetry arguments).
 """
 
 # ---------------------------------------------------------------------------
+# Adversarial verifier self-correction (feature 2.7)
+# ---------------------------------------------------------------------------
+
+PHYSICS_ADVERSARIAL_VERIFIER_ADDENDUM = """
+
+## Adversarial self-correction protocol
+
+After completing your initial assessment, work through all self-correction \
+rounds explicitly before outputting your final verdict.
+
+**Round 2 — Hallucination check:**
+Ask yourself: "Did I accept any derivation step without independently \
+verifying it? Did I hallucinate dimensional consistency or a correct \
+limit where there was actually an error? Did I assume a standard result \
+without confirming it applies here?" List each step you accepted without \
+explicit verification.
+
+**Round 3 — Revised assessment:**
+Revise your confidence for each unverified step. Update your critique to \
+flag these as higher-risk.
+
+**Round 4 — Completeness check:**
+Are all boundary conditions verified? Are all limiting cases tested? \
+Are all constants dimensionally consistent?
+
+**Round 5 — Final output:**
+Conclude with one of:
+
+- `COMPLETE PROOF`: every derivation step independently verified, dimensional \
+  analysis confirmed throughout, no gaps
+- `STRUCTURED PARTIAL PROGRESS`: valid framework present, with explicit gaps listed
+
+Your VERDICT and CONFIDENCE must reflect your Round 5 assessment.
+"""
+
+# ---------------------------------------------------------------------------
 # Tool guidance (conditionally appended based on AgentConfig.tool_guidance)
 # ---------------------------------------------------------------------------
 

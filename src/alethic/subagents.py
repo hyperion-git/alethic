@@ -434,6 +434,7 @@ def verify(
     *,
     system_prompt: str | None = None,
     user_template: str | None = None,
+    extra_system: str | None = None,
     ledger: TokenLedger | None = None,
     context_limit: int = 200_000,
     context_threshold: float = 0.8,
@@ -465,6 +466,8 @@ def verify(
     tools = [PYTHON_TOOL] if config.enable_code_execution else None
 
     system = system_prompt if system_prompt is not None else VERIFIER_SYSTEM
+    if extra_system is not None:
+        system = system + extra_system
 
     logger.info("Verifier: evaluating solution from iteration %d", solution.iteration)
 

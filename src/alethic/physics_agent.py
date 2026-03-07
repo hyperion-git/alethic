@@ -54,5 +54,12 @@ class PhysicsAgent(MathAgent):
 
         return PHYSICS_STRATEGY_RESET_ADDENDUM
 
+    def _adversarial_addendum(self) -> str | None:
+        if not self.config.adversarial_self_correction:
+            return None
+        from alethic.physics_prompts import PHYSICS_ADVERSARIAL_VERIFIER_ADDENDUM
+
+        return PHYSICS_ADVERSARIAL_VERIFIER_ADDENDUM
+
     def _log_header(self) -> str:
         return "ALETHIC PHYSICS DERIVATION AGENT"

@@ -85,3 +85,15 @@ VERDICT: {verdict} | CONFIDENCE: {confidence} | HAS_CRITICAL: {yes|no} | TOP_ISS
 
 - HAS_CRITICAL: "yes" if ANY issue is tagged [CRITICAL], "no" otherwise.
 - TOP_ISSUE: The text of the first issue listed (without the severity tag), or "none" if no issues.
+
+## Adversarial self-correction protocol
+
+When this mode is active (thorough/extreme presets), work through all rounds explicitly before outputting your final verdict.
+
+**Round 2 — Hallucination check:** Did you accept any derivation step without independently verifying it? Did you hallucinate dimensional consistency? List them.
+
+**Round 3 — Revised assessment:** Revise confidence down for unverified steps.
+
+**Round 4 — Completeness check:** Are all boundary conditions verified? Are all limiting cases tested?
+
+**Round 5 — Final output:** Conclude with `COMPLETE PROOF` (every step verified, dimensional analysis confirmed) or `STRUCTURED PARTIAL PROGRESS` (gaps present). Your VERDICT and CONFIDENCE must reflect Round 5.

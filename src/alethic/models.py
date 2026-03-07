@@ -156,6 +156,7 @@ class AgentConfig:
     reset_n_boost: int = 1
     context_threshold: float = 0.8
     variant_b: dict[str, Any] | None = None
+    adversarial_self_correction: bool = False
 
     def __post_init__(self) -> None:
         if self.best_of_n < 1:
@@ -246,6 +247,7 @@ class AgentConfig:
             "reset_n_boost": 1,
             "context_threshold": 0.8,
             "variant_b": {"model": "claude-sonnet-4-6"},
+            "adversarial_self_correction": True,
         },
         "extreme": {
             "max_iterations": 12,
@@ -261,6 +263,7 @@ class AgentConfig:
             "reset_n_boost": 2,
             "context_threshold": 0.75,
             "variant_b": {"model": "claude-sonnet-4-6"},
+            "adversarial_self_correction": True,
         },
     }
 

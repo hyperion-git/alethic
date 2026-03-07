@@ -175,6 +175,17 @@ class MathAgent:
 
         return STRATEGY_RESET_ADDENDUM
 
+    def _adversarial_addendum(self) -> str | None:
+        """Return the adversarial verifier addendum if enabled, else None.
+
+        Override in subclasses to use domain-specific adversarial prompts.
+        """
+        if not self.config.adversarial_self_correction:
+            return None
+        from alethic.prompts import ADVERSARIAL_VERIFIER_ADDENDUM
+
+        return ADVERSARIAL_VERIFIER_ADDENDUM
+
     def _check_stall(self, state: RunState) -> bool:
         """Check whether a stall-triggered reset should fire this iteration."""
         if not self.config.stall_reset:
@@ -363,6 +374,7 @@ class MathAgent:
                 config=self.config,
                 system_prompt=prompts.get("verifier_system"),
                 user_template=prompts.get("verifier_user"),
+                extra_system=self._adversarial_addendum(),
                 ledger=ledger,
                 context_limit=context_limit,
                 context_threshold=context_threshold,
@@ -449,6 +461,7 @@ class MathAgent:
                 config=self.config,
                 system_prompt=prompts.get("verifier_system"),
                 user_template=prompts.get("verifier_user"),
+                extra_system=self._adversarial_addendum(),
                 ledger=ledger,
                 context_limit=context_limit,
                 context_threshold=context_threshold,
@@ -812,6 +825,7 @@ class MathAgent:
                         config=self.config,
                         system_prompt=prompts.get("verifier_system"),
                         user_template=prompts.get("verifier_user"),
+                        extra_system=self._adversarial_addendum(),
                         ledger=ledger,
                         context_limit=context_limit,
                         context_threshold=self.config.context_threshold,
