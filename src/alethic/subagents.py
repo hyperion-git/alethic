@@ -40,12 +40,19 @@ from alethic.tools import PYTHON_TOOL, process_tool_calls
 logger = logging.getLogger("alethic")
 
 
+_PLACEHOLDER_RE = re.compile(r"\{(\w+)\}")
+
+
 def _safe_format(template: str, **kwargs: str) -> str:
-    """Format template using str.replace() to avoid KeyError on curly braces in values."""
-    result = template
-    for key, value in kwargs.items():
-        result = result.replace("{" + key + "}", value)
-    return result
+    """Format template using single-pass regex to avoid cascade replacement bugs.
+
+    Sequential str.replace() corrupts values that contain other placeholder names
+    (e.g., problem text containing literal '{solution}' gets double-replaced).
+    Single-pass re.sub() replaces only known keys and never re-processes replacements.
+    """
+    return _PLACEHOLDER_RE.sub(
+        lambda m: kwargs.get(m.group(1), m.group(0)), template
+    )
 
 
 _SEVERITY_MAP: dict[str, IssueSeverity] = {

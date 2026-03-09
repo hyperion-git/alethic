@@ -167,7 +167,7 @@ def parse_layer_results(solution_text: str) -> dict[int, list[str]]:
     """
     results: dict[int, list[str]] = {}
     for line in solution_text.splitlines():
-        m = _SENTINEL_RE.search(line)
+        m = _SENTINEL_RE.match(line)
         if m:
             layer = int(m.group(1))
             result = m.group(2).strip()
