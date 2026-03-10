@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from alethic.atoms import AtomAnnotation, parse_atoms
+from alethic.atoms import AtomAnnotation, AtomStability, classify_atom_stability, content_hash, parse_atoms
 from alethic.models import OracleType
 
 
@@ -177,3 +177,97 @@ class TestParseAtomsFallbackOracle:
         )
         atoms = parse_atoms(text)
         assert atoms[0].oracle == OracleType.LAYER3_LLM
+
+
+class TestContentHash:
+    """content_hash() strips verify bodies and normalizes whitespace."""
+
+    def test_same_math_different_whitespace(self):
+        a1 = AtomAnnotation(id=1, deps=(), oracle=OracleType.LAYER3_LLM, content="x = 1 + 2")
+        a2 = AtomAnnotation(id=1, deps=(), oracle=OracleType.LAYER3_LLM, content="x  =  1  +  2")
+        assert content_hash(a1) == content_hash(a2)
+
+    def test_different_verify_bodies_same_hash(self):
+        content_a = "Math here.\n```python\ndef verify_atom_1():\n    x = 1\n    print('OK')\n```"
+        content_b = "Math here.\n```python\ndef verify_atom_1():\n    x = 99\n    print('OK')\n```"
+        a1 = AtomAnnotation(id=1, deps=(), oracle=OracleType.LAYER2_CONSISTENCY, content=content_a)
+        a2 = AtomAnnotation(id=1, deps=(), oracle=OracleType.LAYER2_CONSISTENCY, content=content_b)
+        assert content_hash(a1) == content_hash(a2)
+
+    def test_different_math_different_hash(self):
+        a1 = AtomAnnotation(id=1, deps=(), oracle=OracleType.LAYER3_LLM, content="x = 1")
+        a2 = AtomAnnotation(id=1, deps=(), oracle=OracleType.LAYER3_LLM, content="x = 2")
+        assert content_hash(a1) != content_hash(a2)
+
+
+class TestClassifyAtomStability:
+    """classify_atom_stability() classification tests."""
+
+    def _make_atom(self, atom_id: int, content: str) -> AtomAnnotation:
+        return AtomAnnotation(id=atom_id, deps=(), oracle=OracleType.LAYER3_LLM, content=content)
+
+    def test_stable_atom(self):
+        """Same content across 3 iterations with good confidence → STABLE."""
+        history = [
+            [self._make_atom(1, "x = 1")],
+            [self._make_atom(1, "x = 1")],
+            [self._make_atom(1, "x = 1")],
+        ]
+        result = classify_atom_stability(history, [0.8, 0.8, 0.8])
+        assert result[1] == AtomStability.STABLE
+
+    def test_stable_requires_confidence_floor(self):
+        """Consistent content but low confidence → NOT STABLE (FAILING)."""
+        history = [
+            [self._make_atom(1, "x = 1")],
+            [self._make_atom(1, "x = 1")],
+            [self._make_atom(1, "x = 1")],
+        ]
+        result = classify_atom_stability(history, [0.3, 0.3, 0.3])
+        assert result[1] == AtomStability.FAILING
+
+    def test_oscillating_period_2(self):
+        """A-B-A pattern → OSCILLATING."""
+        history = [
+            [self._make_atom(1, "form A")],
+            [self._make_atom(1, "form B")],
+            [self._make_atom(1, "form A")],
+        ]
+        result = classify_atom_stability(history, [0.8, 0.8, 0.8])
+        assert result[1] == AtomStability.OSCILLATING
+
+    def test_oscillating_period_3(self):
+        """A-B-C-A pattern → OSCILLATING (any-cycle detection)."""
+        history = [
+            [self._make_atom(1, "form A")],
+            [self._make_atom(1, "form B")],
+            [self._make_atom(1, "form C")],
+            [self._make_atom(1, "form A")],
+        ]
+        result = classify_atom_stability(history, [0.8, 0.8, 0.8, 0.8])
+        assert result[1] == AtomStability.OSCILLATING
+
+    def test_failing_atom(self):
+        """Different content each iteration → FAILING."""
+        history = [
+            [self._make_atom(1, "attempt 1")],
+            [self._make_atom(1, "attempt 2")],
+            [self._make_atom(1, "attempt 3")],
+        ]
+        result = classify_atom_stability(history, [0.8, 0.8, 0.8])
+        assert result[1] == AtomStability.FAILING
+
+    def test_atom_missing_from_some_iterations(self):
+        """Atom absent from iteration 2 → only iterations 1 and 3 tracked."""
+        history = [
+            [self._make_atom(1, "x = 1")],
+            [],  # atom 1 absent
+            [self._make_atom(1, "x = 1")],
+        ]
+        result = classify_atom_stability(history, [0.8, 0.8, 0.8])
+        # Present in 2 iterations with same hash → STABLE
+        assert result[1] == AtomStability.STABLE
+
+    def test_empty_history(self):
+        result = classify_atom_stability([], [])
+        assert result == {}

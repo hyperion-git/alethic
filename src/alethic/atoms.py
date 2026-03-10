@@ -7,6 +7,7 @@ when annotations are absent or malformed.
 
 from __future__ import annotations
 
+import enum
 import hashlib
 import logging
 import re
@@ -70,6 +71,59 @@ def content_hash(atom: AtomAnnotation) -> str:
     cleaned = _VERIFY_FUNC_RE.sub("", atom.content)
     cleaned = " ".join(cleaned.split())  # normalize whitespace
     return hashlib.sha256(cleaned.encode()).hexdigest()[:16]
+
+
+class AtomStability(enum.Enum):
+    """Stability classification for an atom across iterations."""
+
+    STABLE = "stable"
+    OSCILLATING = "oscillating"
+    FAILING = "failing"
+
+
+def classify_atom_stability(
+    atom_history: list[list[AtomAnnotation]],
+    confidence_history: list[float],
+    confidence_floor: float = 0.70,
+) -> dict[int, AtomStability]:
+    """Classify each atom as STABLE/OSCILLATING/FAILING across iterations.
+
+    Args:
+        atom_history: Per-iteration list of atom annotations (from winning candidates).
+        confidence_history: Per-iteration best confidence scores.
+        confidence_floor: Minimum confidence for STABLE promotion.
+
+    Returns:
+        Dict mapping atom ID to stability classification.
+    """
+    all_ids: set[int] = set()
+    for iteration_atoms in atom_history:
+        for atom in iteration_atoms:
+            if not atom.synthetic:
+                all_ids.add(atom.id)
+
+    stability: dict[int, AtomStability] = {}
+    for atom_id in all_ids:
+        entries: list[tuple[str, float]] = []
+        for iteration_atoms, conf in zip(atom_history, confidence_history):
+            match = next((a for a in iteration_atoms if a.id == atom_id), None)
+            if match is not None:
+                entries.append((content_hash(match), conf))
+
+        if not entries:
+            continue
+
+        hashes = [h for h, _ in entries]
+        confs = [c for _, c in entries]
+
+        if len(set(hashes)) == 1 and all(c >= confidence_floor for c in confs):
+            stability[atom_id] = AtomStability.STABLE
+        elif len(set(hashes)) >= 2 and hashes[-1] in hashes[:-1]:
+            stability[atom_id] = AtomStability.OSCILLATING
+        else:
+            stability[atom_id] = AtomStability.FAILING
+
+    return stability
 
 
 def _fenced_ranges(text: str) -> list[tuple[int, int]]:
