@@ -311,7 +311,7 @@ Start from a completely different physical or mathematical foundation.
 Consider approaches from a different formalism entirely (e.g., if Lagrangian
 methods failed, try Hamiltonian; if perturbation theory failed, try exact
 methods or symmetry arguments).
-"""
+{atom_stability_context}"""
 
 # ---------------------------------------------------------------------------
 # Adversarial verifier self-correction (feature 2.7)

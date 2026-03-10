@@ -273,7 +273,7 @@ Reflect on your approach — if it resembles any of the above, choose a differen
 You MUST use a categorically different proof technique.
 Start from a completely different mathematical foundation.
 Consider approaches from a different branch of mathematics entirely.
-"""
+{atom_stability_context}"""
 
 # ---------------------------------------------------------------------------
 # Adversarial verifier self-correction (feature 2.7)

@@ -95,6 +95,7 @@ class RunState:
     reset_cooldown_remaining: int = 0
     # Atom tracking (for atom-aware stall recovery)
     atom_history: list[list[AtomAnnotation]] = field(default_factory=list)
+    confidence_history: list[float] = field(default_factory=list)
     breaker_falsified: bool = False
 
     @property
@@ -323,11 +324,33 @@ class MathAgent:
             return min(base + 1, 5)  # harder problems need more repair
         return base
 
-    def _build_reset_context(self, failed_approaches: list[str]) -> str:
+    def _build_reset_context(self, state: RunState) -> str:
         """Build the strategy-reset prompt overlay for a reset iteration."""
-        recent = failed_approaches[-5:]
+        recent = state.failed_approaches[-5:]
         approaches_text = "\n".join(f"- {a}" for a in recent) if recent else "- (none recorded)"
-        return self._reset_addendum().replace("{failed_approaches}", approaches_text)
+
+        # Build atom stability context (disabled when variant_b is active)
+        atom_stability_context = ""
+        if state.atom_history and self.config.variant_b is None:
+            from alethic.atoms import classify_atom_stability
+            stability = classify_atom_stability(
+                state.atom_history,
+                state.confidence_history,
+                self.config.confidence_threshold * 0.85,
+            )
+            stable_ids = [aid for aid, s in stability.items() if s.value == "stable"]
+            if stable_ids:
+                atom_stability_context = (
+                    f"\n\n## STABLE ATOMS — do not discard these results\n"
+                    f"Atoms {stable_ids} were consistent across recent iterations. "
+                    f"Build on them rather than abandoning them."
+                )
+
+        return (
+            self._reset_addendum()
+            .replace("{failed_approaches}", approaches_text)
+            .replace("{atom_stability_context}", atom_stability_context)
+        )
 
     def _log_header(self) -> str:
         return "ALETHIC MATH AGENT"
@@ -770,7 +793,10 @@ class MathAgent:
                     state.resets_used += 1
                     state.reset_cooldown_remaining = 1
                     n_this_iter = self.config.best_of_n + self.config.reset_n_boost
-                    reset_context = self._build_reset_context(state.failed_approaches)
+                    reset_context = self._build_reset_context(state)
+                    # Clear atom history on reset — new strategy, fresh tracking
+                    state.atom_history.clear()
+                    state.confidence_history.clear()
                     self._log(
                         f"[STALL RESET] Triggered (reason: {reason}) — "
                         f"N={n_this_iter}, max_revisions=1"
@@ -889,8 +915,10 @@ class MathAgent:
                 if atoms:
                     max_hist = self.config.stall_window + 1
                     state.atom_history.append(atoms)
+                    state.confidence_history.append(verification.confidence)
                     if len(state.atom_history) > max_hist:
                         state.atom_history = state.atom_history[-max_hist:]
+                        state.confidence_history = state.confidence_history[-max_hist:]
 
                 # Update EvidenceState for adaptive compute (next iter) and revision budget
                 error_cat = classify_errors(verification.critique)
