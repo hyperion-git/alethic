@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 
 import anthropic
 
+from alethic.atoms import AtomAnnotation, parse_atoms
 from alethic.error_taxonomy import classify_errors, get_revision_addendum
 from alethic.exceptions import ContextExhaustedError, TruncatedResponseError
 from alethic.models import (
@@ -90,6 +91,9 @@ class RunState:
     iteration_final_verdicts: deque = field(default_factory=lambda: deque(maxlen=2))
     resets_used: int = 0
     reset_cooldown_remaining: int = 0
+    # Atom tracking (for atom-aware stall recovery)
+    atom_history: list[list[AtomAnnotation]] = field(default_factory=list)
+    breaker_falsified: bool = False
 
     @property
     def best_solution_text(self) -> str | None:
@@ -248,11 +252,11 @@ class MathAgent:
 
         Rules:
         - algebra/citation errors: revise-first, keep N=1 (fixable in place)
-        - logic/missing_case/interpretation/units: need different approach, escalate to preset max
+        - logic/missing_case/interpretation/units/counterexample: escalate to preset max
         - Hard (confidence < threshold * 0.75): escalate to self.config.best_of_n
         - Otherwise: keep N=1
         """
-        _escalate_categories = {"logic", "missing_case", "interpretation", "units"}
+        _escalate_categories = {"logic", "missing_case", "interpretation", "units", "counterexample"}
         base_n = self.config.best_of_n
 
         if evidence.error_category in _escalate_categories:
@@ -836,6 +840,15 @@ class MathAgent:
                 # Best candidate is first (sorted by confidence desc)
                 solution, verification, _, _, _ = verified[0]
                 iteration_verdict = verification.verdict
+
+                # Parse atom annotations from winning solution
+                state.breaker_falsified = False
+                atoms = parse_atoms(solution.solution_text)
+                if atoms:
+                    max_hist = self.config.stall_window + 1
+                    state.atom_history.append(atoms)
+                    if len(state.atom_history) > max_hist:
+                        state.atom_history = state.atom_history[-max_hist:]
 
                 # Update EvidenceState for adaptive compute (next iter) and revision budget
                 error_cat = classify_errors(verification.critique)

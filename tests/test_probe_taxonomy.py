@@ -96,7 +96,7 @@ class TestRoutingTableCompleteness:
         Verify all taxonomy categories are accounted for in either the escalate
         set or the revise-first set (or fall through to confidence-based)."""
         # These sets are from agent.py _compute_dynamic_n
-        escalate_categories = {"logic", "missing_case", "interpretation", "units"}
+        escalate_categories = {"logic", "missing_case", "interpretation", "units", "counterexample"}
         revise_first_categories = {"algebra", "citation"}
         all_taxonomy_cats = set(_TAXONOMY_KEYWORDS.keys())
 
@@ -104,7 +104,7 @@ class TestRoutingTableCompleteness:
         uncovered = all_taxonomy_cats - covered
         # Any uncovered categories fall through to confidence-based routing,
         # which is fine. Just document what falls through.
-        # Currently all 6 taxonomy categories should be covered.
+        # Currently all 7 taxonomy categories should be covered.
         assert uncovered == set(), (
             f"Categories {uncovered} not explicitly handled in _compute_dynamic_n; "
             f"they fall through to confidence-based routing"
@@ -174,8 +174,11 @@ class TestMultiCategoryPriority:
 
     def test_priority_order_is_deterministic(self):
         """_TAXONOMY_KEYWORDS iteration order is: algebra, logic, citation,
-        interpretation, units, missing_case."""
-        expected_order = ["algebra", "logic", "citation", "interpretation", "units", "missing_case"]
+        interpretation, units, counterexample, missing_case."""
+        expected_order = [
+            "algebra", "logic", "citation", "interpretation", "units",
+            "counterexample", "missing_case",
+        ]
         actual_order = list(_TAXONOMY_KEYWORDS.keys())
         assert actual_order == expected_order, (
             f"Priority order changed! Expected {expected_order}, got {actual_order}"
