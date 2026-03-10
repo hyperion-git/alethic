@@ -105,7 +105,7 @@ def classify_atom_stability(
     stability: dict[int, AtomStability] = {}
     for atom_id in all_ids:
         entries: list[tuple[str, float]] = []
-        for iteration_atoms, conf in zip(atom_history, confidence_history):
+        for iteration_atoms, conf in zip(atom_history, confidence_history, strict=True):
             match = next((a for a in iteration_atoms if a.id == atom_id), None)
             if match is not None:
                 entries.append((content_hash(match), conf))

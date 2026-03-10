@@ -33,9 +33,9 @@ from dataclasses import dataclass, field
 import anthropic
 
 from alethic.atoms import AtomAnnotation, content_hash, parse_atoms
+from alethic.breaker import BreakerResult, run_breaker
 from alethic.error_taxonomy import classify_errors, get_revision_addendum
 from alethic.exceptions import ContextExhaustedError, TruncatedResponseError
-from alethic.breaker import BreakerResult, run_breaker
 from alethic.models import (
     MODEL_CONTEXT_LIMITS,
     AgentConfig,
@@ -122,7 +122,7 @@ class RunState:
                     "confidence": conf,
                 }
                 for i, (atoms, conf) in enumerate(
-                    zip(self.atom_history, self.confidence_history)
+                    zip(self.atom_history, self.confidence_history, strict=True)
                 )
                 for a in atoms
                 if not a.synthetic
