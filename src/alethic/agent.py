@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 
 import anthropic
 
-from alethic.atoms import AtomAnnotation, parse_atoms
+from alethic.atoms import AtomAnnotation, content_hash, parse_atoms
 from alethic.error_taxonomy import classify_errors, get_revision_addendum
 from alethic.exceptions import ContextExhaustedError, TruncatedResponseError
 from alethic.breaker import BreakerResult, run_breaker
@@ -114,6 +114,19 @@ class RunState:
             ],
             "resets_used": self.resets_used,
             "reset_cooldown_remaining": self.reset_cooldown_remaining,
+            "atom_history": [
+                {
+                    "id": a.id,
+                    "content_hash": content_hash(a),
+                    "iteration": i,
+                    "confidence": conf,
+                }
+                for i, (atoms, conf) in enumerate(
+                    zip(self.atom_history, self.confidence_history)
+                )
+                for a in atoms
+                if not a.synthetic
+            ],
         }
 
 
