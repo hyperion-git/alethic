@@ -35,11 +35,13 @@ import anthropic
 from alethic.atoms import AtomAnnotation, parse_atoms
 from alethic.error_taxonomy import classify_errors, get_revision_addendum
 from alethic.exceptions import ContextExhaustedError, TruncatedResponseError
+from alethic.breaker import BreakerResult, run_breaker
 from alethic.models import (
     MODEL_CONTEXT_LIMITS,
     AgentConfig,
     AgentEvent,
     AgentResult,
+    BreakerVerdict,
     EventType,
     EvidenceState,
     Solution,
@@ -212,6 +214,46 @@ class MathAgent:
         Override in subclasses to use domain-specific reset prompts.
         """
         return STRATEGY_RESET_ADDENDUM
+
+    def _breaker_domain(self) -> str:
+        """Return the domain string for the adversarial breaker. Override in subclasses."""
+        return "math"
+
+    def _run_breaker(
+        self,
+        problem: str,
+        solution_text: str,
+        atoms: list,
+        ledger: TokenLedger | None,
+    ) -> BreakerResult:
+        """Run the adversarial breaker against a verified-correct solution.
+
+        Returns NO_FLAW_FOUND immediately if breaker is disabled or
+        solution has only synthetic atoms (monolithic fallback).
+        """
+        if not self.config.adversarial_breaker:
+            return BreakerResult(
+                verdict=BreakerVerdict.NO_FLAW_FOUND,
+                target_atom=0, flaw_type="none",
+                evidence="Breaker disabled.", reasoning="",
+            )
+        # Skip for monolithic solutions (all atoms synthetic, or no atoms)
+        real_atoms = [a for a in atoms if not a.synthetic]
+        if not real_atoms:
+            return BreakerResult(
+                verdict=BreakerVerdict.NO_FLAW_FOUND,
+                target_atom=0, flaw_type="none",
+                evidence="No atom annotations — breaker skipped.", reasoning="",
+            )
+        return run_breaker(
+            self.client,
+            problem=problem,
+            solution_text=solution_text,
+            atoms=real_atoms,
+            config=self.config,
+            domain=self._breaker_domain(),
+            ledger=ledger,
+        )
 
     def _adversarial_addendum(self) -> str | None:
         """Return the adversarial verifier addendum if enabled, else None.
@@ -878,26 +920,91 @@ class MathAgent:
 
                 # ── CHECK: Is it correct? ──
                 if verification.is_acceptable(threshold):
-                    self._log("")
-                    self._log("[SOLVED] Verifier approved the solution!")
-                    log.emit(
-                        EventType.ACCEPT,
-                        iteration,
-                        confidence=verification.confidence,
-                        verdict=verification.verdict.value,
-                    )
-                    return self._make_result(
+                    # ── BREAKER: adversarial probe before accepting ──
+                    atoms_for_breaker = state.atom_history[-1] if state.atom_history else []
+                    breaker_result = self._run_breaker(
                         problem=problem,
-                        solution=solution.solution_text,
-                        verdict=Verdict.CORRECT,
-                        confidence=verification.confidence,
-                        iterations_used=iteration,
-                        admitted_failure=False,
-                        state=state,
-                        log=log,
-                        token_ledger=ledger,
-                        session_dir=session_dir,
+                        solution_text=solution.solution_text,
+                        atoms=atoms_for_breaker,
+                        ledger=ledger,
                     )
+                    if breaker_result.verdict == BreakerVerdict.FLAW_FOUND:
+                        self._log(
+                            f"[BREAKER] Flaw found in atom {breaker_result.target_atom} "
+                            f"({breaker_result.flaw_type}) — demoting to MAJOR_FLAW"
+                        )
+                        log.emit(
+                            EventType.BREAKER_FLAW_FOUND,
+                            iteration,
+                            target_atom=breaker_result.target_atom,
+                            flaw_type=breaker_result.flaw_type,
+                            evidence=breaker_result.evidence,
+                        )
+                        state.breaker_falsified = True
+                        # Inject breaker critique into verification for revision
+                        verification = VerificationResult(
+                            verdict=Verdict.MAJOR_FLAW,
+                            critique=(
+                                f"{verification.critique}\n\n"
+                                f"{breaker_result.critique_addendum}"
+                            ),
+                            confidence=min(verification.confidence, 0.5),
+                            issues=verification.issues,
+                            reason=verification.reason,
+                            section_confidences=verification.section_confidences,
+                            corrected_solution=None,
+                        )
+                        iteration_verdict = Verdict.MAJOR_FLAW
+                    elif breaker_result.verdict == BreakerVerdict.SUSPECTED_FLAW:
+                        self._log(
+                            f"[BREAKER] Suspected flaw in atom {breaker_result.target_atom} "
+                            f"— continuing with caution"
+                        )
+                        log.emit(
+                            EventType.BREAKER_SUSPECTED,
+                            iteration,
+                            target_atom=breaker_result.target_atom,
+                            flaw_type=breaker_result.flaw_type,
+                        )
+                        # For SUSPECTED_FLAW: still accept (threshold already passed),
+                        # but log the concern.
+                        log.emit(
+                            EventType.BREAKER_SURVIVED,
+                            iteration,
+                            verdict="suspected_flaw_accepted",
+                            confidence=verification.confidence,
+                        )
+                    else:
+                        self._log("[BREAKER] No flaw found — solution accepted")
+                        log.emit(
+                            EventType.BREAKER_SURVIVED,
+                            iteration,
+                            verdict="no_flaw_found",
+                            confidence=verification.confidence,
+                        )
+
+                    # If breaker found a definite flaw, skip acceptance
+                    if breaker_result.verdict != BreakerVerdict.FLAW_FOUND:
+                        self._log("")
+                        self._log("[SOLVED] Verifier approved the solution!")
+                        log.emit(
+                            EventType.ACCEPT,
+                            iteration,
+                            confidence=verification.confidence,
+                            verdict=verification.verdict.value,
+                        )
+                        return self._make_result(
+                            problem=problem,
+                            solution=solution.solution_text,
+                            verdict=Verdict.CORRECT,
+                            confidence=verification.confidence,
+                            iterations_used=iteration,
+                            admitted_failure=False,
+                            state=state,
+                            log=log,
+                            token_ledger=ledger,
+                            session_dir=session_dir,
+                        )
 
                 # ── CHECK: False premise? ──
                 fp = self._check_false_premise(
