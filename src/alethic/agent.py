@@ -57,7 +57,7 @@ from alethic.prompts import (
     VERIFIER_SYSTEM,
 )
 from alethic.session import create_session_dir, load_checkpoint, write_checkpoint
-from alethic.subagents import generate, revise, verify
+from alethic.subagents import _strip_sentinels, generate, revise, verify
 
 logger = logging.getLogger("alethic")
 
@@ -1052,7 +1052,9 @@ class MathAgent:
                     self._log("[FIXABLE] Verifier provided corrected solution — re-verifying...")
                     corrected = Solution(
                         problem=problem,
-                        solution_text=verification.corrected_solution,  # type: ignore[arg-type]
+                        solution_text=_strip_sentinels(
+                            verification.corrected_solution  # type: ignore[arg-type]
+                        ),
                         iteration=solution.iteration,
                     )
                     re_verification = verify(
