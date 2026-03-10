@@ -41,6 +41,7 @@ from alethic.models import (
     AgentConfig,
     AgentEvent,
     AgentResult,
+    BreakerVerdict,
     ConsensusIssue,
     ConsensusResult,
     EventType,
@@ -62,6 +63,7 @@ __all__ = [
     "AgentEvent",
     "AgentResult",
     "AlethicError",
+    "BreakerVerdict",
     "CheckerAgent",
     "CheckpointError",
     "classify_errors",
@@ -86,4 +88,4 @@ __all__ = [
     "generate_autopsy",
 ]
 
-__version__ = "3.4.0"
+__version__ = "3.5.0"

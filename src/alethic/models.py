@@ -66,6 +66,9 @@ class EventType(enum.Enum):
     ACCEPT = "accept"
     FAIL = "fail"
     STALL_RESET = "stall_reset"
+    BREAKER_FLAW_FOUND = "breaker_flaw_found"
+    BREAKER_SUSPECTED = "breaker_suspected"
+    BREAKER_SURVIVED = "breaker_survived"
 
 
 class OracleType(enum.Enum):
@@ -77,6 +80,14 @@ class OracleType(enum.Enum):
     LAYER3_LLM = "layer3_llm"
     LAYER3_LLM_ADVERSARIAL = "layer3_llm_adversarial"
     LAYER4_CONSENSUS = "layer4_consensus"
+
+
+class BreakerVerdict(enum.Enum):
+    """Three-tier verdict from the adversarial breaker."""
+
+    FLAW_FOUND = "flaw_found"
+    SUSPECTED_FLAW = "suspected_flaw"
+    NO_FLAW_FOUND = "no_flaw_found"
 
 
 @dataclass
@@ -190,6 +201,9 @@ class AgentConfig:
     adaptive_compute: bool = False          # enable N-probe at iter 1, escalate on hard problems
     adaptive_revision_budget: bool = False  # adapt max_revisions_per_cycle per iter based on category
     adaptive_budget_cap: int | None = None  # max total oracle calls; None = unlimited
+    adversarial_breaker: bool = False       # enable adversarial breaker on CORRECT solutions
+    breaker_model: str | None = None        # model for breaker (default: claude-sonnet-4-6)
+    breaker_temperature: float = 0.8        # higher than verifier — want creative attacks
 
     def __post_init__(self) -> None:
         if self.best_of_n < 1:
@@ -235,6 +249,10 @@ class AgentConfig:
         if self.adaptive_budget_cap is not None and self.adaptive_budget_cap < 1:
             raise ValueError(
                 f"adaptive_budget_cap must be >= 1, got {self.adaptive_budget_cap}"
+            )
+        if self.breaker_temperature < 0:
+            raise ValueError(
+                f"breaker_temperature must be >= 0, got {self.breaker_temperature}"
             )
         if self.variant_b is not None:
             valid_field_names = {f.name for f in dataclass_fields(self)}
@@ -287,6 +305,8 @@ class AgentConfig:
             "variant_b": {"model": "claude-sonnet-4-6"},
             "adversarial_self_correction": True,
             "adaptive_compute": True,
+            "adversarial_breaker": True,
+            "breaker_model": "claude-sonnet-4-6",
         },
         "extreme": {
             "max_iterations": 12,
@@ -304,6 +324,8 @@ class AgentConfig:
             "variant_b": {"model": "claude-sonnet-4-6"},
             "adversarial_self_correction": True,
             "adaptive_compute": True,
+            "adversarial_breaker": True,
+            "breaker_model": "claude-sonnet-4-6",
         },
     }
 

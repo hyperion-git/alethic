@@ -146,3 +146,22 @@ class TestClassifyErrorsRouted:
         assert category == "general"
         assert oracle == OracleType.LAYER3_LLM
         assert force_adv is False
+
+
+def test_counterexample_category():
+    from alethic.error_taxonomy import classify_errors, get_revision_addendum
+
+    assert classify_errors("A specific counterexample was found at n=0.") == "counterexample"
+    assert classify_errors("The breaker found a flaw in atom 3.") == "counterexample"
+    assert classify_errors("This is a regime failure for v > c.") == "counterexample"
+    addendum = get_revision_addendum("counterexample")
+    assert "counterexample" in addendum.lower() or "flaw" in addendum.lower()
+
+
+def test_counterexample_oracle_routing():
+    from alethic.error_taxonomy import classify_errors_routed
+    from alethic.models import OracleType
+
+    cat, oracle, force_adv = classify_errors_routed("A counterexample was found.")
+    assert cat == "counterexample"
+    assert oracle == OracleType.LAYER1_BEHAVIORAL

@@ -32,6 +32,8 @@ from dataclasses import dataclass, field
 
 import anthropic
 
+from alethic.atoms import AtomAnnotation, content_hash, parse_atoms
+from alethic.breaker import BreakerResult, run_breaker
 from alethic.error_taxonomy import classify_errors, get_revision_addendum
 from alethic.exceptions import ContextExhaustedError, TruncatedResponseError
 from alethic.models import (
@@ -39,6 +41,7 @@ from alethic.models import (
     AgentConfig,
     AgentEvent,
     AgentResult,
+    BreakerVerdict,
     EventType,
     EvidenceState,
     Solution,
@@ -54,7 +57,7 @@ from alethic.prompts import (
     VERIFIER_SYSTEM,
 )
 from alethic.session import create_session_dir, load_checkpoint, write_checkpoint
-from alethic.subagents import generate, revise, verify
+from alethic.subagents import _strip_sentinels, generate, revise, verify
 
 logger = logging.getLogger("alethic")
 
@@ -90,6 +93,10 @@ class RunState:
     iteration_final_verdicts: deque = field(default_factory=lambda: deque(maxlen=2))
     resets_used: int = 0
     reset_cooldown_remaining: int = 0
+    # Atom tracking (for atom-aware stall recovery)
+    atom_history: list[list[AtomAnnotation]] = field(default_factory=list)
+    confidence_history: list[float] = field(default_factory=list)
+    breaker_falsified: bool = False
 
     @property
     def best_solution_text(self) -> str | None:
@@ -107,6 +114,19 @@ class RunState:
             ],
             "resets_used": self.resets_used,
             "reset_cooldown_remaining": self.reset_cooldown_remaining,
+            "atom_history": [
+                {
+                    "id": a.id,
+                    "content_hash": content_hash(a),
+                    "iteration": i,
+                    "confidence": conf,
+                }
+                for i, (atoms, conf) in enumerate(
+                    zip(self.atom_history, self.confidence_history, strict=True)
+                )
+                for a in atoms
+                if not a.synthetic
+            ],
         }
 
 
@@ -209,6 +229,46 @@ class MathAgent:
         """
         return STRATEGY_RESET_ADDENDUM
 
+    def _breaker_domain(self) -> str:
+        """Return the domain string for the adversarial breaker. Override in subclasses."""
+        return "math"
+
+    def _run_breaker(
+        self,
+        problem: str,
+        solution_text: str,
+        atoms: list,
+        ledger: TokenLedger | None,
+    ) -> BreakerResult:
+        """Run the adversarial breaker against a verified-correct solution.
+
+        Returns NO_FLAW_FOUND immediately if breaker is disabled or
+        solution has only synthetic atoms (monolithic fallback).
+        """
+        if not self.config.adversarial_breaker:
+            return BreakerResult(
+                verdict=BreakerVerdict.NO_FLAW_FOUND,
+                target_atom=0, flaw_type="none",
+                evidence="Breaker disabled.", reasoning="",
+            )
+        # Skip for monolithic solutions (all atoms synthetic, or no atoms)
+        real_atoms = [a for a in atoms if not a.synthetic]
+        if not real_atoms:
+            return BreakerResult(
+                verdict=BreakerVerdict.NO_FLAW_FOUND,
+                target_atom=0, flaw_type="none",
+                evidence="No atom annotations — breaker skipped.", reasoning="",
+            )
+        return run_breaker(
+            self.client,
+            problem=problem,
+            solution_text=solution_text,
+            atoms=real_atoms,
+            config=self.config,
+            domain=self._breaker_domain(),
+            ledger=ledger,
+        )
+
     def _adversarial_addendum(self) -> str | None:
         """Return the adversarial verifier addendum if enabled, else None.
 
@@ -248,11 +308,11 @@ class MathAgent:
 
         Rules:
         - algebra/citation errors: revise-first, keep N=1 (fixable in place)
-        - logic/missing_case/interpretation/units: need different approach, escalate to preset max
+        - logic/missing_case/interpretation/units/counterexample: escalate to preset max
         - Hard (confidence < threshold * 0.75): escalate to self.config.best_of_n
         - Otherwise: keep N=1
         """
-        _escalate_categories = {"logic", "missing_case", "interpretation", "units"}
+        _escalate_categories = {"logic", "missing_case", "interpretation", "units", "counterexample"}
         base_n = self.config.best_of_n
 
         if evidence.error_category in _escalate_categories:
@@ -277,11 +337,33 @@ class MathAgent:
             return min(base + 1, 5)  # harder problems need more repair
         return base
 
-    def _build_reset_context(self, failed_approaches: list[str]) -> str:
+    def _build_reset_context(self, state: RunState) -> str:
         """Build the strategy-reset prompt overlay for a reset iteration."""
-        recent = failed_approaches[-5:]
+        recent = state.failed_approaches[-5:]
         approaches_text = "\n".join(f"- {a}" for a in recent) if recent else "- (none recorded)"
-        return self._reset_addendum().replace("{failed_approaches}", approaches_text)
+
+        # Build atom stability context (disabled when variant_b is active)
+        atom_stability_context = ""
+        if state.atom_history and self.config.variant_b is None:
+            from alethic.atoms import classify_atom_stability
+            stability = classify_atom_stability(
+                state.atom_history,
+                state.confidence_history,
+                self.config.confidence_threshold * 0.85,
+            )
+            stable_ids = [aid for aid, s in stability.items() if s.value == "stable"]
+            if stable_ids:
+                atom_stability_context = (
+                    f"\n\n## STABLE ATOMS — do not discard these results\n"
+                    f"Atoms {stable_ids} were consistent across recent iterations. "
+                    f"Build on them rather than abandoning them."
+                )
+
+        return (
+            self._reset_addendum()
+            .replace("{failed_approaches}", approaches_text)
+            .replace("{atom_stability_context}", atom_stability_context)
+        )
 
     def _log_header(self) -> str:
         return "ALETHIC MATH AGENT"
@@ -724,7 +806,10 @@ class MathAgent:
                     state.resets_used += 1
                     state.reset_cooldown_remaining = 1
                     n_this_iter = self.config.best_of_n + self.config.reset_n_boost
-                    reset_context = self._build_reset_context(state.failed_approaches)
+                    reset_context = self._build_reset_context(state)
+                    # Clear atom history on reset — new strategy, fresh tracking
+                    state.atom_history.clear()
+                    state.confidence_history.clear()
                     self._log(
                         f"[STALL RESET] Triggered (reason: {reason}) — "
                         f"N={n_this_iter}, max_revisions=1"
@@ -837,6 +922,17 @@ class MathAgent:
                 solution, verification, _, _, _ = verified[0]
                 iteration_verdict = verification.verdict
 
+                # Parse atom annotations from winning solution
+                state.breaker_falsified = False
+                atoms = parse_atoms(solution.solution_text)
+                if atoms:
+                    max_hist = self.config.stall_window + 1
+                    state.atom_history.append(atoms)
+                    state.confidence_history.append(verification.confidence)
+                    if len(state.atom_history) > max_hist:
+                        state.atom_history = state.atom_history[-max_hist:]
+                        state.confidence_history = state.confidence_history[-max_hist:]
+
                 # Update EvidenceState for adaptive compute (next iter) and revision budget
                 error_cat = classify_errors(verification.critique)
                 evidence_state = EvidenceState(
@@ -865,26 +961,91 @@ class MathAgent:
 
                 # ── CHECK: Is it correct? ──
                 if verification.is_acceptable(threshold):
-                    self._log("")
-                    self._log("[SOLVED] Verifier approved the solution!")
-                    log.emit(
-                        EventType.ACCEPT,
-                        iteration,
-                        confidence=verification.confidence,
-                        verdict=verification.verdict.value,
-                    )
-                    return self._make_result(
+                    # ── BREAKER: adversarial probe before accepting ──
+                    atoms_for_breaker = state.atom_history[-1] if state.atom_history else []
+                    breaker_result = self._run_breaker(
                         problem=problem,
-                        solution=solution.solution_text,
-                        verdict=Verdict.CORRECT,
-                        confidence=verification.confidence,
-                        iterations_used=iteration,
-                        admitted_failure=False,
-                        state=state,
-                        log=log,
-                        token_ledger=ledger,
-                        session_dir=session_dir,
+                        solution_text=solution.solution_text,
+                        atoms=atoms_for_breaker,
+                        ledger=ledger,
                     )
+                    if breaker_result.verdict == BreakerVerdict.FLAW_FOUND:
+                        self._log(
+                            f"[BREAKER] Flaw found in atom {breaker_result.target_atom} "
+                            f"({breaker_result.flaw_type}) — demoting to MAJOR_FLAW"
+                        )
+                        log.emit(
+                            EventType.BREAKER_FLAW_FOUND,
+                            iteration,
+                            target_atom=breaker_result.target_atom,
+                            flaw_type=breaker_result.flaw_type,
+                            evidence=breaker_result.evidence,
+                        )
+                        state.breaker_falsified = True
+                        # Inject breaker critique into verification for revision
+                        verification = VerificationResult(
+                            verdict=Verdict.MAJOR_FLAW,
+                            critique=(
+                                f"{verification.critique}\n\n"
+                                f"{breaker_result.critique_addendum}"
+                            ),
+                            confidence=min(verification.confidence, 0.5),
+                            issues=verification.issues,
+                            reason=verification.reason,
+                            section_confidences=verification.section_confidences,
+                            corrected_solution=None,
+                        )
+                        iteration_verdict = Verdict.MAJOR_FLAW
+                    elif breaker_result.verdict == BreakerVerdict.SUSPECTED_FLAW:
+                        self._log(
+                            f"[BREAKER] Suspected flaw in atom {breaker_result.target_atom} "
+                            f"— continuing with caution"
+                        )
+                        log.emit(
+                            EventType.BREAKER_SUSPECTED,
+                            iteration,
+                            target_atom=breaker_result.target_atom,
+                            flaw_type=breaker_result.flaw_type,
+                        )
+                        # For SUSPECTED_FLAW: still accept (threshold already passed),
+                        # but log the concern.
+                        log.emit(
+                            EventType.BREAKER_SURVIVED,
+                            iteration,
+                            verdict="suspected_flaw_accepted",
+                            confidence=verification.confidence,
+                        )
+                    else:
+                        self._log("[BREAKER] No flaw found — solution accepted")
+                        log.emit(
+                            EventType.BREAKER_SURVIVED,
+                            iteration,
+                            verdict="no_flaw_found",
+                            confidence=verification.confidence,
+                        )
+
+                    # If breaker found a definite flaw, skip acceptance
+                    if breaker_result.verdict != BreakerVerdict.FLAW_FOUND:
+                        self._log("")
+                        self._log("[SOLVED] Verifier approved the solution!")
+                        log.emit(
+                            EventType.ACCEPT,
+                            iteration,
+                            confidence=verification.confidence,
+                            verdict=verification.verdict.value,
+                        )
+                        return self._make_result(
+                            problem=problem,
+                            solution=solution.solution_text,
+                            verdict=Verdict.CORRECT,
+                            confidence=verification.confidence,
+                            iterations_used=iteration,
+                            admitted_failure=False,
+                            state=state,
+                            log=log,
+                            token_ledger=ledger,
+                            session_dir=session_dir,
+                        )
 
                 # ── CHECK: False premise? ──
                 fp = self._check_false_premise(
@@ -904,7 +1065,9 @@ class MathAgent:
                     self._log("[FIXABLE] Verifier provided corrected solution — re-verifying...")
                     corrected = Solution(
                         problem=problem,
-                        solution_text=verification.corrected_solution,  # type: ignore[arg-type]
+                        solution_text=_strip_sentinels(
+                            verification.corrected_solution  # type: ignore[arg-type]
+                        ),
                         iteration=solution.iteration,
                     )
                     re_verification = verify(

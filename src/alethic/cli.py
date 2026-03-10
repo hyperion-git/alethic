@@ -197,6 +197,16 @@ Examples:
         help="Disable variant B generation even if preset enables it",
     )
     parser.add_argument(
+        "--no-breaker",
+        action="store_true",
+        help="Disable the adversarial breaker even if preset enables it",
+    )
+    parser.add_argument(
+        "--breaker-model",
+        default=None,
+        help="Model ID for the adversarial breaker (default: claude-sonnet-4-6)",
+    )
+    parser.add_argument(
         "--context-threshold",
         type=float,
         default=None,
@@ -287,6 +297,12 @@ def _build_config(args: argparse.Namespace) -> AgentConfig:
     elif args.variant_b_model:
         overrides["variant_b"] = {"model": args.variant_b_model}
 
+    if getattr(args, "no_breaker", False):
+        overrides["adversarial_breaker"] = False
+    breaker_model = getattr(args, "breaker_model", None)
+    if breaker_model:
+        overrides["breaker_model"] = breaker_model
+
     # Auto-bump max_tokens for extended thinking when not explicitly set.
     # Resolve thinking state and budget *before* constructing the config so we
     # only build it once (AgentConfig is frozen).
@@ -327,6 +343,7 @@ _FLAGS_WITH_VALUE = frozenset(
         "--stall-window",
         "--stall-epsilon",
         "--variant-b-model",
+        "--breaker-model",
         "--context-threshold",
         "--resume",
         "--problem-text",

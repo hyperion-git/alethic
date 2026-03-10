@@ -157,6 +157,12 @@ class TestBuildResetContext:
         agent.client = MagicMock()
         return agent
 
+    def _make_state(self, approaches):
+        from alethic.agent import RunState
+        state = RunState()
+        state.failed_approaches = approaches
+        return state
+
     def test_builds_context_with_last_five_approaches(self):
         agent = self._make_agent()
         # 6 approaches — only last 5 should appear
@@ -168,7 +174,7 @@ class TestBuildResetContext:
             "Tried algebraic geometry",
             "Tried combinatorics",
         ]
-        context = agent._build_reset_context(approaches)
+        context = agent._build_reset_context(self._make_state(approaches))
         assert "STRATEGY RESET" in context
         # Should only include last 5
         assert "Tried direct proof" not in context
@@ -177,13 +183,13 @@ class TestBuildResetContext:
 
     def test_builds_context_with_fewer_than_two(self):
         agent = self._make_agent()
-        context = agent._build_reset_context(["Only one"])
+        context = agent._build_reset_context(self._make_state(["Only one"]))
         assert "STRATEGY RESET" in context
         assert "Only one" in context
 
     def test_builds_context_empty_approaches(self):
         agent = self._make_agent()
-        context = agent._build_reset_context([])
+        context = agent._build_reset_context(self._make_state([]))
         assert "STRATEGY RESET" in context
 
 
@@ -331,12 +337,18 @@ class TestStallResetIntegration:
 class TestNegativePrompting:
     """1.5: Stall reset prompts must use explicit prohibition language."""
 
+    def _make_state(self, approaches):
+        from alethic.agent import RunState
+        state = RunState()
+        state.failed_approaches = approaches
+        return state
+
     def test_reset_context_uses_do_not_language(self):
         from alethic.agent import MathAgent
         from alethic.models import AgentConfig
 
         agent = MathAgent(config=AgentConfig(verbose=False))
-        ctx = agent._build_reset_context(["tried induction", "tried contradiction"])
+        ctx = agent._build_reset_context(self._make_state(["tried induction", "tried contradiction"]))
         assert "DO NOT" in ctx, "Reset context must contain explicit 'DO NOT' prohibition"
 
     def test_reset_context_lists_all_recent_approaches(self):
@@ -345,7 +357,7 @@ class TestNegativePrompting:
 
         agent = MathAgent(config=AgentConfig(verbose=False))
         approaches = ["a1", "a2", "a3", "a4", "a5", "a6"]
-        ctx = agent._build_reset_context(approaches)
+        ctx = agent._build_reset_context(self._make_state(approaches))
         # Should include last 5, not just last 2
         assert "a2" in ctx
         assert "a6" in ctx
@@ -356,5 +368,5 @@ class TestNegativePrompting:
         from alethic.physics_agent import PhysicsAgent
 
         agent = PhysicsAgent(config=AgentConfig(verbose=False))
-        ctx = agent._build_reset_context(["tried Lagrangian"])
+        ctx = agent._build_reset_context(self._make_state(["tried Lagrangian"]))
         assert "DO NOT" in ctx

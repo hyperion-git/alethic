@@ -35,8 +35,12 @@ _TAXONOMY_KEYWORDS: dict[str, list[str]] = {
         "unit", "dimension", "dimensional", "si unit", "conversion",
         "magnitude", "does not balance", "inconsistent units",
     ],
+    "counterexample": [
+        "counterexample", "flaw found", "breaker found",
+        "regime failure", "falsif",
+    ],
     "missing_case": [
-        "missing case", "edge case", "counterexample", "special case",
+        "missing case", "edge case", "special case",
         "boundary case", "boundary condition", "not handled", "case analysis",
         "degenerate", "not considered", "overlooked",
     ],
@@ -78,6 +82,13 @@ REVISION_ADDENDA: dict[str, str] = {
         "Write the units of each quantity next to it (e.g., [J], [m/s\u00b2], [kg\u22c5m\u00b2/s\u00b2]). "
         "Before submitting your answer, verify that both sides of every equation have "
         "identical dimensions. Use sympy.physics.units or scipy.constants for reference values."
+    ),
+    "counterexample": (
+        "\n\n## Revision focus: addressing identified flaw\n"
+        "A specific counterexample or logical flaw was found by the adversarial breaker. "
+        "Re-examine the targeted claim at the identified input or logical step. Either "
+        "refute the flaw (show why it does not actually violate your claim) or repair "
+        "the proof step that fails for this input."
     ),
     "missing_case": (
         "\n\n## Revision focus: case completeness\n"
@@ -126,6 +137,7 @@ _ORACLE_ROUTING: dict[str, tuple[OracleType, bool]] = {
     "citation": (OracleType.LAYER3_LLM, False),
     "interpretation": (OracleType.LAYER3_LLM, False),
     "units": (OracleType.LAYER0_STRUCTURAL, False),
+    "counterexample": (OracleType.LAYER1_BEHAVIORAL, False),
     "missing_case": (OracleType.LAYER1_BEHAVIORAL, False),
     "general": (OracleType.LAYER3_LLM, False),
 }

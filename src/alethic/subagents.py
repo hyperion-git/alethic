@@ -42,6 +42,20 @@ logger = logging.getLogger("alethic")
 
 _PLACEHOLDER_RE = re.compile(r"\{(\w+)\}")
 
+_SENTINEL_RE = re.compile(r"^ALETHIC_L\d+_CHECK:.*$", re.MULTILINE)
+
+
+def _strip_sentinels(text: str) -> str:
+    """Remove ALETHIC_LN_CHECK: lines from solution text.
+
+    Sentinel lines are injected by the generator for the verifier's benefit.
+    They must be stripped before presenting the corrected solution to the reviser
+    to avoid polluting the revision context with verification metadata.
+    """
+    stripped = _SENTINEL_RE.sub("", text)
+    # Collapse any double blank lines left by removed sentinels
+    return re.sub(r"\n{3,}", "\n\n", stripped)
+
 
 def _safe_format(template: str, **kwargs: str) -> str:
     """Format template using single-pass regex to avoid cascade replacement bugs.
