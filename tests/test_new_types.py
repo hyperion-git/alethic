@@ -107,8 +107,8 @@ class TestEventType:
         assert EventType.FAIL.value == "fail"
         assert EventType.STALL_RESET.value == "stall_reset"
 
-    def test_exactly_seven_members(self):
-        assert len(EventType) == 7
+    def test_member_count(self):
+        assert len(EventType) == 10
 
 
 # ── Stall Reset Config ─────────────────────────────────────────────
