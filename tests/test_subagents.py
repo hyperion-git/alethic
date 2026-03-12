@@ -7,8 +7,10 @@ appears between ISSUES: and SECTION CONFIDENCES: in verifier output.
 Write order: tests written BEFORE fixes so they fail first (TDD).
 """
 
-from alethic.subagents import _parse_verification
-from alethic.models import AtomConfidence
+from unittest.mock import MagicMock, patch
+
+from alethic.models import AgentConfig, AtomConfidence, Solution, VerificationResult, Verdict
+from alethic.subagents import _parse_verification, revise
 
 # ---------------------------------------------------------------------------
 # Shared fixture: full verifier output with ATOM CONFIDENCES block
@@ -125,3 +127,83 @@ def test_reason_block_not_extended_by_atom_confidences():
     result = _parse_verification(_VERIFIER_WITH_ATOM_CONFIDENCES)
     assert result.reason == "N/A"
     assert "ATOM[" not in result.reason
+
+
+# ---------------------------------------------------------------------------
+# Tests 11-12: atom_context wiring in revise()
+# Ref: MEMORY.md — "Wiring test must inspect _call_model's user_message,
+#      not just revise() kwarg."
+# ---------------------------------------------------------------------------
+
+_REVISE_RESPONSE = "CHANGES MADE:\nFixed sign error.\nREVISED SOLUTION:\nThe answer is 42."
+
+
+def _make_revise_fixtures():
+    """Return (client, solution, verification, config) for revise() call."""
+    client = MagicMock()
+    solution = Solution(problem="What is 6×7?", solution_text="The answer is 41.", iteration=1)
+    verification = VerificationResult(
+        verdict=Verdict.MAJOR_FLAW,
+        critique="Sign error in step 2.",
+        confidence=0.4,
+        issues=[],
+        reason="",
+        section_confidences=[],
+        atom_confidences=[],
+        corrected_solution=None,
+    )
+    config = AgentConfig.from_preset("quick")
+    return client, solution, verification, config
+
+
+def test_atom_context_appears_in_user_message():
+    """atom_context string must reach _call_model's user_message argument."""
+    client, solution, verification, config = _make_revise_fixtures()
+    atom_advisory = "ATOM STABILITY ADVISORY: Atom[1] is STABLE; Atom[2] is UNSTABLE."
+
+    captured = {}
+
+    def fake_call_model(c, *, system, user_message, **kwargs):
+        captured["user_message"] = user_message
+        return _REVISE_RESPONSE
+
+    with patch("alethic.subagents._call_model", side_effect=fake_call_model):
+        revise(
+            client,
+            solution.problem,
+            solution,
+            verification,
+            config,
+            revision_number=1,
+            atom_context=atom_advisory,
+        )
+
+    assert atom_advisory in captured["user_message"], (
+        f"atom_context not found in user_message.\nuser_message was:\n{captured['user_message']}"
+    )
+
+
+def test_atom_context_none_adds_no_extra_content():
+    """When atom_context=None, user_message must not contain advisory sentinel text."""
+    client, solution, verification, config = _make_revise_fixtures()
+
+    captured = {}
+
+    def fake_call_model(c, *, system, user_message, **kwargs):
+        captured["user_message"] = user_message
+        return _REVISE_RESPONSE
+
+    with patch("alethic.subagents._call_model", side_effect=fake_call_model):
+        revise(
+            client,
+            solution.problem,
+            solution,
+            verification,
+            config,
+            revision_number=1,
+            atom_context=None,
+        )
+
+    assert "ATOM STABILITY ADVISORY" not in captured["user_message"], (
+        "atom_context=None should not inject any advisory text into user_message"
+    )

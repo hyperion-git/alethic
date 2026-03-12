@@ -593,6 +593,10 @@ def revise(
         revision_number: Which revision attempt this is.
         system_prompt: Override the default reviser system prompt.
         user_template: Override the default reviser user template.
+        critique_addendum: Optional targeted revision strategy text (from error
+            taxonomy), appended to the critique in the user message.
+        atom_context: Optional atom stability advisory text (from
+            _build_atom_context), appended after critique_addendum.
 
     Returns:
         A new Solution containing the revised answer.
