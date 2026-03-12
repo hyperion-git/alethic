@@ -56,6 +56,15 @@ class SectionConfidence:
     note: str = ""
 
 
+@dataclass(frozen=True)
+class AtomConfidence:
+    """Per-atom confidence score parsed from verifier ATOM CONFIDENCES block."""
+
+    id: int
+    confidence: float
+    note: str | None = None
+
+
 class EventType(enum.Enum):
     """Type of event in the agent's execution log."""
 
@@ -204,6 +213,8 @@ class AgentConfig:
     adversarial_breaker: bool = False       # enable adversarial breaker on CORRECT solutions
     breaker_model: str | None = None        # model for breaker (default: claude-sonnet-4-6)
     breaker_temperature: float = 0.8        # higher than verifier — want creative attacks
+    apply_calibration: bool = True          # apply confidence calibration before accept gate
+    calibration_store: str | None = None    # path to calibration JSONL store (default: ~/.alethic/calibration.jsonl)
 
     def __post_init__(self) -> None:
         if self.best_of_n < 1:
@@ -470,6 +481,7 @@ class VerificationResult:
     reason: str = ""  # For false-premise detection (REASON field from verifier)
     section_confidences: list[SectionConfidence] = field(default_factory=list)
     corrected_solution: str | None = None  # For FIXABLE verdicts
+    atom_confidences: list[AtomConfidence] = field(default_factory=list)
 
     def is_acceptable(self, threshold: float = 0.90) -> bool:
         has_critical = any(issue.severity == IssueSeverity.CRITICAL for issue in self.issues)
