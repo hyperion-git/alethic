@@ -79,6 +79,19 @@ def rank_candidates(verifications: list[VerificationResult]) -> int:
     return max(range(len(verifications)), key=lambda i: verifications[i].confidence)
 
 
+def _combine(a: str | None, b: str | None) -> str | None:
+    """Combine two optional prompt sections with a blank-line separator.
+
+    Strips leading/trailing newlines from each part. Falsy values (None, "")
+    are treated as absent. Returns None when both are absent.
+    """
+    a_clean = a.strip("\n") if a else None
+    b_clean = b.strip("\n") if b else None
+    if a_clean and b_clean:
+        return a_clean + "\n\n" + b_clean
+    return a_clean or b_clean
+
+
 @dataclass
 class RunState:
     """Mutable state accumulated across iterations of the GVR loop."""
