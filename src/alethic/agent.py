@@ -110,7 +110,7 @@ _LAYER_BY_ORACLE = {
     OracleType.LAYER1_BEHAVIORAL: 1,
     OracleType.LAYER2_CONSISTENCY: 2,
 }
-_SENTINEL_FAILURE_MARKERS = ("FAILED", "ERROR")
+_SENTINEL_FAILURE_MARKERS = ("FAILED", "Traceback")
 
 
 def _build_atom_focus_directive(
@@ -143,7 +143,7 @@ def _build_atom_focus_directive(
             high.append(a.id)
         else:
             # L0/L1/L2: check sentinel results for pass/fail evidence
-            layer = _LAYER_BY_ORACLE.get(a.oracle, 3)
+            layer = _LAYER_BY_ORACLE.get(a.oracle, 3)  # fallback 3=LLM; unreachable with current OracleType enum
             sentinel_texts = parse_layer_results(a.content).get(layer, [])
             if not sentinel_texts:
                 # No sentinel at this layer → cannot verify → HIGH

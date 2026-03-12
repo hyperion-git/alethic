@@ -110,8 +110,9 @@ class TestBuildAtomFocusDirective:
         assert "HIGH" in result
         assert "ATOM[5]" in result
         # Must NOT be in REDUCED tier
-        if "REDUCED" in result:
-            assert "ATOM[5]" not in result.split("REDUCED")[1].split("\n")[0]
+        if "REDUCED attention" in result:
+            reduced_section = result.split("REDUCED attention")[1]
+            assert "ATOM[5]" not in reduced_section
 
     def test_l2_no_sentinel_line_goes_high(self):
         atom = _make_atom(6, OracleType.LAYER2_CONSISTENCY, content="no sentinel here")
