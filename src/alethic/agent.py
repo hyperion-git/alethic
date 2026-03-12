@@ -458,6 +458,65 @@ class MathAgent:
             .replace("{atom_stability_context}", atom_stability_context)
         )
 
+    def _build_atom_context(
+        self,
+        atom_history: list[list[AtomAnnotation]],
+        confidence_history: list[float],
+    ) -> str | None:
+        """Build atom stability advisory for the reviser.
+
+        Guards:
+        - len(atom_history) < 2 → None (insufficient history)
+        - all-synthetic history → None (explicit guard; classify_atom_stability not called)
+        - config.variant_b is not None → None (variant-B supersedes atom stability)
+        """
+        if len(atom_history) < 2:
+            return None
+
+        # All-synthetic guard: must be explicit (not just empty stability dict)
+        all_synthetic = all(
+            all(a.synthetic for a in iteration_atoms)
+            for iteration_atoms in atom_history
+        )
+        if all_synthetic:
+            return None
+
+        if self.config.variant_b is not None:
+            return None
+
+        confidence_floor = self.config.confidence_threshold * 0.85
+        stability = classify_atom_stability(atom_history, confidence_history, confidence_floor)
+        if not stability:
+            return None
+
+        stable_ids = sorted(aid for aid, s in stability.items() if s == AtomStability.STABLE)
+        oscillating_ids = sorted(aid for aid, s in stability.items() if s == AtomStability.OSCILLATING)
+        failing_ids = sorted(aid for aid, s in stability.items() if s == AtomStability.FAILING)
+
+        parts: list[str] = []
+        if stable_ids:
+            ids_str = ", ".join(f"ATOM[{i}]" for i in stable_ids)
+            parts.append(
+                f"{ids_str} have been stable across iterations. "
+                "Do not discard these atoms — they represent verified correct steps."
+            )
+        if oscillating_ids:
+            ids_str = ", ".join(f"ATOM[{i}]" for i in oscillating_ids)
+            parts.append(
+                f"{ids_str} are oscillating — the same approach is being retried without "
+                "success. Avoid repeating the same reasoning patterns for these atoms."
+            )
+        if failing_ids:
+            ids_str = ", ".join(f"ATOM[{i}]" for i in failing_ids)
+            parts.append(
+                f"{ids_str} show declining confidence. "
+                "Consider a categorical change of approach for these steps."
+            )
+
+        if not parts:
+            return None
+        return "## Atom stability advisory:\n" + "\n".join(parts)
+
     def _log_header(self) -> str:
         return "ALETHIC MATH AGENT"
 
