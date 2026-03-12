@@ -368,13 +368,14 @@ class TestBuildAtomContext:
         assert "do not discard" not in result.lower()
 
     def test_empty_stability_dict_returns_none(self):
+        """classify_atom_stability() returning empty dict → advisory is None."""
         agent = _make_agent()
-        synth1 = _make_synthetic_atom("preamble")
-        synth2 = _make_synthetic_atom("preamble")
-        # all_synthetic guard fires → None
-        atom_history = [[synth1], [synth2]]
+        atom1 = _make_real_atom(1, "some content")
+        atom2 = _make_real_atom(1, "different content")
+        atom_history = [[atom1], [atom2]]
         conf_history = [0.7, 0.75]
-        result = agent._build_atom_context(atom_history, conf_history)
+        with patch("alethic.agent.classify_atom_stability", return_value={}):
+            result = agent._build_atom_context(atom_history, conf_history)
         assert result is None
 
     def test_wiring_revise_receives_atom_context(self):
