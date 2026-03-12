@@ -32,7 +32,14 @@ from dataclasses import dataclass, field
 
 import anthropic
 
-from alethic.atoms import AtomAnnotation, content_hash, parse_atoms
+from alethic.atoms import (
+    AtomAnnotation,
+    AtomStability,
+    classify_atom_stability,
+    content_hash,
+    parse_atoms,
+    parse_layer_results,  # defined in physics_checks.py; atoms.py imports it at line 17
+)
 from alethic.breaker import BreakerResult, run_breaker
 from alethic.error_taxonomy import classify_errors, get_revision_addendum
 from alethic.exceptions import ContextExhaustedError, TruncatedResponseError
@@ -44,6 +51,7 @@ from alethic.models import (
     BreakerVerdict,
     EventType,
     EvidenceState,
+    OracleType,
     Solution,
     TokenLedger,
     Verdict,
@@ -90,6 +98,78 @@ def _combine(a: str | None, b: str | None) -> str | None:
     if a_clean and b_clean:
         return a_clean + "\n\n" + b_clean
     return a_clean or b_clean
+
+
+_HIGH_ORACLE_TYPES = frozenset({
+    OracleType.LAYER3_LLM,
+    OracleType.LAYER3_LLM_ADVERSARIAL,
+    OracleType.LAYER4_CONSENSUS,
+})
+_LAYER_BY_ORACLE = {
+    OracleType.LAYER0_STRUCTURAL: 0,
+    OracleType.LAYER1_BEHAVIORAL: 1,
+    OracleType.LAYER2_CONSISTENCY: 2,
+}
+_SENTINEL_FAILURE_MARKERS = ("FAILED", "ERROR")
+
+
+def _build_atom_focus_directive(
+    atoms: list[AtomAnnotation],
+    stability: dict[int, AtomStability],
+) -> str | None:
+    """Build a two-tier verifier focus directive from atom stability history.
+
+    Returns a directive string or None if all atoms are STABLE, synthetic, or
+    the list is empty. The directive is intended to be appended to the verifier's
+    extra_system via _combine(adversarial_addendum, directive).
+
+    Args:
+        atoms: The most recent iteration's atom list (state.atom_history[-1]).
+        stability: Pre-computed stability dict from classify_atom_stability().
+    """
+    high: list[int] = []
+    reduced: list[int] = []
+
+    for a in atoms:
+        if a.synthetic:
+            continue  # D8 Option C: synthetic atoms never enter directive
+
+        atom_stability = stability.get(a.id, AtomStability.FAILING)
+        if atom_stability == AtomStability.STABLE:
+            continue  # STABLE atoms omitted from directive
+
+        # Determine tier based on oracle level and sentinel evidence
+        if a.oracle in _HIGH_ORACLE_TYPES:
+            high.append(a.id)
+        else:
+            # L0/L1/L2: check sentinel results for pass/fail evidence
+            layer = _LAYER_BY_ORACLE.get(a.oracle, 3)
+            sentinel_texts = parse_layer_results(a.content).get(layer, [])
+            if not sentinel_texts:
+                # No sentinel at this layer → cannot verify → HIGH
+                high.append(a.id)
+            elif any(
+                marker in text
+                for text in sentinel_texts
+                for marker in _SENTINEL_FAILURE_MARKERS
+            ):
+                # Explicit failure marker → HIGH regardless of non-emptiness
+                high.append(a.id)
+            else:
+                # Non-empty, no failure text → presume passed → REDUCED
+                reduced.append(a.id)
+
+    if not high and not reduced:
+        return None
+
+    lines = ["ATOM FOCUS DIRECTIVE:"]
+    if high:
+        ids = ", ".join(f"ATOM[{i}]" for i in sorted(high))
+        lines.append(f"HIGH attention (require explicit justification): {ids}")
+    if reduced:
+        ids = ", ".join(f"ATOM[{i}]" for i in sorted(reduced))
+        lines.append(f"REDUCED attention (skip exhaustive re-derivation): {ids}")
+    return "\n".join(lines)
 
 
 @dataclass
