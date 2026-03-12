@@ -34,3 +34,6 @@ class TestCombine:
 
     def test_empty_string_b_treated_as_falsy(self):
         assert _combine("foo", "") == "foo"
+
+    def test_newlines_only_a_treated_as_falsy(self):
+        assert _combine("\n", "bar") == "bar"
