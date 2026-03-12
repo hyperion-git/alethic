@@ -17,6 +17,7 @@ import anthropic
 from alethic.exceptions import ContextExhaustedError, TruncatedResponseError
 from alethic.models import (
     AgentConfig,
+    AtomConfidence,
     Issue,
     IssueSeverity,
     Revision,
@@ -312,7 +313,7 @@ _VERDICT_MAP: dict[str, Verdict] = {
 def _parse_issues(text: str) -> list[Issue]:
     """Parse the ISSUES block from verifier output into Issue objects."""
     issues_match = re.search(
-        r"ISSUES:\s*\n(.*?)(?=\nREASON:|\nSECTION CONFIDENCES:|\Z)", text, re.DOTALL | re.IGNORECASE
+        r"ISSUES:\s*\n(.*?)(?=\nREASON:|\nATOM CONFIDENCES:|\nSECTION CONFIDENCES:|\Z)", text, re.DOTALL | re.IGNORECASE
     )
     if not issues_match:
         return []
@@ -353,6 +354,9 @@ def _parse_section_confidences(text: str) -> list[SectionConfidence]:
         cleaned = line.strip().lstrip("- ").strip()
         if not cleaned:
             continue
+        # Skip atom confidence lines that bled past ATOM CONFIDENCES block
+        if re.match(r"ATOM\[\d+\]", cleaned):
+            continue
         # Pattern: "section name: 0.85 optional note"
         sc_match = re.match(r"(.+?):\s*([\d.]+)\s*(.*)", cleaned)
         if sc_match:
@@ -364,6 +368,30 @@ def _parse_section_confidences(text: str) -> list[SectionConfidence]:
                 continue
             note = sc_match.group(3).strip()
             results.append(SectionConfidence(section=section, confidence=conf, note=note))
+    return results
+
+
+_ATOM_CONF_LINE_RE = re.compile(r"^ATOM\[(\d+)\]:\s+([\d.]+)(?:\s+(.+))?$")
+
+
+def _parse_atom_confidences(text: str) -> list[AtomConfidence]:
+    """Parse ATOM CONFIDENCES block from verifier output."""
+    block_match = re.search(
+        r"ATOM CONFIDENCES:\s*\n(.*?)(?=\nSECTION CONFIDENCES:|\nCORRECTED SOLUTION:|\Z)",
+        text,
+        re.DOTALL | re.IGNORECASE,
+    )
+    if not block_match:
+        return []
+    results = []
+    for line in block_match.group(1).strip().splitlines():
+        m = _ATOM_CONF_LINE_RE.match(line.strip())
+        if m:
+            atom_id = int(m.group(1))
+            confidence = max(0.0, min(1.0, float(m.group(2))))
+            note_raw = m.group(3)
+            note = note_raw.strip() if note_raw and note_raw.strip() else None
+            results.append(AtomConfidence(id=atom_id, confidence=confidence, note=note))
     return results
 
 
@@ -424,6 +452,7 @@ def _parse_verification(text: str) -> VerificationResult:
         )
 
     section_confidences = _parse_section_confidences(text)
+    atom_confidences = _parse_atom_confidences(text)
 
     # Extract corrected solution (for FIXABLE verdicts)
     corrected_match = re.search(
@@ -440,6 +469,7 @@ def _parse_verification(text: str) -> VerificationResult:
         issues=issues,
         reason=reason,
         section_confidences=section_confidences,
+        atom_confidences=atom_confidences,
         corrected_solution=corrected_solution,
     )
 
@@ -547,6 +577,7 @@ def revise(
     system_prompt: str | None = None,
     user_template: str | None = None,
     critique_addendum: str | None = None,
+    atom_context: str | None = None,
     ledger: TokenLedger | None = None,
     context_limit: int = 200_000,
     context_threshold: float = 0.8,
@@ -587,6 +618,9 @@ def revise(
             for sc in low_conf_sections
         )
         user_msg += f"\n\n## Low-confidence sections (focus revision here):\n{sections_text}"
+
+    if atom_context:
+        user_msg += f"\n\n{atom_context}"
 
     tools = [PYTHON_TOOL] if config.enable_code_execution else None
 
