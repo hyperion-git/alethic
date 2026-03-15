@@ -122,18 +122,17 @@ def test_three_iteration_directive_uses_previous_iteration_atoms():
     # At iteration 3, verify() should have been called at least 3 times
     assert len(verify_extra_systems) >= 3, f"Expected >= 3 verify calls, got {len(verify_extra_systems)}"
 
-    # The 3rd verify call (iter 3, call site A) should reference iter-2's atoms
+    # The 3rd verify call (iter 3, call site A) must unconditionally receive an atom focus directive
     third_call_extra = verify_extra_systems[2]
-    if third_call_extra is not None and "ATOM FOCUS DIRECTIVE" in third_call_extra:
-        assert "ATOM[3]" in third_call_extra or "ATOM[4]" in third_call_extra, (
-            "Iter-3 directive should reference iter-2 atoms (ATOM[3] or ATOM[4])"
-        )
-        assert "ATOM[1]" not in third_call_extra, (
-            "Iter-3 directive must NOT reference iter-1 atoms (ATOM[1])"
-        )
-        assert "ATOM[2]" not in third_call_extra, (
-            "Iter-3 directive must NOT reference iter-1 atoms (ATOM[2])"
-        )
+    assert third_call_extra is not None, "Iter-3 extra_system must not be None"
+    assert "ATOM FOCUS DIRECTIVE" in third_call_extra, (
+        f"Iter-3 verify call must receive an atom focus directive. Got: {third_call_extra!r}"
+    )
+    assert "ATOM[3]" in third_call_extra or "ATOM[4]" in third_call_extra, (
+        "Iter-3 directive should reference iter-2 atoms (ATOM[3] or ATOM[4])"
+    )
+    assert "ATOM[1]" not in third_call_extra, "Iter-3 directive must NOT reference iter-1 atoms (ATOM[1])"
+    assert "ATOM[2]" not in third_call_extra, "Iter-3 directive must NOT reference iter-1 atoms (ATOM[2])"
 
 
 # ── Test 3: FIXABLE accepted path ──

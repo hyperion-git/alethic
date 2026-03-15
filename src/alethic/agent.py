@@ -669,6 +669,18 @@ class MathAgent:
         tuples where orig_idx is the 1-based generation-order index.
         """
         verified: list[tuple[Solution, VerificationResult, float, float, int]] = []
+        # Hoist stability computation — depends only on state, not on any individual candidate
+        if state.atom_history:
+            _stability = classify_atom_stability(
+                state.atom_history,
+                state.confidence_history,
+                self.config.confidence_threshold * 0.85,
+            )
+            _directive = _build_atom_focus_directive(state.atom_history[-1], _stability)
+        else:
+            _directive = None
+        _extra_system = _combine(self._adversarial_addendum(), _directive)
+
         for idx, (solution, gen_time) in enumerate(candidates, 1):
             t0 = time.time()
             verification = verify(
@@ -678,17 +690,7 @@ class MathAgent:
                 config=self.config,
                 system_prompt=prompts.get("verifier_system"),
                 user_template=prompts.get("verifier_user"),
-                extra_system=_combine(
-                    self._adversarial_addendum(),
-                    _build_atom_focus_directive(
-                        state.atom_history[-1],
-                        classify_atom_stability(
-                            state.atom_history,
-                            state.confidence_history,
-                            self.config.confidence_threshold * 0.85,
-                        ),
-                    ) if state.atom_history else None,
-                ),
+                extra_system=_extra_system,
                 ledger=ledger,
                 context_limit=context_limit,
                 context_threshold=context_threshold,
