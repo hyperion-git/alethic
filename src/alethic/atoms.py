@@ -193,6 +193,19 @@ def _validate_dag(atoms: list[AtomAnnotation]) -> bool:
     return visited == len(ids)
 
 
+def _monolithic_fallback(solution_text: str) -> list[AtomAnnotation]:
+    """Return a single synthetic monolithic atom covering the entire solution."""
+    return [AtomAnnotation(
+        id=0, deps=(), oracle=_oracle_from_sentinels(solution_text),
+        content=solution_text, synthetic=True,
+        end_offset=len(solution_text),
+    )]
+
+
+# Pre-computed oracle ordering for max() in residual handling
+_ORACLE_INDEX: dict[OracleType, int] = {o: i for i, o in enumerate(OracleType)}
+
+
 def parse_atoms(solution_text: str) -> list[AtomAnnotation]:
     """Extract atom annotations from generator-produced solution text.
 
@@ -216,81 +229,51 @@ def parse_atoms(solution_text: str) -> list[AtomAnnotation]:
         raw_atoms.append((atom_id, m.start(), deps, oracle, m.end()))
 
     if not raw_atoms:
-        return [AtomAnnotation(
-            id=0, deps=(), oracle=_oracle_from_sentinels(solution_text),
-            content=solution_text, synthetic=True,
-            end_offset=len(solution_text),
-        )]
+        return _monolithic_fallback(solution_text)
 
     # Validate: count cap
     if len(raw_atoms) > MAX_ATOMS:
         logger.warning("Atom count %d exceeds cap %d; falling back to monolithic", len(raw_atoms), MAX_ATOMS)
-        return [AtomAnnotation(
-            id=0, deps=(), oracle=_oracle_from_sentinels(solution_text),
-            content=solution_text, synthetic=True,
-            end_offset=len(solution_text),
-        )]
+        return _monolithic_fallback(solution_text)
 
     # Validate: no duplicate IDs
     ids = [a[0] for a in raw_atoms]
     if len(ids) != len(set(ids)):
         logger.warning("Duplicate atom IDs detected; falling back to monolithic")
-        return [AtomAnnotation(
-            id=0, deps=(), oracle=_oracle_from_sentinels(solution_text),
-            content=solution_text, synthetic=True,
-            end_offset=len(solution_text),
-        )]
+        return _monolithic_fallback(solution_text)
 
     # Build AtomAnnotation objects with content slicing
     atoms: list[AtomAnnotation] = []
     for i, (atom_id, header_start, deps, oracle, header_end) in enumerate(raw_atoms):
-        # Content runs from end of header line to start of next atom (or end of text)
-        content_start = header_end
         content_end = raw_atoms[i + 1][1] if i + 1 < len(raw_atoms) else len(solution_text)
-        content = solution_text[content_start:content_end].strip()
+        content = solution_text[header_end:content_end].strip()
         atoms.append(AtomAnnotation(
             id=atom_id, deps=deps, oracle=oracle, content=content,
             start_offset=header_start, end_offset=content_end,
         ))
 
     # Validate: deps reference existing atoms + DAG check
-    all_ids = {a.id for a in atoms}
-    for a in atoms:
-        for dep in a.deps:
-            if dep not in all_ids:
-                logger.warning("Atom %d references non-existent dep %d; falling back", a.id, dep)
-                return [AtomAnnotation(
-                    id=0, deps=(), oracle=_oracle_from_sentinels(solution_text),
-                    content=solution_text, synthetic=True,
-                    end_offset=len(solution_text),
-                )]
-
     if not _validate_dag(atoms):
-        logger.warning("Cycle detected in atom dependency graph; falling back to monolithic")
-        return [AtomAnnotation(
-            id=0, deps=(), oracle=_oracle_from_sentinels(solution_text),
-            content=solution_text, synthetic=True,
-            end_offset=len(solution_text),
-        )]
+        logger.warning("Invalid dependency graph (missing dep or cycle); falling back to monolithic")
+        return _monolithic_fallback(solution_text)
 
     # Handle orphan preamble text
     if atoms[0].start_offset > 0:
         preamble_text = solution_text[:atoms[0].start_offset]
-        first_atom_offset = atoms[0].start_offset
         atoms.insert(0, AtomAnnotation(
             id=-1, deps=(), oracle=_oracle_from_sentinels(preamble_text),
             content=preamble_text.strip(), synthetic=True,
-            end_offset=first_atom_offset,
+            end_offset=atoms[1].start_offset,
         ))
 
     # Handle orphan residual text
-    last_real = [a for a in atoms if not a.synthetic][-1]
     if atoms[-1].end_offset < len(solution_text):
         residual_text = solution_text[atoms[-1].end_offset:]
         if residual_text.strip():
+            last_real = [a for a in atoms if not a.synthetic][-1]
             max_oracle = max(
                 (a.oracle for a in atoms if not a.synthetic),
-                key=lambda o: list(OracleType).index(o),
+                key=lambda o: _ORACLE_INDEX[o],
             )
             atoms.append(AtomAnnotation(
                 id=-2, deps=(last_real.id,), oracle=max_oracle,

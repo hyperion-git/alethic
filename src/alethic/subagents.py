@@ -44,6 +44,40 @@ logger = logging.getLogger("alethic")
 _PLACEHOLDER_RE = re.compile(r"\{(\w+)\}")
 
 _SENTINEL_RE = re.compile(r"^ALETHIC_L\d+_CHECK:.*$", re.MULTILINE)
+_COLLAPSE_BLANK_RE = re.compile(r"\n{3,}")
+
+# --- Pre-compiled regexes for _parse_verification and friends ---
+_ISSUES_BLOCK_RE = re.compile(
+    r"ISSUES:\s*\n(.*?)(?=\nREASON:|\nATOM CONFIDENCES:|\nSECTION CONFIDENCES:|\Z)",
+    re.DOTALL | re.IGNORECASE,
+)
+_SEVERITY_TAG_RE = re.compile(r"\[(\w+)\]\s*(.*)")
+_SECTION_CONF_BLOCK_RE = re.compile(
+    r"SECTION CONFIDENCES:\s*\n(.*?)(?=\nREASON:|\nISSUES:|\nATOM CONFIDENCES:|\nCORRECTED SOLUTION:|\nEND CORRECTED SOLUTION:|\nVERDICT:|\Z)",
+    re.DOTALL,
+)
+_ATOM_GUARD_RE = re.compile(r"ATOM\[\d+\]")
+_SECTION_CONF_LINE_RE = re.compile(r"(.+?):\s*([\d.]+)\s*(.*)")
+_ATOM_CONF_BLOCK_RE = re.compile(
+    r"ATOM CONFIDENCES:\s*\n(.*?)(?=\nSECTION CONFIDENCES:|\nCORRECTED SOLUTION:|\Z)",
+    re.DOTALL | re.IGNORECASE,
+)
+_ATOM_CONF_LINE_RE = re.compile(r"^ATOM\[(\d+)\]:\s+([\d.]+)(?:\s+(.+))?$")
+_VERDICT_RE = re.compile(
+    r"VERDICT:\s*(correct|minor_issues|fixable|major_flaw|unsolved)", re.IGNORECASE
+)
+_CONFIDENCE_RE = re.compile(r"CONFIDENCE:\s*([\d.]+)", re.IGNORECASE)
+_CRITIQUE_RE = re.compile(
+    r"CRITIQUE:\s*\n(.*?)(?=\nREASON:|\nISSUES:|\nSECTION CONFIDENCES:|\Z)",
+    re.DOTALL | re.IGNORECASE,
+)
+_REASON_RE = re.compile(r"REASON:\s*(.*?)(?=\nISSUES:|\Z)", re.DOTALL | re.IGNORECASE)
+_CORRECTED_RE = re.compile(
+    r"CORRECTED SOLUTION:\s*\n(.*?)(?:\nEND CORRECTED SOLUTION|\Z)",
+    re.DOTALL | re.IGNORECASE,
+)
+_CHANGES_RE = re.compile(r"CHANGES MADE:\s*\n(.*?)(?=\nREVISED SOLUTION:|\Z)", re.DOTALL)
+_REVISED_RE = re.compile(r"REVISED SOLUTION:\s*\n(.*)", re.DOTALL)
 
 
 def _strip_sentinels(text: str) -> str:
@@ -55,7 +89,7 @@ def _strip_sentinels(text: str) -> str:
     """
     stripped = _SENTINEL_RE.sub("", text)
     # Collapse any double blank lines left by removed sentinels
-    return re.sub(r"\n{3,}", "\n\n", stripped)
+    return _COLLAPSE_BLANK_RE.sub("\n\n", stripped)
 
 
 def _safe_format(template: str, **kwargs: str) -> str:
@@ -70,11 +104,7 @@ def _safe_format(template: str, **kwargs: str) -> str:
     )
 
 
-_SEVERITY_MAP: dict[str, IssueSeverity] = {
-    "CRITICAL": IssueSeverity.CRITICAL,
-    "MAJOR": IssueSeverity.MAJOR,
-    "MINOR": IssueSeverity.MINOR,
-}
+_SEVERITY_MAP: dict[str, IssueSeverity] = {s.name: s for s in IssueSeverity}
 
 
 def _extract_text(response) -> str:
@@ -301,20 +331,12 @@ def generate(
 # ---------------------------------------------------------------------------
 
 
-_VERDICT_MAP: dict[str, Verdict] = {
-    "correct": Verdict.CORRECT,
-    "minor_issues": Verdict.MINOR_ISSUES,
-    "fixable": Verdict.FIXABLE,
-    "major_flaw": Verdict.MAJOR_FLAW,
-    "unsolved": Verdict.UNSOLVED,
-}
+_VERDICT_MAP: dict[str, Verdict] = {v.value: v for v in Verdict}
 
 
 def _parse_issues(text: str) -> list[Issue]:
     """Parse the ISSUES block from verifier output into Issue objects."""
-    issues_match = re.search(
-        r"ISSUES:\s*\n(.*?)(?=\nREASON:|\nATOM CONFIDENCES:|\nSECTION CONFIDENCES:|\Z)", text, re.DOTALL | re.IGNORECASE
-    )
+    issues_match = _ISSUES_BLOCK_RE.search(text)
     if not issues_match:
         return []
 
@@ -327,8 +349,7 @@ def _parse_issues(text: str) -> list[Issue]:
         cleaned = line.strip().lstrip("- ").strip()
         if not cleaned:
             continue
-        # Try to parse severity tag: [CRITICAL], [MAJOR], [MINOR]
-        severity_tag_match = re.match(r"\[(\w+)\]\s*(.*)", cleaned)
+        severity_tag_match = _SEVERITY_TAG_RE.match(cleaned)
         if severity_tag_match:
             tag = severity_tag_match.group(1).upper()
             issue_text = severity_tag_match.group(2).strip()
@@ -343,11 +364,7 @@ def _parse_issues(text: str) -> list[Issue]:
 
 def _parse_section_confidences(text: str) -> list[SectionConfidence]:
     """Parse SECTION CONFIDENCES block from verifier output."""
-    match = re.search(
-        r"SECTION CONFIDENCES:\s*\n(.*?)(?=\nREASON:|\nISSUES:|\nATOM CONFIDENCES:|\nCORRECTED SOLUTION:|\nEND CORRECTED SOLUTION:|\nVERDICT:|\Z)",
-        text,
-        re.DOTALL,
-    )
+    match = _SECTION_CONF_BLOCK_RE.search(text)
     if not match:
         return []
 
@@ -357,10 +374,9 @@ def _parse_section_confidences(text: str) -> list[SectionConfidence]:
         if not cleaned:
             continue
         # Skip atom confidence lines that bled past ATOM CONFIDENCES block
-        if re.match(r"ATOM\[\d+\]", cleaned):
+        if _ATOM_GUARD_RE.match(cleaned):
             continue
-        # Pattern: "section name: 0.85 optional note"
-        sc_match = re.match(r"(.+?):\s*([\d.]+)\s*(.*)", cleaned)
+        sc_match = _SECTION_CONF_LINE_RE.match(cleaned)
         if sc_match:
             section = sc_match.group(1).strip()
             try:
@@ -373,16 +389,9 @@ def _parse_section_confidences(text: str) -> list[SectionConfidence]:
     return results
 
 
-_ATOM_CONF_LINE_RE = re.compile(r"^ATOM\[(\d+)\]:\s+([\d.]+)(?:\s+(.+))?$")
-
-
 def _parse_atom_confidences(text: str) -> list[AtomConfidence]:
     """Parse ATOM CONFIDENCES block from verifier output."""
-    block_match = re.search(
-        r"ATOM CONFIDENCES:\s*\n(.*?)(?=\nSECTION CONFIDENCES:|\nCORRECTED SOLUTION:|\Z)",
-        text,
-        re.DOTALL | re.IGNORECASE,
-    )
+    block_match = _ATOM_CONF_BLOCK_RE.search(text)
     if not block_match:
         return []
     results = []
@@ -399,12 +408,7 @@ def _parse_atom_confidences(text: str) -> list[AtomConfidence]:
 
 def _parse_verification(text: str) -> VerificationResult:
     """Parse structured verifier output into a VerificationResult."""
-    # Extract verdict
-    verdict_match = re.search(
-        r"VERDICT:\s*(correct|minor_issues|fixable|major_flaw|unsolved)",
-        text,
-        re.IGNORECASE,
-    )
+    verdict_match = _VERDICT_RE.search(text)
     if verdict_match:
         verdict_str = verdict_match.group(1).lower()
     else:
@@ -413,8 +417,7 @@ def _parse_verification(text: str) -> VerificationResult:
 
     verdict = _VERDICT_MAP.get(verdict_str, Verdict.MAJOR_FLAW)
 
-    # Extract confidence
-    conf_match = re.search(r"CONFIDENCE:\s*([\d.]+)", text, re.IGNORECASE)
+    conf_match = _CONFIDENCE_RE.search(text)
     if conf_match:
         try:
             raw = float(conf_match.group(1))
@@ -432,16 +435,10 @@ def _parse_verification(text: str) -> VerificationResult:
         logger.warning("Confidence regex failed to match — defaulting to 0.5")
         confidence = 0.5
 
-    # Extract critique (stops at REASON: or ISSUES: or SECTION CONFIDENCES: whichever comes first)
-    critique_match = re.search(
-        r"CRITIQUE:\s*\n(.*?)(?=\nREASON:|\nISSUES:|\nSECTION CONFIDENCES:|\Z)",
-        text,
-        re.DOTALL | re.IGNORECASE,
-    )
+    critique_match = _CRITIQUE_RE.search(text)
     critique = critique_match.group(1).strip() if critique_match else text
 
-    # Extract reason (for false-premise detection)
-    reason_match = re.search(r"REASON:\s*(.*?)(?=\nISSUES:|\Z)", text, re.DOTALL | re.IGNORECASE)
+    reason_match = _REASON_RE.search(text)
     reason = reason_match.group(1).strip() if reason_match else ""
 
     issues = _parse_issues(text)
@@ -456,12 +453,7 @@ def _parse_verification(text: str) -> VerificationResult:
     section_confidences = _parse_section_confidences(text)
     atom_confidences = _parse_atom_confidences(text)
 
-    # Extract corrected solution (for FIXABLE verdicts)
-    corrected_match = re.search(
-        r"CORRECTED SOLUTION:\s*\n(.*?)(?:\nEND CORRECTED SOLUTION|\Z)",
-        text,
-        re.DOTALL | re.IGNORECASE,
-    )
+    corrected_match = _CORRECTED_RE.search(text)
     corrected_solution = corrected_match.group(1).strip() if corrected_match else None
 
     return VerificationResult(
@@ -552,12 +544,10 @@ def verify(
 
 def _parse_revision(text: str, revision_number: int, critique: str) -> Revision:
     """Parse reviser output into a Revision object."""
-    # Extract changes summary
-    changes_match = re.search(r"CHANGES MADE:\s*\n(.*?)(?=\nREVISED SOLUTION:|\Z)", text, re.DOTALL)
+    changes_match = _CHANGES_RE.search(text)
     changes = changes_match.group(1).strip() if changes_match else "See revised solution"
 
-    # Extract revised solution
-    revised_match = re.search(r"REVISED SOLUTION:\s*\n(.*)", text, re.DOTALL)
+    revised_match = _REVISED_RE.search(text)
     revised = revised_match.group(1).strip() if revised_match else text
 
     return Revision(

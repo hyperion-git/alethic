@@ -18,7 +18,7 @@ import re
 
 from alethic.exceptions import ContextExhaustedError
 from alethic.models import AgentConfig, BreakerVerdict, TokenLedger
-from alethic.subagents import _call_model
+from alethic.subagents import _call_model, _safe_format
 
 logger = logging.getLogger("alethic")
 
@@ -154,37 +154,34 @@ _VERDICT_MAP: dict[str, BreakerVerdict] = {
     "no_flaw_found": BreakerVerdict.NO_FLAW_FOUND,
 }
 
+_RE_VERDICT = re.compile(
+    r"BREAKER_VERDICT:\s*(FLAW_FOUND|SUSPECTED_FLAW|NO_FLAW_FOUND)", re.IGNORECASE
+)
+_RE_ATOM = re.compile(r"TARGET_ATOM:\s*(\d+)", re.IGNORECASE)
+_RE_FLAW = re.compile(r"FLAW_TYPE:\s*(\S+)", re.IGNORECASE)
+_RE_EVIDENCE = re.compile(r"EVIDENCE:\s*(.*?)(?=\nREASONING:|\Z)", re.DOTALL | re.IGNORECASE)
+_RE_REASONING = re.compile(r"REASONING:\s*(.*?)(?:\Z)", re.DOTALL | re.IGNORECASE)
+
 
 def _parse_breaker(text: str) -> BreakerResult:
     """Parse structured breaker output into a BreakerResult.
 
     Defaults to NO_FLAW_FOUND on any parse failure to avoid false positives.
     """
-    # Verdict
-    verdict_match = re.search(
-        r"BREAKER_VERDICT:\s*(FLAW_FOUND|SUSPECTED_FLAW|NO_FLAW_FOUND)",
-        text,
-        re.IGNORECASE,
-    )
+    verdict_match = _RE_VERDICT.search(text)
     verdict_str = verdict_match.group(1).lower() if verdict_match else "no_flaw_found"
     verdict = _VERDICT_MAP.get(verdict_str, BreakerVerdict.NO_FLAW_FOUND)
 
-    # Target atom
-    atom_match = re.search(r"TARGET_ATOM:\s*(\d+)", text, re.IGNORECASE)
+    atom_match = _RE_ATOM.search(text)
     target_atom = int(atom_match.group(1)) if atom_match else 0
 
-    # Flaw type
-    flaw_match = re.search(r"FLAW_TYPE:\s*(\S+)", text, re.IGNORECASE)
+    flaw_match = _RE_FLAW.search(text)
     flaw_type = flaw_match.group(1).strip() if flaw_match else "none"
 
-    # Evidence
-    evidence_match = re.search(
-        r"EVIDENCE:\s*(.*?)(?=\nREASONING:|\Z)", text, re.DOTALL | re.IGNORECASE
-    )
+    evidence_match = _RE_EVIDENCE.search(text)
     evidence = evidence_match.group(1).strip() if evidence_match else ""
 
-    # Reasoning
-    reasoning_match = re.search(r"REASONING:\s*(.*?)(?:\Z)", text, re.DOTALL | re.IGNORECASE)
+    reasoning_match = _RE_REASONING.search(text)
     reasoning = reasoning_match.group(1).strip() if reasoning_match else ""
 
     if not verdict_match:
@@ -244,7 +241,6 @@ def run_breaker(
     else:
         atom_summary = "(no atom annotations — check the overall solution)"
 
-    from alethic.subagents import _safe_format
     user_msg = _safe_format(
         _BREAKER_USER,
         problem=problem,

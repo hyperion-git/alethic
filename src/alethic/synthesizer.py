@@ -96,7 +96,7 @@ def _find_similar_index(issue_text: str, merged: list[ConsensusIssue]) -> int | 
 
 def _most_severe(a: IssueSeverity, b: IssueSeverity) -> IssueSeverity:
     """Return whichever severity is more severe (lower rank)."""
-    return min(a, b, key=lambda s: _ISSUE_SEVERITY.get(s, 1))
+    return a if _ISSUE_SEVERITY.get(a, 1) <= _ISSUE_SEVERITY.get(b, 1) else b
 
 
 def aggregate_mechanical(results: list[VerificationResult]) -> dict[str, Any]:
