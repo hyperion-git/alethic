@@ -23,7 +23,7 @@ def test_verification_result_atom_confidences_defaults_to_empty_list():
 
 def test_agent_config_calibration_fields_have_defaults():
     config = AgentConfig()
-    assert config.apply_calibration is True
+    assert config.apply_calibration is False  # opt-in; enabled by thorough/extreme presets
     assert config.calibration_store is None
 
 

@@ -344,7 +344,9 @@ def _parse_issues(text: str) -> list[Issue]:
 def _parse_section_confidences(text: str) -> list[SectionConfidence]:
     """Parse SECTION CONFIDENCES block from verifier output."""
     match = re.search(
-        r"SECTION CONFIDENCES:\s*\n(.*?)(?=\n[A-Z]+:|\Z)", text, re.DOTALL | re.IGNORECASE
+        r"SECTION CONFIDENCES:\s*\n(.*?)(?=\nREASON:|\nISSUES:|\nATOM CONFIDENCES:|\nCORRECTED SOLUTION:|\nEND CORRECTED SOLUTION:|\nVERDICT:|\Z)",
+        text,
+        re.DOTALL,
     )
     if not match:
         return []

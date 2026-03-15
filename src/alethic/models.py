@@ -213,7 +213,7 @@ class AgentConfig:
     adversarial_breaker: bool = False       # enable adversarial breaker on CORRECT solutions
     breaker_model: str | None = None        # model for breaker (default: claude-sonnet-4-6)
     breaker_temperature: float = 0.8        # higher than verifier — want creative attacks
-    apply_calibration: bool = True          # apply confidence calibration before accept gate
+    apply_calibration: bool = False         # apply confidence calibration before accept gate
     calibration_store: str | None = None    # path to calibration JSONL store (default: ~/.alethic/calibration.jsonl)
 
     def __post_init__(self) -> None:
@@ -318,6 +318,7 @@ class AgentConfig:
             "adaptive_compute": True,
             "adversarial_breaker": True,
             "breaker_model": "claude-sonnet-4-6",
+            "apply_calibration": True,
         },
         "extreme": {
             "max_iterations": 12,
@@ -337,6 +338,7 @@ class AgentConfig:
             "adaptive_compute": True,
             "adversarial_breaker": True,
             "breaker_model": "claude-sonnet-4-6",
+            "apply_calibration": True,
         },
     }
 
