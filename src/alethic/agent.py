@@ -32,7 +32,14 @@ from dataclasses import dataclass, field
 
 import anthropic
 
-from alethic.atoms import AtomAnnotation, content_hash, parse_atoms
+from alethic.atoms import (
+    AtomAnnotation,
+    AtomStability,
+    classify_atom_stability,
+    content_hash,
+    parse_atoms,
+    parse_layer_results,  # defined in physics_checks.py; atoms.py imports it at line 17
+)
 from alethic.breaker import BreakerResult, run_breaker
 from alethic.error_taxonomy import classify_errors, get_revision_addendum
 from alethic.exceptions import ContextExhaustedError, TruncatedResponseError
@@ -44,6 +51,7 @@ from alethic.models import (
     BreakerVerdict,
     EventType,
     EvidenceState,
+    OracleType,
     Solution,
     TokenLedger,
     Verdict,
@@ -77,6 +85,91 @@ def rank_candidates(verifications: list[VerificationResult]) -> int:
         Index of the highest-confidence candidate.
     """
     return max(range(len(verifications)), key=lambda i: verifications[i].confidence)
+
+
+def _combine(a: str | None, b: str | None) -> str | None:
+    """Combine two optional prompt sections with a blank-line separator.
+
+    Strips leading/trailing newlines from each part. Falsy values (None, "")
+    are treated as absent. Returns None when both are absent.
+    """
+    a_clean = a.strip("\n") if a else None
+    b_clean = b.strip("\n") if b else None
+    if a_clean and b_clean:
+        return a_clean + "\n\n" + b_clean
+    return a_clean or b_clean
+
+
+_HIGH_ORACLE_TYPES = frozenset({
+    OracleType.LAYER3_LLM,
+    OracleType.LAYER3_LLM_ADVERSARIAL,
+    OracleType.LAYER4_CONSENSUS,
+})
+_LAYER_BY_ORACLE = {
+    OracleType.LAYER0_STRUCTURAL: 0,
+    OracleType.LAYER1_BEHAVIORAL: 1,
+    OracleType.LAYER2_CONSISTENCY: 2,
+}
+_SENTINEL_FAILURE_MARKERS = ("FAILED", "Traceback")
+
+
+def _build_atom_focus_directive(
+    atoms: list[AtomAnnotation],
+    stability: dict[int, AtomStability],
+) -> str | None:
+    """Build a two-tier verifier focus directive from atom stability history.
+
+    Returns a directive string or None if all atoms are STABLE, synthetic, or
+    the list is empty. The directive is intended to be appended to the verifier's
+    extra_system via _combine(adversarial_addendum, directive).
+
+    Args:
+        atoms: The most recent iteration's atom list (state.atom_history[-1]).
+        stability: Pre-computed stability dict from classify_atom_stability().
+    """
+    high: list[int] = []
+    reduced: list[int] = []
+
+    for a in atoms:
+        if a.synthetic:
+            continue  # D8 Option C: synthetic atoms never enter directive
+
+        atom_stability = stability.get(a.id, AtomStability.FAILING)
+        if atom_stability == AtomStability.STABLE:
+            continue  # STABLE atoms omitted from directive
+
+        # Determine tier based on oracle level and sentinel evidence
+        if a.oracle in _HIGH_ORACLE_TYPES:
+            high.append(a.id)
+        else:
+            # L0/L1/L2: check sentinel results for pass/fail evidence
+            layer = _LAYER_BY_ORACLE.get(a.oracle, 3)  # fallback 3=LLM; unreachable with current OracleType enum
+            sentinel_texts = parse_layer_results(a.content).get(layer, [])
+            if not sentinel_texts:
+                # No sentinel at this layer → cannot verify → HIGH
+                high.append(a.id)
+            elif any(
+                marker in text
+                for text in sentinel_texts
+                for marker in _SENTINEL_FAILURE_MARKERS
+            ):
+                # Explicit failure marker → HIGH regardless of non-emptiness
+                high.append(a.id)
+            else:
+                # Non-empty, no failure text → presume passed → REDUCED
+                reduced.append(a.id)
+
+    if not high and not reduced:
+        return None
+
+    lines = ["ATOM FOCUS DIRECTIVE:"]
+    if high:
+        ids = ", ".join(f"ATOM[{i}]" for i in sorted(high))
+        lines.append(f"HIGH attention (require explicit justification): {ids}")
+    if reduced:
+        ids = ", ".join(f"ATOM[{i}]" for i in sorted(reduced))
+        lines.append(f"REDUCED attention (skip exhaustive re-derivation): {ids}")
+    return "\n".join(lines)
 
 
 @dataclass
@@ -365,6 +458,65 @@ class MathAgent:
             .replace("{atom_stability_context}", atom_stability_context)
         )
 
+    def _build_atom_context(
+        self,
+        atom_history: list[list[AtomAnnotation]],
+        confidence_history: list[float],
+    ) -> str | None:
+        """Build atom stability advisory for the reviser.
+
+        Guards:
+        - len(atom_history) < 2 → None (insufficient history)
+        - all-synthetic history → None (explicit guard; classify_atom_stability not called)
+        - config.variant_b is not None → None (variant-B supersedes atom stability)
+        """
+        if len(atom_history) < 2:
+            return None
+
+        # All-synthetic guard: must be explicit (not just empty stability dict)
+        all_synthetic = all(
+            all(a.synthetic for a in iteration_atoms)
+            for iteration_atoms in atom_history
+        )
+        if all_synthetic:
+            return None
+
+        if self.config.variant_b is not None:
+            return None
+
+        confidence_floor = self.config.confidence_threshold * 0.85
+        stability = classify_atom_stability(atom_history, confidence_history, confidence_floor)
+        if not stability:
+            return None
+
+        stable_ids = sorted(aid for aid, s in stability.items() if s == AtomStability.STABLE)
+        oscillating_ids = sorted(aid for aid, s in stability.items() if s == AtomStability.OSCILLATING)
+        failing_ids = sorted(aid for aid, s in stability.items() if s == AtomStability.FAILING)
+
+        parts: list[str] = []
+        if stable_ids:
+            ids_str = ", ".join(f"ATOM[{i}]" for i in stable_ids)
+            parts.append(
+                f"{ids_str} have been stable across iterations. "
+                "Do not discard these atoms — they represent verified correct steps."
+            )
+        if oscillating_ids:
+            ids_str = ", ".join(f"ATOM[{i}]" for i in oscillating_ids)
+            parts.append(
+                f"{ids_str} are oscillating — the same approach is being retried without "
+                "success. Avoid repeating the same reasoning patterns for these atoms."
+            )
+        if failing_ids:
+            ids_str = ", ".join(f"ATOM[{i}]" for i in failing_ids)
+            parts.append(
+                f"{ids_str} show declining confidence. "
+                "Consider a categorical change of approach for these steps."
+            )
+
+        if not parts:
+            return None
+        return "## Atom stability advisory:\n" + "\n".join(parts)
+
     def _log_header(self) -> str:
         return "ALETHIC MATH AGENT"
 
@@ -506,6 +658,7 @@ class MathAgent:
         problem: str,
         candidates: list[tuple[Solution, float]],
         prompts: dict[str, str],
+        state: RunState,
         ledger: TokenLedger | None = None,
         context_limit: int = 200_000,
         context_threshold: float = 0.8,
@@ -516,6 +669,18 @@ class MathAgent:
         tuples where orig_idx is the 1-based generation-order index.
         """
         verified: list[tuple[Solution, VerificationResult, float, float, int]] = []
+        # Hoist stability computation — depends only on state, not on any individual candidate
+        if state.atom_history:
+            _stability = classify_atom_stability(
+                state.atom_history,
+                state.confidence_history,
+                self.config.confidence_threshold * 0.85,
+            )
+            _directive = _build_atom_focus_directive(state.atom_history[-1], _stability)
+        else:
+            _directive = None
+        _extra_system = _combine(self._adversarial_addendum(), _directive)
+
         for idx, (solution, gen_time) in enumerate(candidates, 1):
             t0 = time.time()
             verification = verify(
@@ -525,7 +690,7 @@ class MathAgent:
                 config=self.config,
                 system_prompt=prompts.get("verifier_system"),
                 user_template=prompts.get("verifier_user"),
-                extra_system=self._adversarial_addendum(),
+                extra_system=_extra_system,
                 ledger=ledger,
                 context_limit=context_limit,
                 context_threshold=context_threshold,
@@ -591,6 +756,7 @@ class MathAgent:
                 system_prompt=prompts.get("reviser_system"),
                 user_template=prompts.get("reviser_user"),
                 critique_addendum=revision_addendum or None,
+                atom_context=self._build_atom_context(state.atom_history, state.confidence_history),
                 ledger=ledger,
                 context_limit=context_limit,
                 context_threshold=context_threshold,
@@ -611,7 +777,17 @@ class MathAgent:
                 config=self.config,
                 system_prompt=prompts.get("verifier_system"),
                 user_template=prompts.get("verifier_user"),
-                extra_system=self._adversarial_addendum(),
+                extra_system=_combine(
+                    self._adversarial_addendum(),
+                    _build_atom_focus_directive(
+                        state.atom_history[-1],
+                        classify_atom_stability(
+                            state.atom_history,
+                            state.confidence_history,
+                            self.config.confidence_threshold * 0.85,
+                        ),
+                    ) if state.atom_history else None,
+                ),
                 ledger=ledger,
                 context_limit=context_limit,
                 context_threshold=context_threshold,
@@ -697,7 +873,26 @@ class MathAgent:
         """
         state = RunState()
         log = EventLog()
-        threshold = self.config.confidence_threshold
+        raw_threshold = self.config.confidence_threshold
+        # Confidence calibration: load temperature-scaled threshold
+        calibrated_threshold = raw_threshold  # default: identity (no calibration)
+        if self.config.apply_calibration:
+            try:
+                from pathlib import Path as _Path
+
+                from alethic.calibration import load_calibrated_threshold
+
+                _store_path = (
+                    _Path(self.config.calibration_store)
+                    if self.config.calibration_store
+                    else None
+                )
+                calibrated_threshold = load_calibrated_threshold(
+                    raw_threshold, store_path=_store_path
+                )
+            except Exception:
+                pass  # calibration failure is non-fatal; fall back to raw threshold
+        threshold = calibrated_threshold
         prompts = self._prompt_set()
 
         # Build generator system prompt with tool guidance
@@ -898,6 +1093,7 @@ class MathAgent:
                     problem=problem,
                     candidates=candidates,
                     prompts=prompts,
+                    state=state,
                     ledger=ledger,
                     context_limit=context_limit,
                     context_threshold=self.config.context_threshold,
@@ -1096,7 +1292,7 @@ class MathAgent:
                     if re_verification.confidence > state.best_confidence:
                         state.best_confidence = re_verification.confidence
                         state.best_solution = corrected
-                    if re_verification.is_acceptable(threshold):
+                    if re_verification.is_acceptable(raw_threshold):
                         self._log("")
                         self._log("[SOLVED] Verifier-corrected solution accepted!")
                         log.emit(
@@ -1266,6 +1462,30 @@ class MathAgent:
                 logger.info("[AUTOPSY] Written to %s", autopsy_path)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("[AUTOPSY] Failed to generate autopsy: %s", exc)
+
+        # Record calibration datapoint for future temperature fitting
+        if self.config.apply_calibration and state.best_confidence > 0.0:
+            try:
+                from pathlib import Path as _Path
+
+                from alethic.calibration import append_pair
+
+                _store_path = (
+                    _Path(self.config.calibration_store)
+                    if self.config.calibration_store
+                    else None
+                )
+                preset_name = getattr(self.config, "_preset_name", None) or "unknown"
+                append_pair(
+                    state.best_confidence,
+                    result.verdict == Verdict.CORRECT,
+                    model=self.config.model,
+                    preset=preset_name,
+                    best_of_n=self.config.best_of_n,
+                    store_path=_store_path,
+                )
+            except Exception:
+                pass  # calibration write failure is non-fatal
 
         return result
 

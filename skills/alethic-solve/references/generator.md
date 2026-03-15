@@ -128,3 +128,39 @@ def verify_dual_representation(n_test=10):
 
 verify_dual_representation()
 ```
+
+---
+
+## Atom annotations
+
+Structure your solution into logical atoms. Before your solution, declare the total:
+
+```
+K_ATOMS=N
+```
+
+Then prefix each major claim or step with an atom header:
+
+```
+ATOM[N] deps=[dep_ids] oracle=LX
+```
+
+Where:
+- N is a unique integer ID (starting from 1, never reused)
+- deps=[...] lists the integer IDs of atoms this step directly depends on
+- oracle=LX is the verification level: L0 (structural), L1 (behavioral/computable), L2 (consistency), or L3 (requires logical reasoning)
+
+Example:
+```
+K_ATOMS=3
+ATOM[1] deps=[] oracle=L0
+The function f is defined as f(n) = n^2 + 1 for all n ∈ ℕ.
+
+ATOM[2] deps=[1] oracle=L1
+For n=0: f(0) = 0^2 + 1 = 1 > 0. verify_step_2() confirms.
+
+ATOM[3] deps=[1,2] oracle=L3
+By induction using the result from ATOM[2], f(n) > 0 for all n.
+```
+
+Omit atom headers ONLY for single-step computations or arguments with no separable sub-claims (e.g., a one-line algebraic check). For all other proofs and derivations — including case splits, inductions, multi-step algebraic derivations, and anything requiring more than two logical inferences — atom annotations are required.

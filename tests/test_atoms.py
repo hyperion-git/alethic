@@ -271,3 +271,150 @@ class TestClassifyAtomStability:
     def test_empty_history(self):
         result = classify_atom_stability([], [])
         assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# Helpers for TestBuildAtomContext
+# ---------------------------------------------------------------------------
+
+from unittest.mock import patch  # noqa: E402
+from alethic.agent import MathAgent  # noqa: E402
+from alethic.models import AgentConfig  # noqa: E402
+
+
+def _make_real_atom(atom_id: int, content: str) -> AtomAnnotation:
+    return AtomAnnotation(
+        id=atom_id, deps=(), oracle=OracleType.LAYER3_LLM,
+        content=content, synthetic=False,
+    )
+
+
+def _make_synthetic_atom(content: str = "whole solution") -> AtomAnnotation:
+    return AtomAnnotation(
+        id=0, deps=(), oracle=OracleType.LAYER3_LLM,
+        content=content, synthetic=True,
+    )
+
+
+def _make_agent(**overrides) -> MathAgent:
+    config = AgentConfig(confidence_threshold=0.82, **overrides)
+    return MathAgent(api_key="sk-test", config=config)
+
+
+class TestBuildAtomContext:
+
+    def test_insufficient_history_returns_none(self):
+        agent = _make_agent()
+        atom = _make_real_atom(1, "step 1")
+        result = agent._build_atom_context([[atom]], [0.8])
+        assert result is None
+
+    def test_all_synthetic_returns_none_and_does_not_call_classify(self):
+        agent = _make_agent()
+        synth = _make_synthetic_atom()
+        atom_history = [[synth], [synth]]
+        conf_history = [0.7, 0.75]
+        with patch("alethic.agent.classify_atom_stability") as mock_classify:
+            result = agent._build_atom_context(atom_history, conf_history)
+        assert result is None
+        mock_classify.assert_not_called()  # explicit guard, not just accident
+
+    def test_variant_b_returns_none(self):
+        agent = _make_agent(variant_b={"model": "claude-sonnet-4-6"})
+        atom1 = _make_real_atom(1, "content A")
+        atom2 = _make_real_atom(1, "content B")  # same id, different content = FAILING
+        atom_history = [[atom1], [atom2]]
+        conf_history = [0.7, 0.65]
+        result = agent._build_atom_context(atom_history, conf_history)
+        assert result is None
+
+    def test_stable_atoms_advisory_contains_do_not_discard(self):
+        agent = _make_agent()
+        same_content = "the exact same proof step"
+        atom1 = _make_real_atom(1, same_content)
+        atom2 = _make_real_atom(1, same_content)
+        atom_history = [[atom1], [atom2]]
+        conf_history = [0.75, 0.80]  # both >= floor (0.82 * 0.85 = 0.697)
+        result = agent._build_atom_context(atom_history, conf_history)
+        assert result is not None
+        assert "do not discard" in result.lower()
+        assert "repetition" not in result.lower()
+
+    def test_oscillating_atoms_advisory_warns_against_repetition(self):
+        agent = _make_agent()
+        content_a = "approach using Fourier transform"
+        content_b = "approach using integration by parts"
+        content_c = content_a  # cycles back → OSCILLATING
+        atom1 = _make_real_atom(2, content_a)
+        atom2 = _make_real_atom(2, content_b)
+        atom3 = _make_real_atom(2, content_c)
+        atom_history = [[atom1], [atom2], [atom3]]
+        conf_history = [0.72, 0.68, 0.70]
+        result = agent._build_atom_context(atom_history, conf_history)
+        assert result is not None
+        # Must warn about repetition
+        assert "oscillat" in result.lower() or "repeat" in result.lower()
+        # Must NOT say "do not discard"
+        assert "do not discard" not in result.lower()
+
+    def test_failing_atoms_advisory_distinct_from_stable(self):
+        agent = _make_agent()
+        atom1 = _make_real_atom(3, "attempt A")
+        atom2 = _make_real_atom(3, "attempt B")
+        atom_history = [[atom1], [atom2]]
+        conf_history = [0.72, 0.61]  # declining
+        result = agent._build_atom_context(atom_history, conf_history)
+        assert result is not None
+        assert "do not discard" not in result.lower()
+
+    def test_empty_stability_dict_returns_none(self):
+        """classify_atom_stability() returning empty dict → advisory is None."""
+        agent = _make_agent()
+        atom1 = _make_real_atom(1, "some content")
+        atom2 = _make_real_atom(1, "different content")
+        atom_history = [[atom1], [atom2]]
+        conf_history = [0.7, 0.75]
+        with patch("alethic.agent.classify_atom_stability", return_value={}):
+            result = agent._build_atom_context(atom_history, conf_history)
+        assert result is None
+
+    def test_wiring_revise_receives_atom_context(self):
+        """Advisory text must reach the user_message passed to _call_model."""
+        agent = _make_agent()
+        atom_a = _make_real_atom(1, "step A content alpha")
+        atom_b = _make_real_atom(1, "step B content beta")
+        atom_history = [[atom_a], [atom_b]]
+        conf_history = [0.72, 0.68]
+
+        from alethic.models import Solution, VerificationResult, Verdict
+        from alethic.subagents import revise
+
+        solution = Solution(problem="test", solution_text="sol", iteration=1)
+        verification = VerificationResult(
+            verdict=Verdict.MAJOR_FLAW, critique="needs work", confidence=0.6
+        )
+
+        captured_messages = []
+        def fake_call_model(client, *, system, user_message, **kwargs):
+            captured_messages.append(user_message)
+            return "CHANGES MADE:\nnone\n\nREVISED SOLUTION:\nfixed\n\nCONCLUSION: done"
+
+        advisory = agent._build_atom_context(atom_history, conf_history)
+        assert advisory is not None, "pre-condition: advisory must be non-None for this test"
+
+        import alethic.subagents as subagents_module
+        with patch.object(subagents_module, "_call_model", side_effect=fake_call_model):
+            revise(
+                None,  # client (unused with mock)
+                problem="test",
+                solution=solution,
+                verification=verification,
+                config=agent.config,
+                revision_number=1,
+                atom_context=advisory,
+            )
+
+        assert len(captured_messages) == 1
+        assert advisory in captured_messages[0], (
+            "Advisory text must appear in user_message passed to _call_model"
+        )

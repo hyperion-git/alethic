@@ -68,9 +68,15 @@ ISSUES:
 - [MINOR] Small imprecision or stylistic concern
 (Tag each issue with severity. Write "None" if there are no issues)
 
+ATOM CONFIDENCES:
+ATOM[N]: 0.NN optional note
+(Omit this section if the solution has no ATOM markers)
+
 SECTION CONFIDENCES:
 - [section name]: [0.0-1.0] [optional note]
 (Omit this section if the solution is too short to decompose into sections)
+
+If the solution contains ATOM[N] markers, report your confidence in each atom in the ATOM CONFIDENCES block using format `ATOM[N]: 0.NN optional note`. Omit this section if the solution has no atom markers.
 
 CORRECTED SOLUTION:
 [If and only if verdict is "fixable": complete corrected version — standalone, not a list of fixes]
