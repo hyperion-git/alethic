@@ -1,12 +1,12 @@
 """Confidence calibration via temperature scaling.
 
 Accumulates (raw_confidence, solved) pairs across sessions in a user-local JSONL
-store (~/.alethic/calibration.jsonl), fits a temperature scalar T that minimizes
+store (~/.alethic/calibration.jsonl), fits a temperature scalar t that minimizes
 NLL on historical data, and applies it to correct systematic verifier bias.
 
-T > 1: compresses probabilities toward 0.5 (corrects overconfidence).
-T < 1: pushes toward extremes (corrects underconfidence).
-T = 1: identity (no calibration effect).
+t > 1: compresses probabilities toward 0.5 (corrects overconfidence).
+t < 1: pushes toward extremes (corrects underconfidence).
+t = 1: identity (no calibration effect).
 """
 from __future__ import annotations
 
@@ -44,20 +44,20 @@ def _logit(p: float) -> float:
     return math.log(p / (1.0 - p))
 
 
-def calibrate(raw: float, T: float) -> float:
-    """Apply temperature T to a raw confidence score.
+def calibrate(raw: float, t: float) -> float:
+    """Apply temperature t to a raw confidence score.
 
-    Identity short-circuit at T=1.0 for exact floating-point equality.
-    Boundary fixpoints: calibrate(0.0, T)==0.0, calibrate(1.0, T)==1.0 (exact).
+    Identity short-circuit at t=1.0 for exact floating-point equality.
+    Boundary fixpoints: calibrate(0.0, t)==0.0, calibrate(1.0, t)==1.0 (exact).
     """
-    if T == 1.0:
+    if t == 1.0:
         return raw
     if raw == 0.0:
         return 0.0
     if raw == 1.0:
         return 1.0
     clipped = max(1e-7, min(1.0 - 1e-7, raw))
-    return _sigmoid(_logit(clipped) / T)
+    return _sigmoid(_logit(clipped) / t)
 
 
 def _version_matches(entry_ver: str, current: str) -> bool:
@@ -115,11 +115,11 @@ def append_pair(
         f.write(json.dumps(entry) + "\n")
 
 
-def _nll(pairs: list[dict], T: float) -> float:
+def _nll(pairs: list[dict], t: float) -> float:
     """Negative log-likelihood of temperature-calibrated confidences."""
     total = 0.0
     for p in pairs:
-        cal = calibrate(p["raw_conf"], T)
+        cal = calibrate(p["raw_conf"], t)
         cal = max(1e-10, min(1.0 - 1e-10, cal))
         label = float(p["solved"])
         total -= label * math.log(cal) + (1.0 - label) * math.log(1.0 - cal)
@@ -127,7 +127,7 @@ def _nll(pairs: list[dict], T: float) -> float:
 
 
 def fit_temperature(pairs: list[dict], *, grid_points: int = 50) -> float:
-    """Find temperature T minimizing NLL on pairs.
+    """Find temperature t minimizing NLL on pairs.
 
     Returns 1.0 (identity) if fewer than 20 version-filtered pairs.
     Grid: 50 log-space points in [0.05, 20.0], followed by Brent's refinement.
@@ -135,21 +135,22 @@ def fit_temperature(pairs: list[dict], *, grid_points: int = 50) -> float:
     if len(pairs) < 20:
         return 1.0
 
-    T_min, T_max = 0.05, 20.0
-    log_min, log_max = math.log(T_min), math.log(T_max)
+    t_min, t_max = 0.05, 20.0
+    log_min, log_max = math.log(t_min), math.log(t_max)
     grid = [
         math.exp(log_min + (log_max - log_min) * i / (grid_points - 1))
         for i in range(grid_points)
     ]
-    nll_vals = [_nll(pairs, T) for T in grid]
+    nll_vals = [_nll(pairs, t) for t in grid]
     best_idx = min(range(len(nll_vals)), key=lambda i: nll_vals[i])
 
     lo = grid[max(0, best_idx - 1)]
     hi = grid[min(len(grid) - 1, best_idx + 1)]
 
     try:
-        from scipy.optimize import minimize_scalar
-        result = minimize_scalar(lambda T: _nll(pairs, T), bounds=(lo, hi), method="bounded")
+        from scipy.optimize import minimize_scalar  # type: ignore[import-untyped]
+
+        result = minimize_scalar(lambda t: _nll(pairs, t), bounds=(lo, hi), method="bounded")
         return float(result.x)
     except ImportError:
         return grid[best_idx]
@@ -158,10 +159,10 @@ def fit_temperature(pairs: list[dict], *, grid_points: int = 50) -> float:
 def load_calibrated_threshold(
     raw_threshold: float, *, store_path: Path | None = None
 ) -> float:
-    """Load T from store and return calibrate(raw_threshold, T).
+    """Load t from store and return calibrate(raw_threshold, t).
 
-    Returns raw_threshold unchanged if insufficient data (T=1.0).
+    Returns raw_threshold unchanged if insufficient data (t=1.0).
     """
     pairs = load_pairs(store_path=store_path)
-    T = fit_temperature(pairs)
-    return calibrate(raw_threshold, T)
+    t = fit_temperature(pairs)
+    return calibrate(raw_threshold, t)
