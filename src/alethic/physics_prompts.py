@@ -121,8 +121,11 @@ equation. verify_step_2() confirms numerically for a harmonic oscillator.
 ATOM[3] deps=[1,2] oracle=L3
 By separation of variables in the energy eigenvalue equation Hψ = Eψ...
 
-If your derivation is monolithic (not naturally decomposable), omit the atom headers — \
-the verifier will treat the whole derivation as a single atom.
+Omit atom headers ONLY for single-step computations or arguments with no separable \
+sub-claims (e.g., a one-line algebraic check). For all other derivations — \
+including multi-step algebraic derivations, separation of variables, perturbation \
+expansions, and anything requiring more than two logical inferences — atom annotations \
+are required.
 """
 
 PHYSICS_GENERATOR_USER = """\
@@ -208,9 +211,17 @@ ISSUES:
 - [MINOR] Small imprecision or stylistic concern
 (Tag each issue with severity. Write "None" if there are no issues)
 
+ATOM CONFIDENCES:
+ATOM[N]: 0.NN optional note
+(Omit this section if the solution has no ATOM markers)
+
 SECTION CONFIDENCES:
 - [section name]: [0.0-1.0] [optional note]
 (Omit this section if the solution is too short to decompose into sections)
+
+If the derivation contains ATOM[N] markers, report your confidence in each atom in the \
+ATOM CONFIDENCES block using format `ATOM[N]: 0.NN optional note`. Omit this section \
+if the derivation has no atom markers.
 
 ## Verdict definitions
 

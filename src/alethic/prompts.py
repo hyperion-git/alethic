@@ -90,8 +90,10 @@ For n=0: f(0) = 0^2 + 1 = 1 > 0. verify_step_2() confirms.
 ATOM[3] deps=[1,2] oracle=L3
 By induction using the result from ATOM[2], f(n) > 0 for all n.
 
-If your solution is monolithic (not naturally decomposable), omit the atom headers — \
-the verifier will treat the whole solution as a single atom.
+Omit atom headers ONLY for single-step computations or arguments with no separable \
+sub-claims (e.g., a one-line algebraic check). For all other proofs and derivations — \
+including case splits, inductions, multi-step algebraic derivations, and anything \
+requiring more than two logical inferences — atom annotations are required.
 """
 
 GENERATOR_USER = """\
@@ -171,9 +173,17 @@ ISSUES:
 - [MINOR] Small imprecision or stylistic concern
 (Tag each issue with severity. Write "None" if there are no issues)
 
+ATOM CONFIDENCES:
+ATOM[N]: 0.NN optional note
+(Omit this section if the solution has no ATOM markers)
+
 SECTION CONFIDENCES:
 - [section name]: [0.0-1.0] [optional note]
 (Omit this section if the solution is too short to decompose into sections)
+
+If the solution contains ATOM[N] markers, report your confidence in each atom in the \
+ATOM CONFIDENCES block using format `ATOM[N]: 0.NN optional note`. Omit this section \
+if the solution has no atom markers.
 
 ## Verdict definitions
 

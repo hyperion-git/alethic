@@ -119,3 +119,40 @@ def verify_symbolic_numeric(params=None):
 
 verify_symbolic_numeric()
 ```
+
+---
+
+## Atom annotations
+
+Structure your derivation into logical atoms. Before your derivation, declare the total:
+
+```
+K_ATOMS=N
+```
+
+Then prefix each major step with an atom header:
+
+```
+ATOM[N] deps=[dep_ids] oracle=LX
+```
+
+Where:
+- N is a unique integer ID (starting from 1, never reused)
+- deps=[...] lists the integer IDs of atoms this step directly depends on
+- oracle=LX is the verification level: L0 (dimensional/structural), L1 (limiting case or numerical spot-check), L2 (symbolic-numeric consistency), or L3 (logical reasoning)
+
+Example:
+```
+K_ATOMS=3
+ATOM[1] deps=[] oracle=L0
+The Hamiltonian is H = p²/2m + V(x), with [H] = J (energy dimension).
+
+ATOM[2] deps=[1] oracle=L1
+In the classical limit ℏ→0, the Schrödinger equation reduces to the Hamilton-Jacobi
+equation. verify_step_2() confirms numerically for a harmonic oscillator.
+
+ATOM[3] deps=[1,2] oracle=L3
+By separation of variables in the energy eigenvalue equation Hψ = Eψ...
+```
+
+Omit atom headers ONLY for single-step computations or arguments with no separable sub-claims (e.g., a one-line algebraic check). For all other derivations — including multi-step algebraic derivations, separation of variables, perturbation expansions, and anything requiring more than two logical inferences — atom annotations are required.
