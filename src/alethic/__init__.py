@@ -30,6 +30,7 @@ Usage:
 
 from alethic.agent import MathAgent, rank_candidates
 from alethic.autopsy import generate_autopsy
+from alethic.calibration import calibrate
 from alethic.error_taxonomy import classify_errors
 from alethic.exceptions import (
     AlethicError,
@@ -66,6 +67,7 @@ __all__ = [
     "AlethicError",
     "AtomConfidence",
     "BreakerVerdict",
+    "calibrate",
     "CheckerAgent",
     "CheckpointError",
     "classify_errors",

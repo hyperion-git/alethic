@@ -873,7 +873,26 @@ class MathAgent:
         """
         state = RunState()
         log = EventLog()
-        threshold = self.config.confidence_threshold
+        raw_threshold = self.config.confidence_threshold
+        # Confidence calibration: load temperature-scaled threshold
+        calibrated_threshold = raw_threshold  # default: identity (no calibration)
+        if self.config.apply_calibration:
+            try:
+                from pathlib import Path as _Path
+
+                from alethic.calibration import load_calibrated_threshold
+
+                _store_path = (
+                    _Path(self.config.calibration_store)
+                    if self.config.calibration_store
+                    else None
+                )
+                calibrated_threshold = load_calibrated_threshold(
+                    raw_threshold, store_path=_store_path
+                )
+            except Exception:
+                pass  # calibration failure is non-fatal; fall back to raw threshold
+        threshold = calibrated_threshold
         prompts = self._prompt_set()
 
         # Build generator system prompt with tool guidance
@@ -1273,7 +1292,7 @@ class MathAgent:
                     if re_verification.confidence > state.best_confidence:
                         state.best_confidence = re_verification.confidence
                         state.best_solution = corrected
-                    if re_verification.is_acceptable(threshold):
+                    if re_verification.is_acceptable(raw_threshold):
                         self._log("")
                         self._log("[SOLVED] Verifier-corrected solution accepted!")
                         log.emit(
@@ -1443,6 +1462,30 @@ class MathAgent:
                 logger.info("[AUTOPSY] Written to %s", autopsy_path)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("[AUTOPSY] Failed to generate autopsy: %s", exc)
+
+        # Record calibration datapoint for future temperature fitting
+        if self.config.apply_calibration and state.best_confidence > 0.0:
+            try:
+                from pathlib import Path as _Path
+
+                from alethic.calibration import append_pair
+
+                _store_path = (
+                    _Path(self.config.calibration_store)
+                    if self.config.calibration_store
+                    else None
+                )
+                preset_name = getattr(self.config, "_preset_name", None) or "unknown"
+                append_pair(
+                    state.best_confidence,
+                    result.verdict == Verdict.CORRECT,
+                    model=self.config.model,
+                    preset=preset_name,
+                    best_of_n=self.config.best_of_n,
+                    store_path=_store_path,
+                )
+            except Exception:
+                pass  # calibration write failure is non-fatal
 
         return result
 
