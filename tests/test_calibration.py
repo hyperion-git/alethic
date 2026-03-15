@@ -74,15 +74,13 @@ def test_fit_temperature_recovers_true_T():
 def test_fit_temperature_n_lt20_identity():
     """N<20 → T=1.0 (identity)."""
     pairs = [{"raw_conf": 0.8, "solved": True, "alethic_version": "3.6.0"} for _ in range(5)]
-    with patch("alethic.calibration._current_version", return_value="3.6.0"):
-        T = fit_temperature(pairs)
+    T = fit_temperature(pairs)
     assert abs(calibrate(0.7, T) - 0.7) < 1e-6
 
 def test_fit_temperature_biased_fires():
     """N=20 biased (all high raw_conf, all solved=False) → calibration moves the needle."""
     pairs = [{"raw_conf": 0.95, "solved": False, "alethic_version": "3.6.0"} for _ in range(20)]
-    with patch("alethic.calibration._current_version", return_value="3.6.0"):
-        T = fit_temperature(pairs)
+    T = fit_temperature(pairs)
     assert abs(calibrate(0.95, T) - 0.95) > 0.01
 
 

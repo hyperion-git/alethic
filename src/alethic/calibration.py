@@ -147,6 +147,9 @@ def fit_temperature(pairs: list[dict], *, grid_points: int = 50) -> float:
     lo = grid[max(0, best_idx - 1)]
     hi = grid[min(len(grid) - 1, best_idx + 1)]
 
+    if lo >= hi:
+        return grid[best_idx]
+
     try:
         from scipy.optimize import minimize_scalar  # type: ignore[import-untyped]
 
