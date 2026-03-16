@@ -21,6 +21,69 @@ from alethic.physics_agent import PhysicsAgent
 _REQUIRED_PROBLEM_FIELDS = {"id", "domain", "problem", "expected_solvable"}
 
 
+def measure_atoms(
+    events: list,
+    n_iterations: int,
+) -> dict[str, Any]:
+    """Compute atom metrics from a completed run's event log.
+
+    Extracts winning solutions per iteration from GENERATE events,
+    parses atoms, and computes annotation_rate and per-iteration atom_counts.
+
+    KNOWN LIMITATION: solution_preview in GENERATE events is truncated to
+    500 chars (agent.py:1080). Atom counts may be understated for long
+    solutions. A future improvement could store full solution text in events
+    or increase the preview length.
+    """
+    from alethic.atoms import parse_atoms
+
+    # Extract winning solution text per iteration.
+    # For best-of-N, the VERIFY event with highest confidence per iteration
+    # identifies the winning candidate. We then look up that candidate's
+    # GENERATE event for the solution text.
+    iter_candidates: dict[int, dict[int, str]] = {}  # iter -> {candidate -> text}
+    iter_best: dict[int, tuple[int, float]] = {}  # iter -> (best_cand, best_conf)
+
+    for e in events:
+        if e.type.value == "generate":
+            it = e.iteration
+            cand = e.data.get("candidate", 1)
+            text = e.data.get("solution_preview", "")
+            iter_candidates.setdefault(it, {})[cand] = text
+        elif e.type.value == "verify":
+            it = e.iteration
+            cand = e.data.get("candidate", 1)
+            conf = e.data.get("confidence", 0.0)
+            if it not in iter_best or conf > iter_best[it][1]:
+                iter_best[it] = (cand, conf)
+
+    iter_solutions: dict[int, str] = {}
+    for it, (best_cand, _) in iter_best.items():
+        candidates = iter_candidates.get(it, {})
+        iter_solutions[it] = candidates.get(best_cand, "")
+
+    atom_counts: list[int] = []
+    annotated_iters = 0
+
+    for it in range(1, n_iterations + 1):
+        text = iter_solutions.get(it, "")
+        atoms = parse_atoms(text)
+        non_synthetic = [a for a in atoms if not a.synthetic]
+        count = len(non_synthetic)
+        atom_counts.append(count)
+
+        if count > 0:
+            annotated_iters += 1
+
+    annotation_rate = annotated_iters / max(n_iterations, 1)
+
+    return {
+        "annotation_rate": annotation_rate,
+        "atom_counts": atom_counts,
+        "mean_atom_count": sum(atom_counts) / max(len(atom_counts), 1),
+    }
+
+
 def load_benchmark(path: str) -> dict[str, Any]:
     """Load and validate a benchmark JSON file.
 
@@ -96,6 +159,9 @@ def run_benchmark(
                 "correct_prediction": result.solved == expected_solvable,
                 "error": None,
             }
+            # Atom measurement
+            atom_metrics = measure_atoms(result.events, result.iterations_used)
+            outcome["atom_metrics"] = atom_metrics
         except Exception as exc:  # noqa: BLE001
             outcome |= {
                 "solved": False,
@@ -105,6 +171,7 @@ def run_benchmark(
                 "correct_prediction": False,
                 "error": str(exc),
             }
+            outcome["atom_metrics"] = None
 
         results.append(outcome)
         if verbose:
@@ -115,6 +182,12 @@ def run_benchmark(
     total = len(results)
     solved_count = sum(1 for r in results if r["solved"])
 
+    all_annotation_rates = [
+        r["atom_metrics"]["annotation_rate"]
+        for r in results
+        if r.get("atom_metrics") is not None
+    ]
+
     return {
         "benchmark": benchmark.get("name", Path(path).stem),
         "preset": preset,
@@ -124,5 +197,10 @@ def run_benchmark(
         "avg_confidence": sum(r["confidence"] for r in results) / total if total else 0.0,
         "avg_iterations": sum(r["iterations_used"] for r in results) / total if total else 0.0,
         "elapsed_seconds": round(elapsed, 2),
+        "mean_annotation_rate": (
+            sum(all_annotation_rates) / len(all_annotation_rates)
+            if all_annotation_rates
+            else 0.0
+        ),
         "results": results,
     }
