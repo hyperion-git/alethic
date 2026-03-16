@@ -704,8 +704,11 @@ class MathAgent:
             verify_time = time.time() - t0
             verified.append((solution, verification, gen_time, verify_time, idx))
 
-        # Sort by confidence descending
+        # Select best candidate via rank_candidates, then sort rest by confidence
+        best_idx = rank_candidates([v for _, v, _, _, _ in verified])
+        best = verified.pop(best_idx)
         verified.sort(key=lambda x: x[1].confidence, reverse=True)
+        verified.insert(0, best)
         return verified
 
     def _log_candidates(
