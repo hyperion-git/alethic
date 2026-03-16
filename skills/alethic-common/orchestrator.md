@@ -52,16 +52,18 @@ Parse the user's input for optional flags and the problem statement.
 
 If `--preset` is given, apply these values first, then let explicit flags override:
 
-| Preset | Iters | Revs | Threshold | Budget | Best-of | Stall | Window | Epsilon | N-Boost |
-|--------|-------|------|-----------|--------|---------|-------|--------|---------|---------|
-| `quick` | 2 | 1 | 0.85 | 20 | 1 | off | 2 | 0.03 | 0 |
-| `default` | 5 | 3 | 0.90 | 50 | 2 | on | 2 | 0.03 | 1 |
-| `thorough` | 8 | 5 | 0.95 | 80 | 3 | on | 3 | 0.02 | 1 |
-| `extreme` | 12 | 5 | 0.97 | 120 | 5 | on | 3 | 0.02 | 2 |
+| Preset | Iters | Revs | Threshold | Budget | Best-of | Stall | Window | Epsilon | N-Boost | Adv. Breaker |
+|--------|-------|------|-----------|--------|---------|-------|--------|---------|---------|-------------|
+| `quick` | 2 | 1 | 0.85 | 20 | 1 | off | 2 | 0.03 | 0 | off |
+| `default` | 5 | 3 | 0.90 | 50 | 2 | on | 2 | 0.03 | 1 | off |
+| `thorough` | 8 | 5 | 0.95 | 80 | 3 | on | 3 | 0.02 | 1 | on |
+| `extreme` | 12 | 5 | 0.97 | 120 | 5 | on | 3 | 0.02 | 2 | on |
 
 Extract `max_iterations`, `max_revisions`, `max_budget`, `confidence_threshold`, `best_of_n`, `stall_reset`, `stall_window`, `stall_epsilon`, `reset_n_boost`, and `textbook` from flags (or defaults/preset). The remaining text is the problem statement.
 
 Also set `adversarial_verifier = true` when preset is `thorough` or `extreme`, else `false`. This enables the 5-round adversarial self-correction protocol in all verifier Task calls (Step 2b, Step 2c re-verify, Step 2d re-verify).
+
+Also set `adversarial_breaker = true` when preset is `thorough` or `extreme`, else `false`. This enables the adversarial breaker probe on CORRECT verdicts in Step 2c-b.
 
 **Validation:** If `max_iterations` < 1, set to 1 and warn the user. If `max_revisions` < 0, set to 0. If `max_budget` < 3, set to 3. If `confidence_threshold` is outside (0, 1], clamp to [0.50, 1.0]. If `best_of_n` < 1, set to 1. If `stall_window` < 1, set to 1. If `stall_epsilon` < 0.0, set to 0.0. If `--no-stall-reset` is set, set `stall_reset` to false (overrides preset). If no problem statement is found, ask the user to provide one. If `--textbook` is set, increase `max_budget` by the textbook budget supplement: quick -> +5, default -> +7, thorough -> +10, extreme -> +12 (or +7 if no preset). If `--model` is not one of "haiku", "sonnet", "opus", default to "opus" and warn. If `--file` is set, Read the file. If it doesn't exist, ask the user to provide a valid path.
 
@@ -92,6 +94,7 @@ Sub-agents may fail. Handle failures as follows:
 - Search for `HAS_CRITICAL:\s*(yes|no)` (case-insensitive). Default: "no" if missing.
 - Search for `TOP_ISSUE:\s*(.+?)(?:\s*\||\s*$)`. Default: "none" if missing.
 - If verdict is "fixable", search the verification file for `CORRECTED SOLUTION:\s*\n([\s\S]*?)END CORRECTED SOLUTION`. Store the captured group (trimmed) as `corrected_solution`. If no match found, set `corrected_solution` to null.
+- **ATOM CONFIDENCES extraction**: Search the verification output for an `ATOM CONFIDENCES:` block. Extract all lines matching `ATOM\[(\d+)\]:\s*([\d.]+)\s*(.*)` between `ATOM CONFIDENCES:` and the next section header (a line matching `^[A-Z][A-Z ]+:` such as `SECTION CONFIDENCES:` or `CORRECTED SOLUTION:`). For each match, record `{"atom_id": N, "confidence": float, "note": "text"}`. Store as a list `atom_confidences`. If no `ATOM CONFIDENCES:` block is found, set `atom_confidences = []`.
 
 **Confidence validation**: Parse confidence as a float. If unparseable or outside [0.0, 1.0], default to 0.5.
 
@@ -119,8 +122,11 @@ Sub-agent prompts are stored in the skill's `references/` directory and loaded j
 | Textbook Planner | `{references_dir}/textbook_planner.md` | Step 4b Stage 1 |
 | Textbook Writer | `{references_dir}/textbook_writer.md` | Step 4b Stage 2 |
 | Fidelity Verifier | `{references_dir}/fidelity_verifier.md` | Step 4b Stage 4 |
+| Verification Ladder | `skills/alethic-common/references/verification-ladder.md` | Every Verifier prompt assembly (Steps 2b, 2c, 2d.6) |
 
 **Loading procedure**: Before each Task sub-agent call, Read the corresponding reference file. Include its content (everything after the header and note line) at the beginning of the Task prompt, followed by the task-specific instructions (file paths, iteration context, etc.).
+
+**Verification ladder**: Every Verifier prompt assembly (Steps 2b, 2c re-verify, 2d.6 re-verify) must also read `skills/alethic-common/references/verification-ladder.md` and append its contents after all other overlays (tool overlays, adversarial verifier). This injects L0-L2 structured check instructions into every verify call during solve/derive.
 
 **Balanced addendum**: When loading the Generator prompt, append the `{balanced_addendum}` text (from the thin SKILL.md's "Balanced Approach Addendum" section) to the Generator's user message, unless `--no-balanced` is set.
 
@@ -135,6 +141,8 @@ For each tool name in the `--tools` list:
 4. If it exists, read it and append its contents to the Verifier prompt
 
 When `--tools none` is set, skip all tool overlays — sub-agents still have access to the Python sandbox but receive no specific tool guidance.
+
+**Code style rule** (append to every Task sub-agent prompt that includes tool overlays): "When writing Python code for execution, never use apostrophes or quotation marks inside # comments. They cause execution failures. Write descriptive comments without contractions or quoted text (e.g., write `# Check the Euler formula` not `# Check Euler's formula`)."
 
 | Tool | Generator overlay | Verifier overlay |
 |------|------------------|-----------------|
@@ -156,7 +164,7 @@ Event types and their fields:
 | Event type | Additional fields |
 |-----------|-------------------|
 | `generate` | `"iteration": {N}, "candidate": {C}` |
-| `verify` | `"iteration": {N}, "candidate": {C}, "verdict": "{verdict}", "confidence": {confidence}, "has_critical": {true\|false}` |
+| `verify` | `"iteration": {N}, "candidate": {C}, "verdict": "{verdict}", "confidence": {confidence}, "has_critical": {true\|false}, "atom_confidences": [{atom_id, confidence, note}, ...]` (include `atom_confidences` only when non-empty) |
 | `revise` | `"iteration": {N}, "revision": {M}` |
 | `verify` (re-verify) | `"iteration": {N}, "revision": {M}, "verdict": "{verdict}", "confidence": {confidence}, "has_critical": {true\|false}` |
 | `beautify` | (no additional fields) |
@@ -165,6 +173,9 @@ Event types and their fields:
 | `verify_fidelity` | `"fidelity": "{verdict}"` |
 | `accept` | `"iteration": {N}, "confidence": {confidence}` |
 | `stall_reset` | `"iteration": {N}, "reason": "{no_progress\|major_flaw_streak}", "n_override": {N_total}, "resets_used": {count}, "stall_counter": {counter}` |
+| `breaker_flaw_found` | `"iteration": {N}, "target_atom": {atom}, "flaw_type": "{type}", "evidence": "{text}"` |
+| `breaker_suspected` | `"iteration": {N}, "target_atom": {atom}, "flaw_type": "{type}"` |
+| `breaker_survived` | `"iteration": {N}, "verdict": "{no_flaw_found\|suspected_flaw_accepted}", "confidence": {confidence}` |
 | `fail` | `"reason": "iterations_exhausted" or "budget_exhausted"` |
 
 Log each event immediately after the corresponding Task call completes (or fails). This enables post-hoc analysis of session dynamics.
@@ -400,7 +411,7 @@ For iteration 1, always use `n_this_iter = 1` (probe pass) when `adaptive_comput
 
 **This is the critical decoupling point.** When constructing the Verifier prompt, do NOT reference any information from the Generator — no summaries, no strategies, no return values. Construct the prompt solely from the Verifier template and file paths.
 
-**Read the Verifier prompt** from `{references_dir}/verifier.md`. Then, for each tool in the `--tools` list, read `{references_dir}/tools/{tool}-verifier.md` (if it exists) and append its contents to the prompt. If `adversarial_verifier` is true, also read `skills/alethic-common/references/adversarial-verifier.md` and append its contents to the Verifier prompt (after tool overlays).
+**Read the Verifier prompt** from `{references_dir}/verifier.md`. Then, for each tool in the `--tools` list, read `{references_dir}/tools/{tool}-verifier.md` (if it exists) and append its contents to the prompt. If `adversarial_verifier` is true, also read `skills/alethic-common/references/adversarial-verifier.md` and append its contents to the Verifier prompt (after tool overlays). Finally, read `skills/alethic-common/references/verification-ladder.md` and append its contents (after all other overlays).
 
 **Verify each candidate.** For each successfully generated candidate C:
 
@@ -462,6 +473,11 @@ When `best_of_n == 1`, print: `[Iter {N}] Verifier: VERDICT: {verdict} | CONFIDE
 
 The "Reset" column shows "STALL" when a stall reset was triggered for that iteration (Step 2-pre fired), empty otherwise. The "Candidates" column shows `n_this_iter/best_of_n` — the actual/default count, which may differ during a stall reset.
 
+When the selected best candidate has non-empty `atom_confidences`, print an additional line (skip if `--quiet`):
+```
+[Iter {N}] Atom confidences (best): ATOM[0]: 0.92, ATOM[1]: 0.87, ATOM[2]: 0.95
+```
+
 ### Step 2c: Check Verdict and Update Best
 
 **First, unconditionally update best_confidence tracking** — regardless of verdict:
@@ -473,7 +489,57 @@ The "Reset" column shows "STALL" when a stall reset was triggered for that itera
   - **CRITICAL issue guard**: Before accepting, also check HAS_CRITICAL. If "yes":
     - Log: `[Iter {N}] CRITICAL issue detected — forcing revision`
     - Treat as "major_flaw" regardless of verdict and confidence — proceed to Step 2d.
-  - Otherwise: Update `session.json`: `"status": "solved"`, `"verdict": "correct"`, current iteration, confidence.
+  - **Step 2c-b: Adversarial Breaker (CORRECT verdicts only)**
+    - **Skip this step** if `adversarial_breaker` is false (i.e., preset is quick or default).
+    - **Read the breaker prompt** from `{references_dir}/breaker.md`.
+    - **Budget check**: If `task_calls >= max_budget`, skip the breaker and proceed to acceptance.
+    - Increment `task_calls`. Spawn a Task sub-agent:
+      ```
+      Task(
+        model: "sonnet",
+        subagent_type: "general-purpose",
+        description: "Adversarial breaker probe iter {N}",
+        prompt: [Breaker prompt content read above] + task-specific instructions
+      )
+      ```
+      Task-specific instructions after the prompt:
+      - "Read the problem from `{session_dir}/problem.md`."
+      - "Read the {noun} from `{session_dir}/worklog/iter{N}/solution.md`."
+      - "Apply all five attack strategies to the {noun}. Output your verdict in the REQUIRED format."
+      - "After writing your analysis, return ONLY: `BREAKER_VERDICT: {verdict} | TARGET_ATOM: {atom} | FLAW_TYPE: {type} | EVIDENCE: {evidence}`"
+      **CRITICAL**: The breaker Task MUST use `model: "sonnet"` — NOT the user's `--model` choice. This matches the library behavior where the breaker uses Sonnet for cost efficiency and model diversity.
+    - **Parse breaker output**: Extract from the Task return value:
+      - `BREAKER_VERDICT:\s*(FLAW_FOUND|SUSPECTED_FLAW|NO_FLAW_FOUND)` (case-insensitive). Default: `NO_FLAW_FOUND` if unparseable.
+      - `TARGET_ATOM:\s*(\d+)`. Default: 0.
+      - `FLAW_TYPE:\s*(\S+)`. Default: "none".
+      - `EVIDENCE:\s*(.*?)(?=\nREASONING:|\Z)` (dotall). Default: "".
+      - `REASONING:\s*(.*?)(?:\Z)` (dotall). Default: "".
+    - **Branch on breaker verdict:**
+      - **FLAW_FOUND**:
+        - Log: `[BREAKER] Flaw found in atom {target_atom} ({flaw_type}) — demoting to revision`
+        - **Log event**: `{"type":"breaker_flaw_found","iteration":{N},"target_atom":{target_atom},"flaw_type":"{flaw_type}","evidence":"{evidence}","timestamp":"..."}`
+        - Write the breaker EVIDENCE and REASONING to `{session_dir}/worklog/iter{N}/breaker.md`.
+        - Append to `{session_dir}/worklog/iter{N}/verification.md`:
+          ```
+
+          ## ADVERSARIAL BREAKER — CONFIRMED FLAW
+          The adversarial breaker targeted atom {target_atom} and found a {flaw_type} flaw.
+          **Evidence:** {evidence}
+          **Reasoning:** {reasoning}
+          Address this specific flaw directly before anything else.
+          ```
+        - **Do NOT accept.** Treat as "major_flaw" — proceed to Step 2d (Revise).
+      - **SUSPECTED_FLAW**:
+        - Log: `[BREAKER] Suspected flaw in atom {target_atom} — continuing with caution`
+        - **Log event**: `{"type":"breaker_suspected","iteration":{N},"target_atom":{target_atom},"flaw_type":"{flaw_type}","timestamp":"..."}`
+        - Write the breaker analysis to `{session_dir}/worklog/iter{N}/breaker.md`.
+        - **Proceed with acceptance** (solution already passed verifier threshold).
+        - **Log event**: `{"type":"breaker_survived","iteration":{N},"verdict":"suspected_flaw_accepted","confidence":{confidence},"timestamp":"..."}`
+      - **NO_FLAW_FOUND**:
+        - Log: `[BREAKER] No flaw found — solution accepted`
+        - **Log event**: `{"type":"breaker_survived","iteration":{N},"verdict":"no_flaw_found","confidence":{confidence},"timestamp":"..."}`
+        - **Proceed with acceptance.**
+  - **Accept** (reached only if CRITICAL guard passed AND breaker did not find FLAW_FOUND): Update `session.json`: `"status": "solved"`, `"verdict": "correct"`, current iteration, confidence.
   - **Log event**: `{"type":"accept","iteration":{N},"confidence":{confidence},"timestamp":"..."}`
   - Go to **Step 4: Format Output**, then **Step 5: Present Results**.
   - **STOP the loop.**
@@ -489,7 +555,7 @@ The "Reset" column shows "STALL" when a stall reset was triggered for that itera
   - If `corrected_solution` is not null:
     1. Write `corrected_solution` to `{session_dir}/worklog/iter{N}/corrected.md`.
     2. **Record the FIXABLE verdict for stall tracking BEFORE re-verification** — append "fixable" to `iteration_final_verdicts` now. Do not wait for re-verification, which could overwrite the original verdict.
-    3. **Re-verify the corrected solution**: Read the Verifier prompt from `{references_dir}/verifier.md`. Append tool overlays (same procedure as Step 2b). If `adversarial_verifier` is true, also append `skills/alethic-common/references/adversarial-verifier.md` to the prompt. Increment `task_calls`. Spawn a fresh Verifier Task with:
+    3. **Re-verify the corrected solution**: Read the Verifier prompt from `{references_dir}/verifier.md`. Append tool overlays (same procedure as Step 2b). If `adversarial_verifier` is true, also append `skills/alethic-common/references/adversarial-verifier.md` to the prompt. Append `skills/alethic-common/references/verification-ladder.md` (same assembly as Step 2b). Increment `task_calls`. Spawn a fresh Verifier Task with:
        - The problem from `problem.md`
        - The corrected solution from `worklog/iter{N}/corrected.md` (NOT the original solution)
        - Same decoupling rules as Step 2b
@@ -564,7 +630,7 @@ For revision M = 1 to `max_revisions_this_iter` (which equals `max_revisions` no
 
 5. Print: `[Iter {N}] Reviser (rev {M}): {summary}`
 
-6. **Re-verify the revision** — Read the Verifier prompt from `{references_dir}/verifier.md`. Append tool overlays for each tool in `--tools` (same procedure as Step 2b). If `adversarial_verifier` is true, also append `skills/alethic-common/references/adversarial-verifier.md` to the prompt. Increment `task_calls`, spawn a fresh Verifier Task with `model: "{model}"`:
+6. **Re-verify the revision** — Read the Verifier prompt from `{references_dir}/verifier.md`. Append tool overlays for each tool in `--tools` (same procedure as Step 2b). If `adversarial_verifier` is true, also append `skills/alethic-common/references/adversarial-verifier.md` to the prompt. Append `skills/alethic-common/references/verification-ladder.md` (same assembly as Step 2b). Increment `task_calls`, spawn a fresh Verifier Task with `model: "{model}"`:
    - Problem file: `{session_dir}/problem.md`
    - Solution file: `{session_dir}/worklog/iter{N}/revision_{M}.md` (the clean revision, NOT the changelog)
    - Verification output: `{session_dir}/worklog/iter{N}/verification_rev{M}.md`
@@ -602,6 +668,7 @@ After each iteration (whether solved or not):
    - `"best_verification_path": "{path to corresponding verification file}"`
    - `"verdict": "{latest verdict}"`
    - `"failed_approaches": [{accumulated list}]`
+   - `"atom_confidences": [{atom_confidences from the best candidate's verification}]` (set to `[]` if empty)
 
 3. **Update stall tracking** (skip if `stall_reset` is off):
    - Append the iteration's final verdict (the best candidate's verdict after all revisions) to `iteration_final_verdicts` (keep only the last 2 entries).

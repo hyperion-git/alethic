@@ -256,21 +256,17 @@ def execute_python(code: str, timeout_seconds: int = 30) -> str:
     return output
 
 
+_CODE_TAG_RE = re.compile(r"<code>(.*?)</code>", re.DOTALL)
+_FENCED_PYTHON_RE = re.compile(r"```python\s*\n(.*?)```", re.DOTALL)
+
+
 def extract_code_blocks(text: str) -> list[str]:
     """Extract Python code blocks from model output.
 
     Looks for <code>...</code> tags or ```python...``` fenced blocks.
     """
-    blocks = []
-
-    # <code> tags
-    for match in re.finditer(r"<code>(.*?)</code>", text, re.DOTALL):
-        blocks.append(match.group(1).strip())
-
-    # ```python fenced blocks
-    for match in re.finditer(r"```python\s*\n(.*?)```", text, re.DOTALL):
-        blocks.append(match.group(1).strip())
-
+    blocks = [m.group(1).strip() for m in _CODE_TAG_RE.finditer(text)]
+    blocks.extend(m.group(1).strip() for m in _FENCED_PYTHON_RE.finditer(text))
     return blocks
 
 

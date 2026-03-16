@@ -235,14 +235,9 @@ class AgentConfig:
             raise ValueError(
                 f"confidence_threshold must be in [0.0, 1.0], got {self.confidence_threshold}"
             )
-        if self.temperature_generator < 0:
-            raise ValueError(
-                f"temperature_generator must be >= 0, got {self.temperature_generator}"
-            )
-        if self.temperature_verifier < 0:
-            raise ValueError(f"temperature_verifier must be >= 0, got {self.temperature_verifier}")
-        if self.temperature_reviser < 0:
-            raise ValueError(f"temperature_reviser must be >= 0, got {self.temperature_reviser}")
+        for name in ("temperature_generator", "temperature_verifier", "temperature_reviser"):
+            if getattr(self, name) < 0:
+                raise ValueError(f"{name} must be >= 0, got {getattr(self, name)}")
         if self.max_tokens < 1:
             raise ValueError(f"max_tokens must be >= 1, got {self.max_tokens}")
         if self.thinking_budget < 0:
@@ -631,12 +626,8 @@ class AgentResult:
             lines.append(f"Candidates per iteration: {self.candidates_per_iteration}")
         if self.failed_approaches:
             lines.append(f"Failed approaches: {len(self.failed_approaches)}")
-        lines.extend(
-            [
-                f"Time: {self.elapsed_seconds:.1f}s",
-                f"{'=' * 60}",
-            ]
-        )
+        lines.append(f"Time: {self.elapsed_seconds:.1f}s")
+        lines.append(f"{'=' * 60}")
         if self.solution:
             lines.append("")
             lines.append(self.solution)

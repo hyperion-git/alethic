@@ -27,6 +27,7 @@ The user's input is: $ARGUMENTS
 | session_skill | alethic-derive |
 | strategy_reset_addendum | (from "Strategy Reset Addendum" section below) |
 | adversarial_verifier | true for thorough/extreme presets; false otherwise — enables 5-round adversarial self-correction in all verifier Task calls |
+| adversarial_breaker | true for thorough/extreme presets; false otherwise — enables adversarial breaker probe on CORRECT verdicts |
 
 ## Balanced Approach Addendum
 

@@ -7,6 +7,8 @@ addendum that guides the reviser toward the most effective repair strategy.
 
 from __future__ import annotations
 
+import re
+
 from alethic.models import OracleType
 
 # Keyword -> category mapping. Checked in priority order; first match wins.
@@ -45,6 +47,12 @@ _TAXONOMY_KEYWORDS: dict[str, list[str]] = {
         "degenerate", "not considered", "overlooked",
     ],
 }
+
+# Pre-compiled regex per category: single alternation of all keywords (escaped).
+_TAXONOMY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    (cat, re.compile("|".join(re.escape(kw) for kw in kws)))
+    for cat, kws in _TAXONOMY_KEYWORDS.items()
+]
 
 REVISION_ADDENDA: dict[str, str] = {
     "algebra": (
@@ -116,8 +124,8 @@ def classify_errors(critique: str) -> str:
                 "units", "missing_case", "general".
     """
     lower = critique.lower()
-    for category, keywords in _TAXONOMY_KEYWORDS.items():
-        if any(kw in lower for kw in keywords):
+    for category, pattern in _TAXONOMY_PATTERNS:
+        if pattern.search(lower):
             return category
     return "general"
 

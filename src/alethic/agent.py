@@ -143,21 +143,19 @@ def _build_atom_focus_directive(
             high.append(a.id)
         else:
             # L0/L1/L2: check sentinel results for pass/fail evidence
-            layer = _LAYER_BY_ORACLE.get(a.oracle, 3)  # fallback 3=LLM; unreachable with current OracleType enum
+            layer = _LAYER_BY_ORACLE.get(a.oracle, 3)
             sentinel_texts = parse_layer_results(a.content).get(layer, [])
-            if not sentinel_texts:
-                # No sentinel at this layer → cannot verify → HIGH
-                high.append(a.id)
-            elif any(
+            has_failure = any(
                 marker in text
                 for text in sentinel_texts
                 for marker in _SENTINEL_FAILURE_MARKERS
-            ):
-                # Explicit failure marker → HIGH regardless of non-emptiness
-                high.append(a.id)
-            else:
+            )
+            if sentinel_texts and not has_failure:
                 # Non-empty, no failure text → presume passed → REDUCED
                 reduced.append(a.id)
+            else:
+                # No sentinels or explicit failure → HIGH
+                high.append(a.id)
 
     if not high and not reduced:
         return None
@@ -306,14 +304,18 @@ class MathAgent:
         """
         return TOOL_GUIDANCE
 
+    @property
+    def _confidence_floor(self) -> float:
+        return self.config.confidence_threshold * 0.85
+
     def _build_system_prompt(self, role: str, base: str) -> str:
         """Append tool guidance overlays to a base system prompt."""
-        system = base
         guide_map = self._get_tool_guidance_map()
+        parts = [base]
         for tool in sorted(self.config.tool_guidance):
             if tool in guide_map and role in guide_map[tool]:
-                system += guide_map[tool][role]
-        return system
+                parts.append(guide_map[tool][role])
+        return "".join(parts)
 
     def _reset_addendum(self) -> str:
         """Return the strategy reset prompt template for this domain.
@@ -370,6 +372,19 @@ class MathAgent:
         if not self.config.adversarial_self_correction:
             return None
         return ADVERSARIAL_VERIFIER_ADDENDUM
+
+    def _build_verifier_extra_system(self, state: RunState) -> str | None:
+        """Build extra_system for verify calls: adversarial addendum + atom focus directive."""
+        if state.atom_history:
+            stability = classify_atom_stability(
+                state.atom_history,
+                state.confidence_history,
+                self._confidence_floor,
+            )
+            directive = _build_atom_focus_directive(state.atom_history[-1], stability)
+        else:
+            directive = None
+        return _combine(self._adversarial_addendum(), directive)
 
     def _check_stall(self, state: RunState) -> bool:
         """Check whether a stall-triggered reset should fire this iteration."""
@@ -438,11 +453,10 @@ class MathAgent:
         # Build atom stability context (disabled when variant_b is active)
         atom_stability_context = ""
         if state.atom_history and self.config.variant_b is None:
-            from alethic.atoms import classify_atom_stability
             stability = classify_atom_stability(
                 state.atom_history,
                 state.confidence_history,
-                self.config.confidence_threshold * 0.85,
+                self._confidence_floor,
             )
             stable_ids = [aid for aid, s in stability.items() if s.value == "stable"]
             if stable_ids:
@@ -484,34 +498,36 @@ class MathAgent:
         if self.config.variant_b is not None:
             return None
 
-        confidence_floor = self.config.confidence_threshold * 0.85
+        confidence_floor = self._confidence_floor
         stability = classify_atom_stability(atom_history, confidence_history, confidence_floor)
         if not stability:
             return None
 
-        stable_ids = sorted(aid for aid, s in stability.items() if s == AtomStability.STABLE)
-        oscillating_ids = sorted(aid for aid, s in stability.items() if s == AtomStability.OSCILLATING)
-        failing_ids = sorted(aid for aid, s in stability.items() if s == AtomStability.FAILING)
+        grouped: dict[AtomStability, list[int]] = {}
+        for aid, s in stability.items():
+            grouped.setdefault(s, []).append(aid)
+
+        messages = {
+            AtomStability.STABLE: (
+                " have been stable across iterations. "
+                "Do not discard these atoms — they represent verified correct steps."
+            ),
+            AtomStability.OSCILLATING: (
+                " are oscillating — the same approach is being retried without "
+                "success. Avoid repeating the same reasoning patterns for these atoms."
+            ),
+            AtomStability.FAILING: (
+                " show declining confidence. "
+                "Consider a categorical change of approach for these steps."
+            ),
+        }
 
         parts: list[str] = []
-        if stable_ids:
-            ids_str = ", ".join(f"ATOM[{i}]" for i in stable_ids)
-            parts.append(
-                f"{ids_str} have been stable across iterations. "
-                "Do not discard these atoms — they represent verified correct steps."
-            )
-        if oscillating_ids:
-            ids_str = ", ".join(f"ATOM[{i}]" for i in oscillating_ids)
-            parts.append(
-                f"{ids_str} are oscillating — the same approach is being retried without "
-                "success. Avoid repeating the same reasoning patterns for these atoms."
-            )
-        if failing_ids:
-            ids_str = ", ".join(f"ATOM[{i}]" for i in failing_ids)
-            parts.append(
-                f"{ids_str} show declining confidence. "
-                "Consider a categorical change of approach for these steps."
-            )
+        for category, msg in messages.items():
+            ids = sorted(grouped.get(category, []))
+            if ids:
+                ids_str = ", ".join(f"ATOM[{i}]" for i in ids)
+                parts.append(f"{ids_str}{msg}")
 
         if not parts:
             return None
@@ -669,17 +685,7 @@ class MathAgent:
         tuples where orig_idx is the 1-based generation-order index.
         """
         verified: list[tuple[Solution, VerificationResult, float, float, int]] = []
-        # Hoist stability computation — depends only on state, not on any individual candidate
-        if state.atom_history:
-            _stability = classify_atom_stability(
-                state.atom_history,
-                state.confidence_history,
-                self.config.confidence_threshold * 0.85,
-            )
-            _directive = _build_atom_focus_directive(state.atom_history[-1], _stability)
-        else:
-            _directive = None
-        _extra_system = _combine(self._adversarial_addendum(), _directive)
+        _extra_system = self._build_verifier_extra_system(state)
 
         for idx, (solution, gen_time) in enumerate(candidates, 1):
             t0 = time.time()
@@ -755,7 +761,7 @@ class MathAgent:
                 revision_number=rev_num,
                 system_prompt=prompts.get("reviser_system"),
                 user_template=prompts.get("reviser_user"),
-                critique_addendum=revision_addendum or None,
+                critique_addendum=revision_addendum,
                 atom_context=self._build_atom_context(state.atom_history, state.confidence_history),
                 ledger=ledger,
                 context_limit=context_limit,
@@ -777,17 +783,7 @@ class MathAgent:
                 config=self.config,
                 system_prompt=prompts.get("verifier_system"),
                 user_template=prompts.get("verifier_user"),
-                extra_system=_combine(
-                    self._adversarial_addendum(),
-                    _build_atom_focus_directive(
-                        state.atom_history[-1],
-                        classify_atom_stability(
-                            state.atom_history,
-                            state.confidence_history,
-                            self.config.confidence_threshold * 0.85,
-                        ),
-                    ) if state.atom_history else None,
-                ),
+                extra_system=self._build_verifier_extra_system(state),
                 ledger=ledger,
                 context_limit=context_limit,
                 context_threshold=context_threshold,
@@ -977,6 +973,7 @@ class MathAgent:
         self._log("")
 
         evidence_state: EvidenceState | None = None
+        evidence_conf_history: list[float] = []
 
         for iteration in range(start_iteration, self.config.max_iterations + 1):
             self._log(f"{'─' * 40}")
@@ -1131,15 +1128,12 @@ class MathAgent:
 
                 # Update EvidenceState for adaptive compute (next iter) and revision budget
                 error_cat = classify_errors(verification.critique)
+                evidence_conf_history.append(state.best_confidence)
                 evidence_state = EvidenceState(
                     iteration=iteration,
                     best_confidence=state.best_confidence,
                     error_category=error_cat,
-                    confidence_history=(
-                        evidence_state.confidence_history + [state.best_confidence]
-                        if evidence_state is not None
-                        else [state.best_confidence]
-                    ),
+                    confidence_history=evidence_conf_history,
                 )
 
                 self._log(

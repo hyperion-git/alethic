@@ -135,14 +135,12 @@ def fit_temperature(pairs: list[dict], *, grid_points: int = 50) -> float:
     if len(pairs) < 20:
         return 1.0
 
-    t_min, t_max = 0.05, 20.0
-    log_min, log_max = math.log(t_min), math.log(t_max)
+    log_min, log_max = math.log(0.05), math.log(20.0)
     grid = [
         math.exp(log_min + (log_max - log_min) * i / (grid_points - 1))
         for i in range(grid_points)
     ]
-    nll_vals = [_nll(pairs, t) for t in grid]
-    best_idx = min(range(len(nll_vals)), key=lambda i: nll_vals[i])
+    best_idx = min(range(len(grid)), key=lambda i: _nll(pairs, grid[i]))
 
     lo = grid[max(0, best_idx - 1)]
     hi = grid[min(len(grid) - 1, best_idx + 1)]

@@ -118,6 +118,8 @@ For each tool name in the `--tools` list:
 
 When `--tools none` is set, skip all tool overlays.
 
+**Code style rule** (append to every Verifier Task prompt that includes tool overlays): "When writing Python code for execution, never use apostrophes or quotation marks inside # comments. They cause execution failures. Write descriptive comments without contractions or quoted text (e.g., write `# Check the Euler formula` not `# Check Euler's formula`)."
+
 | Tool | Verifier overlay |
 |------|-----------------|
 | `sympy` | `{references_dir}/tools/sympy-verifier.md` |
