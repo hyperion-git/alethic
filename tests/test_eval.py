@@ -195,3 +195,52 @@ class TestAtomMeasurement:
         metrics = measure_atoms(events, n_iterations=2)
         # 2 atoms in iter 1 + 0 atoms in iter 2 = mean 1.0
         assert metrics["mean_atom_count"] == 1.0
+
+
+class TestPuctComparison:
+    def test_puct_with_two_approaches(self):
+        from alethic.eval.harness import compute_puct_comparison
+
+        events = [
+            # Iter 1
+            AgentEvent(type=EventType.GENERATE, iteration=1,
+                       data={"candidate": 1, "solution_preview": "algebra approach"}),
+            AgentEvent(type=EventType.GENERATE, iteration=1,
+                       data={"candidate": 2, "solution_preview": "logic approach"}),
+            AgentEvent(type=EventType.VERIFY, iteration=1,
+                       data={"candidate": 1, "verdict": "major_flaw", "confidence": 0.70,
+                             "error_category": "algebra"}),
+            AgentEvent(type=EventType.VERIFY, iteration=1,
+                       data={"candidate": 2, "verdict": "major_flaw", "confidence": 0.60,
+                             "error_category": "logic"}),
+            # Iter 2
+            AgentEvent(type=EventType.GENERATE, iteration=2,
+                       data={"candidate": 1, "solution_preview": "algebra approach v2"}),
+            AgentEvent(type=EventType.GENERATE, iteration=2,
+                       data={"candidate": 2, "solution_preview": "new approach"}),
+            AgentEvent(type=EventType.VERIFY, iteration=2,
+                       data={"candidate": 1, "verdict": "minor_issues", "confidence": 0.75,
+                             "error_category": "algebra"}),
+            AgentEvent(type=EventType.VERIFY, iteration=2,
+                       data={"candidate": 2, "verdict": "major_flaw", "confidence": 0.65,
+                             "error_category": "missing_case"}),
+        ]
+
+        result = compute_puct_comparison(events)
+        assert "reordered_iterations" in result
+        assert "total_iterations" in result
+        assert "divergence_rate" in result
+        assert 0.0 <= result["divergence_rate"] <= 1.0
+
+    def test_puct_single_candidate_no_divergence(self):
+        """With N=1 per iteration, PUCT can never reorder — divergence should be 0."""
+        from alethic.eval.harness import compute_puct_comparison
+
+        events = [
+            AgentEvent(type=EventType.GENERATE, iteration=1,
+                       data={"candidate": 1, "solution_preview": "sol"}),
+            AgentEvent(type=EventType.VERIFY, iteration=1,
+                       data={"candidate": 1, "verdict": "correct", "confidence": 0.9}),
+        ]
+        result = compute_puct_comparison(events)
+        assert result["divergence_rate"] == 0.0

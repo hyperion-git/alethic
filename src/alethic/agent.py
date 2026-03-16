@@ -860,6 +860,7 @@ class MathAgent:
                         verdict=ver.verdict.value,
                         confidence=ver.confidence,
                         num_issues=len(ver.issues),
+                        error_category=classify_errors(ver.critique),
                     )
 
                 # Best candidate is first (sorted by confidence desc)
