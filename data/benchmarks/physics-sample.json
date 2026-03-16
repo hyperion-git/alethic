@@ -1,0 +1,78 @@
+{
+  "name": "physics-sample-v1",
+  "version": "1.0",
+  "description": "10 undergraduate physics problems for baseline benchmarking. Covers classical mechanics, thermodynamics, quantum mechanics, and electromagnetism/relativity. Includes one false claim.",
+  "problems": [
+    {
+      "id": "kepler-third-law",
+      "domain": "physics",
+      "problem": "Derive Kepler's third law (T\u00b2 \u221d a\u00b3) from Newton's law of universal gravitation for a planet in a circular orbit of radius a around a star of mass M.",
+      "expected_solvable": true,
+      "tags": ["classical-mechanics", "orbital-mechanics"]
+    },
+    {
+      "id": "simple-pendulum-period",
+      "domain": "physics",
+      "problem": "Derive the period of a simple pendulum of length L for small-angle oscillations. Start from Newton's second law applied to the bob and show that T = 2\u03c0\u221a(L/g).",
+      "expected_solvable": true,
+      "tags": ["classical-mechanics", "oscillations"]
+    },
+    {
+      "id": "ideal-gas-kinetic-theory",
+      "domain": "physics",
+      "problem": "Derive the ideal gas law PV = NkT from the kinetic theory of gases. Consider N identical molecules of mass m in a cubic container of side L, and compute the average pressure from molecular collisions with the walls.",
+      "expected_solvable": true,
+      "tags": ["thermodynamics", "kinetic-theory"]
+    },
+    {
+      "id": "carnot-efficiency",
+      "domain": "physics",
+      "problem": "Derive the efficiency of a Carnot engine operating between a hot reservoir at temperature T_H and a cold reservoir at temperature T_C. Show that \u03b7 = 1 - T_C/T_H using the properties of reversible isothermal and adiabatic processes.",
+      "expected_solvable": true,
+      "tags": ["thermodynamics", "heat-engines"]
+    },
+    {
+      "id": "qho-energy-levels",
+      "domain": "physics",
+      "problem": "Derive the energy eigenvalues of the one-dimensional quantum harmonic oscillator with potential V(x) = \u00bdm\u03c9\u00b2x\u00b2 using the algebraic (ladder operator) method. Show that E_n = \u210f\u03c9(n + \u00bd) for n = 0, 1, 2, ...",
+      "expected_solvable": true,
+      "tags": ["quantum-mechanics", "harmonic-oscillator"]
+    },
+    {
+      "id": "infinite-square-well",
+      "domain": "physics",
+      "problem": "Solve the time-independent Schr\u00f6dinger equation for a particle of mass m in an infinite square well of width a (V=0 for 0<x<a, V=\u221e otherwise). Find the normalized energy eigenfunctions and show that the energy eigenvalues are E_n = n\u00b2\u03c0\u00b2\u210f\u00b2/(2ma\u00b2).",
+      "expected_solvable": true,
+      "tags": ["quantum-mechanics", "bound-states"]
+    },
+    {
+      "id": "hydrogen-energy-spectrum",
+      "domain": "physics",
+      "problem": "Derive the energy spectrum of the hydrogen atom by solving the radial Schr\u00f6dinger equation for the Coulomb potential V(r) = -e\u00b2/(4\u03c0\u03b5\u2080r). Show that the bound-state energies are E_n = -13.6 eV/n\u00b2 for n = 1, 2, 3, ...",
+      "expected_solvable": true,
+      "tags": ["quantum-mechanics", "hydrogen-atom"]
+    },
+    {
+      "id": "lorentz-transformation",
+      "domain": "physics",
+      "problem": "Derive the Lorentz transformation equations from Einstein's two postulates of special relativity: (1) the laws of physics are the same in all inertial frames, and (2) the speed of light is the same in all inertial frames. Consider a frame S' moving with velocity v along the x-axis of frame S.",
+      "expected_solvable": true,
+      "tags": ["relativity", "special-relativity"]
+    },
+    {
+      "id": "gauss-law-from-coulomb",
+      "domain": "physics",
+      "problem": "Derive Gauss's law (\u222e E\u00b7dA = Q_enc/\u03b5\u2080) from Coulomb's law for a point charge. Show that it holds for an arbitrary closed surface enclosing the charge by computing the flux through the surface.",
+      "expected_solvable": true,
+      "tags": ["electromagnetism", "gauss-law"]
+    },
+    {
+      "id": "false-drude-lorenz-number",
+      "domain": "physics",
+      "problem": "Prove that the classical Drude model of metallic conduction predicts the exact Lorenz number L\u2080 = \u03c0\u00b2k\u00b2_B/(3e\u00b2) from the Wiedemann-Franz law.",
+      "expected_solvable": false,
+      "tags": ["solid-state", "false-claim"],
+      "note": "The Drude model actually predicts L\u2080 = 3k\u00b2_B/(2e\u00b2), which differs from the quantum (Sommerfeld) result \u03c0\u00b2k\u00b2_B/(3e\u00b2) by a factor of 2\u03c0\u00b2/9 \u2248 2.19. The agent should detect this discrepancy."
+    }
+  ]
+}

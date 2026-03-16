@@ -57,6 +57,7 @@ from alethic.models import (
     VerificationResult,
     VerifierConfig,
 )
+from alethic.oracle_router import OracleRouter, RoutingDecision
 from alethic.physics_agent import PhysicsAgent
 from alethic.verifier_agent import CheckerAgent, VerifierAgent
 
@@ -78,8 +79,10 @@ __all__ = [
     "Issue",
     "IssueSeverity",
     "MathAgent",
+    "OracleRouter",
     "PhysicsAgent",
     "rank_candidates",
+    "RoutingDecision",
     "Revision",
     "SectionConfidence",
     "Solution",
@@ -92,4 +95,4 @@ __all__ = [
     "generate_autopsy",
 ]
 
-__version__ = "3.6.8"
+__version__ = "3.7.0"

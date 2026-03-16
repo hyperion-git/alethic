@@ -34,11 +34,8 @@ import anthropic
 
 from alethic.atoms import (
     AtomAnnotation,
-    AtomStability,
-    classify_atom_stability,
     content_hash,
     parse_atoms,
-    parse_layer_results,  # defined in physics_checks.py; atoms.py imports it at line 17
 )
 from alethic.breaker import BreakerResult, run_breaker
 from alethic.error_taxonomy import classify_errors, get_revision_addendum
@@ -51,12 +48,12 @@ from alethic.models import (
     BreakerVerdict,
     EventType,
     EvidenceState,
-    OracleType,
     Solution,
     TokenLedger,
     Verdict,
     VerificationResult,
 )
+from alethic.oracle_router import OracleRouter
 from alethic.prompts import (
     ADVERSARIAL_VERIFIER_ADDENDUM,
     GENERATOR_SYSTEM,
@@ -73,101 +70,12 @@ _EMPTY_REASONS = frozenset({"n/a", "na", "none", "not applicable", ""})
 
 
 def rank_candidates(verifications: list[VerificationResult]) -> int:
-    """Return the index of the best candidate by confidence score.
-
-    Pluggable scoring function — future versions will accept an EvidenceState
-    and apply PUCT scoring for tree-search compatibility.
-
-    Args:
-        verifications: List of VerificationResult for each candidate.
-
-    Returns:
-        Index of the highest-confidence candidate.
-    """
-    return max(range(len(verifications)), key=lambda i: verifications[i].confidence)
-
-
-def _combine(a: str | None, b: str | None) -> str | None:
-    """Combine two optional prompt sections with a blank-line separator.
-
-    Strips leading/trailing newlines from each part. Falsy values (None, "")
-    are treated as absent. Returns None when both are absent.
-    """
-    a_clean = a.strip("\n") if a else None
-    b_clean = b.strip("\n") if b else None
-    if a_clean and b_clean:
-        return a_clean + "\n\n" + b_clean
-    return a_clean or b_clean
-
-
-_HIGH_ORACLE_TYPES = frozenset({
-    OracleType.LAYER3_LLM,
-    OracleType.LAYER3_LLM_ADVERSARIAL,
-    OracleType.LAYER4_CONSENSUS,
-})
-_LAYER_BY_ORACLE = {
-    OracleType.LAYER0_STRUCTURAL: 0,
-    OracleType.LAYER1_BEHAVIORAL: 1,
-    OracleType.LAYER2_CONSISTENCY: 2,
-}
-_SENTINEL_FAILURE_MARKERS = ("FAILED", "Traceback")
-
-
-def _build_atom_focus_directive(
-    atoms: list[AtomAnnotation],
-    stability: dict[int, AtomStability],
-) -> str | None:
-    """Build a two-tier verifier focus directive from atom stability history.
-
-    Returns a directive string or None if all atoms are STABLE, synthetic, or
-    the list is empty. The directive is intended to be appended to the verifier's
-    extra_system via _combine(adversarial_addendum, directive).
-
-    Args:
-        atoms: The most recent iteration's atom list (state.atom_history[-1]).
-        stability: Pre-computed stability dict from classify_atom_stability().
-    """
-    high: list[int] = []
-    reduced: list[int] = []
-
-    for a in atoms:
-        if a.synthetic:
-            continue  # D8 Option C: synthetic atoms never enter directive
-
-        atom_stability = stability.get(a.id, AtomStability.FAILING)
-        if atom_stability == AtomStability.STABLE:
-            continue  # STABLE atoms omitted from directive
-
-        # Determine tier based on oracle level and sentinel evidence
-        if a.oracle in _HIGH_ORACLE_TYPES:
-            high.append(a.id)
-        else:
-            # L0/L1/L2: check sentinel results for pass/fail evidence
-            layer = _LAYER_BY_ORACLE.get(a.oracle, 3)
-            sentinel_texts = parse_layer_results(a.content).get(layer, [])
-            has_failure = any(
-                marker in text
-                for text in sentinel_texts
-                for marker in _SENTINEL_FAILURE_MARKERS
-            )
-            if sentinel_texts and not has_failure:
-                # Non-empty, no failure text → presume passed → REDUCED
-                reduced.append(a.id)
-            else:
-                # No sentinels or explicit failure → HIGH
-                high.append(a.id)
-
-    if not high and not reduced:
-        return None
-
-    lines = ["ATOM FOCUS DIRECTIVE:"]
-    if high:
-        ids = ", ".join(f"ATOM[{i}]" for i in sorted(high))
-        lines.append(f"HIGH attention (require explicit justification): {ids}")
-    if reduced:
-        ids = ", ".join(f"ATOM[{i}]" for i in sorted(reduced))
-        lines.append(f"REDUCED attention (skip exhaustive re-derivation): {ids}")
-    return "\n".join(lines)
+    """Public API — delegates to OracleRouter with default config."""
+    from alethic.oracle_router import OracleRouter
+    router = OracleRouter(AgentConfig(), domain="math",
+                          adversarial_addendum_fn=lambda: None,
+                          reset_addendum_fn=lambda: "")
+    return router.rank_candidates(verifications)
 
 
 @dataclass
@@ -270,6 +178,12 @@ class MathAgent:
         self.config = config or AgentConfig()
         self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         self.client = anthropic.Anthropic(api_key=self._api_key)
+        self.router = OracleRouter(
+            config=self.config,
+            domain=self._domain(),
+            adversarial_addendum_fn=self._adversarial_addendum,
+            reset_addendum_fn=self._reset_addendum,
+        )
         self._setup_logging()
 
     def _setup_logging(self) -> None:
@@ -373,165 +287,6 @@ class MathAgent:
             return None
         return ADVERSARIAL_VERIFIER_ADDENDUM
 
-    def _build_verifier_extra_system(self, state: RunState) -> str | None:
-        """Build extra_system for verify calls: adversarial addendum + atom focus directive."""
-        if state.atom_history:
-            stability = classify_atom_stability(
-                state.atom_history,
-                state.confidence_history,
-                self._confidence_floor,
-            )
-            directive = _build_atom_focus_directive(state.atom_history[-1], stability)
-        else:
-            directive = None
-        return _combine(self._adversarial_addendum(), directive)
-
-    def _check_stall(self, state: RunState) -> bool:
-        """Check whether a stall-triggered reset should fire this iteration."""
-        if not self.config.stall_reset:
-            return False
-        if state.reset_cooldown_remaining > 0:
-            return False
-        max_resets = max(1, self.config.max_iterations // 4)
-        if state.resets_used >= max_resets:
-            return False
-
-        # Detector 1: no meaningful progress for stall_window iterations
-        if state.iterations_since_meaningful_improvement >= self.config.stall_window:
-            return True
-
-        # Detector 2: last 2 iteration-final verdicts are both MAJOR_FLAW
-        verdicts = state.iteration_final_verdicts
-        return (
-            len(verdicts) >= 2
-            and verdicts[-1] == Verdict.MAJOR_FLAW
-            and verdicts[-2] == Verdict.MAJOR_FLAW
-        )
-
-    def _compute_dynamic_n(self, evidence: EvidenceState) -> int:
-        """Compute dynamic N for the next iteration based on evidence.
-
-        Only called when config.adaptive_compute is True.
-        Iteration 1 always uses N=1 (probe); this method computes N for iter 2+.
-
-        Rules:
-        - algebra/citation errors: revise-first, keep N=1 (fixable in place)
-        - logic/missing_case/interpretation/units/counterexample: escalate to preset max
-        - Hard (confidence < threshold * 0.75): escalate to self.config.best_of_n
-        - Otherwise: keep N=1
-        """
-        _escalate_categories = {"logic", "missing_case", "interpretation", "units", "counterexample"}
-        base_n = self.config.best_of_n
-
-        if evidence.error_category in _escalate_categories:
-            return base_n  # full N — need diverse approaches
-        if evidence.error_category in {"algebra", "citation"}:
-            return 1  # revise-first — fixable in place
-        # confidence-based: hard = escalate, easy = stay at 1
-        if evidence.best_confidence < self.config.confidence_threshold * 0.75:
-            return base_n
-        return 1  # easy enough to try single candidate
-
-    def _compute_adaptive_revisions(self, evidence: EvidenceState) -> int:
-        """Compute adaptive revision budget for the current iteration.
-
-        Only called when config.adaptive_revision_budget is True.
-        Adapts max_revisions_per_cycle based on error category and confidence.
-        """
-        base = self.config.max_revisions_per_cycle
-        if evidence.error_category in {"algebra", "citation"} and evidence.best_confidence >= 0.80:
-            return 1  # quick patch is likely sufficient
-        if evidence.best_confidence < 0.70:
-            return min(base + 1, 5)  # harder problems need more repair
-        return base
-
-    def _build_reset_context(self, state: RunState) -> str:
-        """Build the strategy-reset prompt overlay for a reset iteration."""
-        recent = state.failed_approaches[-5:]
-        approaches_text = "\n".join(f"- {a}" for a in recent) if recent else "- (none recorded)"
-
-        # Build atom stability context (disabled when variant_b is active)
-        atom_stability_context = ""
-        if state.atom_history and self.config.variant_b is None:
-            stability = classify_atom_stability(
-                state.atom_history,
-                state.confidence_history,
-                self._confidence_floor,
-            )
-            stable_ids = [aid for aid, s in stability.items() if s.value == "stable"]
-            if stable_ids:
-                atom_stability_context = (
-                    f"\n\n## STABLE ATOMS — do not discard these results\n"
-                    f"Atoms {stable_ids} were consistent across recent iterations. "
-                    f"Build on them rather than abandoning them."
-                )
-
-        return (
-            self._reset_addendum()
-            .replace("{failed_approaches}", approaches_text)
-            .replace("{atom_stability_context}", atom_stability_context)
-        )
-
-    def _build_atom_context(
-        self,
-        atom_history: list[list[AtomAnnotation]],
-        confidence_history: list[float],
-    ) -> str | None:
-        """Build atom stability advisory for the reviser.
-
-        Guards:
-        - len(atom_history) < 2 → None (insufficient history)
-        - all-synthetic history → None (explicit guard; classify_atom_stability not called)
-        - config.variant_b is not None → None (variant-B supersedes atom stability)
-        """
-        if len(atom_history) < 2:
-            return None
-
-        # All-synthetic guard: must be explicit (not just empty stability dict)
-        all_synthetic = all(
-            all(a.synthetic for a in iteration_atoms)
-            for iteration_atoms in atom_history
-        )
-        if all_synthetic:
-            return None
-
-        if self.config.variant_b is not None:
-            return None
-
-        confidence_floor = self._confidence_floor
-        stability = classify_atom_stability(atom_history, confidence_history, confidence_floor)
-        if not stability:
-            return None
-
-        grouped: dict[AtomStability, list[int]] = {}
-        for aid, s in stability.items():
-            grouped.setdefault(s, []).append(aid)
-
-        messages = {
-            AtomStability.STABLE: (
-                " have been stable across iterations. "
-                "Do not discard these atoms — they represent verified correct steps."
-            ),
-            AtomStability.OSCILLATING: (
-                " are oscillating — the same approach is being retried without "
-                "success. Avoid repeating the same reasoning patterns for these atoms."
-            ),
-            AtomStability.FAILING: (
-                " show declining confidence. "
-                "Consider a categorical change of approach for these steps."
-            ),
-        }
-
-        parts: list[str] = []
-        for category, msg in messages.items():
-            ids = sorted(grouped.get(category, []))
-            if ids:
-                ids_str = ", ".join(f"ATOM[{i}]" for i in ids)
-                parts.append(f"{ids_str}{msg}")
-
-        if not parts:
-            return None
-        return "## Atom stability advisory:\n" + "\n".join(parts)
 
     def _log_header(self) -> str:
         return "ALETHIC MATH AGENT"
@@ -685,7 +440,7 @@ class MathAgent:
         tuples where orig_idx is the 1-based generation-order index.
         """
         verified: list[tuple[Solution, VerificationResult, float, float, int]] = []
-        _extra_system = self._build_verifier_extra_system(state)
+        _extra_system = self.router.build_verifier_extra_system(state)
 
         for idx, (solution, gen_time) in enumerate(candidates, 1):
             t0 = time.time()
@@ -704,8 +459,11 @@ class MathAgent:
             verify_time = time.time() - t0
             verified.append((solution, verification, gen_time, verify_time, idx))
 
-        # Sort by confidence descending
+        # Select best candidate via router.rank_candidates, then sort rest by confidence
+        best_idx = self.router.rank_candidates([v for _, v, _, _, _ in verified])
+        best = verified.pop(best_idx)
         verified.sort(key=lambda x: x[1].confidence, reverse=True)
+        verified.insert(0, best)
         return verified
 
     def _log_candidates(
@@ -762,7 +520,7 @@ class MathAgent:
                 system_prompt=prompts.get("reviser_system"),
                 user_template=prompts.get("reviser_user"),
                 critique_addendum=revision_addendum,
-                atom_context=self._build_atom_context(state.atom_history, state.confidence_history),
+                atom_context=self.router.build_atom_context(state.atom_history, state.confidence_history),
                 ledger=ledger,
                 context_limit=context_limit,
                 context_threshold=context_threshold,
@@ -783,7 +541,7 @@ class MathAgent:
                 config=self.config,
                 system_prompt=prompts.get("verifier_system"),
                 user_template=prompts.get("verifier_user"),
-                extra_system=self._build_verifier_extra_system(state),
+                extra_system=self.router.build_verifier_extra_system(state),
                 ledger=ledger,
                 context_limit=context_limit,
                 context_threshold=context_threshold,
@@ -983,8 +741,12 @@ class MathAgent:
             try:
                 pre_iter_best = state.best_confidence
 
-                # ── STALL CHECK ──
-                is_reset = self._check_stall(state)
+                # ── ROUTING DECISION (pre-iteration) ──
+                decision = self.router.route(state, evidence_state)
+                is_reset = decision.is_reset
+                n_this_iter = decision.n_candidates
+                reset_context = decision.reset_context
+
                 if is_reset:
                     reason = (
                         "major_flaw_streak"
@@ -997,8 +759,6 @@ class MathAgent:
                     )
                     state.resets_used += 1
                     state.reset_cooldown_remaining = 1
-                    n_this_iter = self.config.best_of_n + self.config.reset_n_boost
-                    reset_context = self._build_reset_context(state)
                     # Clear atom history on reset — new strategy, fresh tracking
                     state.atom_history.clear()
                     state.confidence_history.clear()
@@ -1016,15 +776,6 @@ class MathAgent:
                         stall_counter=state.iterations_since_meaningful_improvement,
                     )
                 else:
-                    if (
-                        self.config.adaptive_compute
-                        and iteration > 1
-                        and evidence_state is not None
-                    ):
-                        n_this_iter = self._compute_dynamic_n(evidence_state)
-                    else:
-                        n_this_iter = self.config.best_of_n
-                    reset_context = None
                     if state.reset_cooldown_remaining > 0:
                         state.reset_cooldown_remaining -= 1
 
@@ -1109,6 +860,7 @@ class MathAgent:
                         verdict=ver.verdict.value,
                         confidence=ver.confidence,
                         num_issues=len(ver.issues),
+                        error_category=classify_errors(ver.critique),
                     )
 
                 # Best candidate is first (sorted by confidence desc)
@@ -1320,7 +1072,7 @@ class MathAgent:
                     if is_reset:
                         revisions_this_iter: int | None = 1
                     elif self.config.adaptive_revision_budget and evidence_state is not None:
-                        revisions_this_iter = self._compute_adaptive_revisions(evidence_state)
+                        revisions_this_iter = self.router.revision_budget(evidence_state)
                     else:
                         revisions_this_iter = None
                     result = self._run_revision_loop(

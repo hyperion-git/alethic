@@ -419,7 +419,7 @@ class TestStallStateDictCompleteness:
 
         # Both original and restored should produce the same stall check result
         agent = MathAgent(config=config, api_key="test-key")
-        assert agent._check_stall(state) == agent._check_stall(restored)
+        assert agent.router.check_stall(state) == agent.router.check_stall(restored)
 
     def test_stall_state_dict_handles_empty_verdicts_deque(self):
         """stall_state_dict() with no verdicts should serialize cleanly."""
@@ -576,7 +576,7 @@ class TestResumeWithAdaptiveCompute:
         # This is correct — N defaults to best_of_n=3
         # We verify by checking that _compute_dynamic_n requires a non-None EvidenceState
         es = EvidenceState(iteration=4, best_confidence=0.6, error_category="logic")
-        n = agent._compute_dynamic_n(es)
+        n = agent.router._compute_dynamic_n(es)
         assert n == 3  # logic error → escalate to config.best_of_n
 
     def test_compute_dynamic_n_with_different_categories(self):
@@ -588,27 +588,27 @@ class TestResumeWithAdaptiveCompute:
 
         # algebra: revise-first, keep N=1
         es = EvidenceState(iteration=2, best_confidence=0.8, error_category="algebra")
-        assert agent._compute_dynamic_n(es) == 1
+        assert agent.router._compute_dynamic_n(es) == 1
 
         # citation: revise-first, keep N=1
         es = EvidenceState(iteration=2, best_confidence=0.8, error_category="citation")
-        assert agent._compute_dynamic_n(es) == 1
+        assert agent.router._compute_dynamic_n(es) == 1
 
         # logic: need diversity → escalate
         es = EvidenceState(iteration=2, best_confidence=0.8, error_category="logic")
-        assert agent._compute_dynamic_n(es) == 3
+        assert agent.router._compute_dynamic_n(es) == 3
 
         # missing_case: need diversity → escalate
         es = EvidenceState(iteration=2, best_confidence=0.8, error_category="missing_case")
-        assert agent._compute_dynamic_n(es) == 3
+        assert agent.router._compute_dynamic_n(es) == 3
 
         # interpretation: need diversity → escalate
         es = EvidenceState(iteration=2, best_confidence=0.8, error_category="interpretation")
-        assert agent._compute_dynamic_n(es) == 3
+        assert agent.router._compute_dynamic_n(es) == 3
 
         # units: need diversity → escalate
         es = EvidenceState(iteration=2, best_confidence=0.8, error_category="units")
-        assert agent._compute_dynamic_n(es) == 3
+        assert agent.router._compute_dynamic_n(es) == 3
 
         # general with low confidence: escalate
         es = EvidenceState(
@@ -616,7 +616,7 @@ class TestResumeWithAdaptiveCompute:
             best_confidence=0.5,  # < 0.9 * 0.75 = 0.675
             error_category="general",
         )
-        assert agent._compute_dynamic_n(es) == 3
+        assert agent.router._compute_dynamic_n(es) == 3
 
         # general with decent confidence: stay at 1
         es = EvidenceState(
@@ -624,7 +624,7 @@ class TestResumeWithAdaptiveCompute:
             best_confidence=0.85,  # > 0.9 * 0.75 = 0.675
             error_category="general",
         )
-        assert agent._compute_dynamic_n(es) == 1
+        assert agent.router._compute_dynamic_n(es) == 1
 
 
 # ────────────────────────────────────────────────────────────────

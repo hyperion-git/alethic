@@ -667,9 +667,9 @@ class TestProbeB6EvidenceStateOnResume:
             _mock_response(CORRECT_095),
         ]
 
-        # Capture stall state at first _check_stall invocation
+        # Capture stall state at first check_stall invocation
         captured: dict = {}
-        original_check_stall = agent._check_stall
+        original_check_stall = agent.router.check_stall
 
         def _capturing_check_stall(state: RunState) -> bool:
             if "iterations_since_meaningful_improvement" not in captured:
@@ -679,7 +679,7 @@ class TestProbeB6EvidenceStateOnResume:
                 captured["resets_used"] = state.resets_used
             return original_check_stall(state)
 
-        agent._check_stall = _capturing_check_stall  # type: ignore[method-assign]
+        agent.router.check_stall = _capturing_check_stall  # type: ignore[method-assign]
 
         agent.solve("prove sqrt(2) is irrational", resume_from=str(session_dir))
 
