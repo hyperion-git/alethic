@@ -92,4 +92,4 @@ __all__ = [
     "generate_autopsy",
 ]
 
-__version__ = "3.6.7"
+__version__ = "3.6.8"

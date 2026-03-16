@@ -4,10 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "alethic"
-version = "3.6.7"
+version = "3.6.8"
 description = "A reasoning agent for mathematics and physics inspired by Google DeepMind's Aletheia, built on Claude (Opus 4.6)"
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
 requires-python = ">=3.10"
 authors = [
     { name = "hyperion-git" },
@@ -27,7 +27,7 @@ keywords = [
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
