@@ -1,9 +1,8 @@
 """Tests for physics benchmark format and domain dispatch."""
 import json
 from pathlib import Path
-import pytest
-from alethic.eval.harness import load_benchmark
 
+from alethic.eval.harness import load_benchmark
 
 PHYSICS_BENCH = Path(__file__).parent.parent / "data" / "benchmarks" / "physics-sample.json"
 
@@ -90,6 +89,6 @@ class TestPhysicsDomainDispatch:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(bench, f)
             f.flush()
-            result = harness_module.run_benchmark(f.name, preset="quick")
+            harness_module.run_benchmark(f.name, preset="quick")
 
         assert "physics" in dispatched_agents
