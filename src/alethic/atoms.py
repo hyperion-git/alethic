@@ -260,10 +260,11 @@ def parse_atoms(solution_text: str) -> list[AtomAnnotation]:
     # Handle orphan preamble text
     if atoms[0].start_offset > 0:
         preamble_text = solution_text[:atoms[0].start_offset]
+        first_atom_start = atoms[0].start_offset
         atoms.insert(0, AtomAnnotation(
             id=-1, deps=(), oracle=_oracle_from_sentinels(preamble_text),
             content=preamble_text.strip(), synthetic=True,
-            end_offset=atoms[1].start_offset,
+            end_offset=first_atom_start,
         ))
 
     # Handle orphan residual text
