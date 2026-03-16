@@ -90,7 +90,7 @@ class TestCheckStall:
         agent = self._make_agent(stall_reset=False)
         state = RunState()
         state.iterations_since_meaningful_improvement = 10
-        assert agent._check_stall(state) is False
+        assert agent.router.check_stall(state) is False
 
     def test_no_stall_on_cooldown(self):
         from alethic.agent import RunState
@@ -99,7 +99,7 @@ class TestCheckStall:
         state = RunState()
         state.iterations_since_meaningful_improvement = 5
         state.reset_cooldown_remaining = 1
-        assert agent._check_stall(state) is False
+        assert agent.router.check_stall(state) is False
 
     def test_no_stall_max_resets_exhausted(self):
         from alethic.agent import RunState
@@ -108,7 +108,7 @@ class TestCheckStall:
         state = RunState()
         state.iterations_since_meaningful_improvement = 5
         state.resets_used = 1  # max(1, 5//4) = 1
-        assert agent._check_stall(state) is False
+        assert agent.router.check_stall(state) is False
 
     def test_stall_detected_no_progress(self):
         from alethic.agent import RunState
@@ -116,7 +116,7 @@ class TestCheckStall:
         agent = self._make_agent(stall_window=2)
         state = RunState()
         state.iterations_since_meaningful_improvement = 2
-        assert agent._check_stall(state) is True
+        assert agent.router.check_stall(state) is True
 
     def test_stall_detected_major_flaw_streak(self):
         from alethic.agent import RunState
@@ -126,7 +126,7 @@ class TestCheckStall:
         state.iterations_since_meaningful_improvement = 0  # no plateau
         state.iteration_final_verdicts.append(Verdict.MAJOR_FLAW)
         state.iteration_final_verdicts.append(Verdict.MAJOR_FLAW)
-        assert agent._check_stall(state) is True
+        assert agent.router.check_stall(state) is True
 
     def test_no_stall_single_major_flaw(self):
         from alethic.agent import RunState
@@ -134,7 +134,7 @@ class TestCheckStall:
         agent = self._make_agent(stall_window=10)
         state = RunState()
         state.iteration_final_verdicts.append(Verdict.MAJOR_FLAW)
-        assert agent._check_stall(state) is False
+        assert agent.router.check_stall(state) is False
 
     def test_no_stall_major_then_minor(self):
         from alethic.agent import RunState
@@ -143,7 +143,7 @@ class TestCheckStall:
         state = RunState()
         state.iteration_final_verdicts.append(Verdict.MAJOR_FLAW)
         state.iteration_final_verdicts.append(Verdict.MINOR_ISSUES)
-        assert agent._check_stall(state) is False
+        assert agent.router.check_stall(state) is False
 
 
 class TestBuildResetContext:
@@ -174,7 +174,7 @@ class TestBuildResetContext:
             "Tried algebraic geometry",
             "Tried combinatorics",
         ]
-        context = agent._build_reset_context(self._make_state(approaches))
+        context = agent.router.build_reset_context(self._make_state(approaches))
         assert "STRATEGY RESET" in context
         # Should only include last 5
         assert "Tried direct proof" not in context
@@ -183,13 +183,13 @@ class TestBuildResetContext:
 
     def test_builds_context_with_fewer_than_two(self):
         agent = self._make_agent()
-        context = agent._build_reset_context(self._make_state(["Only one"]))
+        context = agent.router.build_reset_context(self._make_state(["Only one"]))
         assert "STRATEGY RESET" in context
         assert "Only one" in context
 
     def test_builds_context_empty_approaches(self):
         agent = self._make_agent()
-        context = agent._build_reset_context(self._make_state([]))
+        context = agent.router.build_reset_context(self._make_state([]))
         assert "STRATEGY RESET" in context
 
 
@@ -348,7 +348,7 @@ class TestNegativePrompting:
         from alethic.models import AgentConfig
 
         agent = MathAgent(config=AgentConfig(verbose=False))
-        ctx = agent._build_reset_context(self._make_state(["tried induction", "tried contradiction"]))
+        ctx = agent.router.build_reset_context(self._make_state(["tried induction", "tried contradiction"]))
         assert "DO NOT" in ctx, "Reset context must contain explicit 'DO NOT' prohibition"
 
     def test_reset_context_lists_all_recent_approaches(self):
@@ -357,7 +357,7 @@ class TestNegativePrompting:
 
         agent = MathAgent(config=AgentConfig(verbose=False))
         approaches = ["a1", "a2", "a3", "a4", "a5", "a6"]
-        ctx = agent._build_reset_context(self._make_state(approaches))
+        ctx = agent.router.build_reset_context(self._make_state(approaches))
         # Should include last 5, not just last 2
         assert "a2" in ctx
         assert "a6" in ctx
@@ -368,5 +368,5 @@ class TestNegativePrompting:
         from alethic.physics_agent import PhysicsAgent
 
         agent = PhysicsAgent(config=AgentConfig(verbose=False))
-        ctx = agent._build_reset_context(self._make_state(["tried Lagrangian"]))
+        ctx = agent.router.build_reset_context(self._make_state(["tried Lagrangian"]))
         assert "DO NOT" in ctx

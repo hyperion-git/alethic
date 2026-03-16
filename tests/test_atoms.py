@@ -306,7 +306,7 @@ class TestBuildAtomContext:
     def test_insufficient_history_returns_none(self):
         agent = _make_agent()
         atom = _make_real_atom(1, "step 1")
-        result = agent._build_atom_context([[atom]], [0.8])
+        result = agent.router.build_atom_context([[atom]], [0.8])
         assert result is None
 
     def test_all_synthetic_returns_none_and_does_not_call_classify(self):
@@ -314,8 +314,8 @@ class TestBuildAtomContext:
         synth = _make_synthetic_atom()
         atom_history = [[synth], [synth]]
         conf_history = [0.7, 0.75]
-        with patch("alethic.agent.classify_atom_stability") as mock_classify:
-            result = agent._build_atom_context(atom_history, conf_history)
+        with patch("alethic.oracle_router.classify_atom_stability") as mock_classify:
+            result = agent.router.build_atom_context(atom_history, conf_history)
         assert result is None
         mock_classify.assert_not_called()  # explicit guard, not just accident
 
@@ -325,7 +325,7 @@ class TestBuildAtomContext:
         atom2 = _make_real_atom(1, "content B")  # same id, different content = FAILING
         atom_history = [[atom1], [atom2]]
         conf_history = [0.7, 0.65]
-        result = agent._build_atom_context(atom_history, conf_history)
+        result = agent.router.build_atom_context(atom_history, conf_history)
         assert result is None
 
     def test_stable_atoms_advisory_contains_do_not_discard(self):
@@ -335,7 +335,7 @@ class TestBuildAtomContext:
         atom2 = _make_real_atom(1, same_content)
         atom_history = [[atom1], [atom2]]
         conf_history = [0.75, 0.80]  # both >= floor (0.82 * 0.85 = 0.697)
-        result = agent._build_atom_context(atom_history, conf_history)
+        result = agent.router.build_atom_context(atom_history, conf_history)
         assert result is not None
         assert "do not discard" in result.lower()
         assert "repetition" not in result.lower()
@@ -350,7 +350,7 @@ class TestBuildAtomContext:
         atom3 = _make_real_atom(2, content_c)
         atom_history = [[atom1], [atom2], [atom3]]
         conf_history = [0.72, 0.68, 0.70]
-        result = agent._build_atom_context(atom_history, conf_history)
+        result = agent.router.build_atom_context(atom_history, conf_history)
         assert result is not None
         # Must warn about repetition
         assert "oscillat" in result.lower() or "repeat" in result.lower()
@@ -363,7 +363,7 @@ class TestBuildAtomContext:
         atom2 = _make_real_atom(3, "attempt B")
         atom_history = [[atom1], [atom2]]
         conf_history = [0.72, 0.61]  # declining
-        result = agent._build_atom_context(atom_history, conf_history)
+        result = agent.router.build_atom_context(atom_history, conf_history)
         assert result is not None
         assert "do not discard" not in result.lower()
 
@@ -374,8 +374,8 @@ class TestBuildAtomContext:
         atom2 = _make_real_atom(1, "different content")
         atom_history = [[atom1], [atom2]]
         conf_history = [0.7, 0.75]
-        with patch("alethic.agent.classify_atom_stability", return_value={}):
-            result = agent._build_atom_context(atom_history, conf_history)
+        with patch("alethic.oracle_router.classify_atom_stability", return_value={}):
+            result = agent.router.build_atom_context(atom_history, conf_history)
         assert result is None
 
     def test_wiring_revise_receives_atom_context(self):
@@ -399,7 +399,7 @@ class TestBuildAtomContext:
             captured_messages.append(user_message)
             return "CHANGES MADE:\nnone\n\nREVISED SOLUTION:\nfixed\n\nCONCLUSION: done"
 
-        advisory = agent._build_atom_context(atom_history, conf_history)
+        advisory = agent.router.build_atom_context(atom_history, conf_history)
         assert advisory is not None, "pre-condition: advisory must be non-None for this test"
 
         import alethic.subagents as subagents_module

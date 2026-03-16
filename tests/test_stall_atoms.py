@@ -30,7 +30,7 @@ class TestAtomStabilityContext:
         agent = MathAgent(config=config, api_key="test")
         state = RunState()
         state.failed_approaches = ["Approach A failed."]
-        context = agent._build_reset_context(state)
+        context = agent.router.build_reset_context(state)
         assert "Approach A" in context
         assert "STABLE ATOMS" not in context  # no atom history
 
@@ -46,7 +46,7 @@ class TestAtomStabilityContext:
         atom = AtomAnnotation(id=1, deps=(), oracle=OracleType.LAYER3_LLM, content="x = 1")
         state.atom_history = [[atom], [atom], [atom]]
         state.confidence_history = [0.8, 0.8, 0.8]
-        context = agent._build_reset_context(state)
+        context = agent.router.build_reset_context(state)
         assert "STABLE" in context or "stable" in context.lower()
 
     def test_atom_history_cleared_on_reset(self):
@@ -69,6 +69,6 @@ class TestAtomStabilityContext:
         atom = AtomAnnotation(id=1, deps=(), oracle=OracleType.LAYER3_LLM, content="x = 1")
         state.atom_history = [[atom], [atom]]
         state.confidence_history = [0.8, 0.8]
-        context = agent._build_reset_context(state)
+        context = agent.router.build_reset_context(state)
         # With variant_b active, atom stability should NOT be included
         assert "STABLE" not in context

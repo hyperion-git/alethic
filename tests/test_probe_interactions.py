@@ -112,7 +112,7 @@ class TestProbeA1StallWinsOverAdaptiveCompute:
         )
         agent = MathAgent(config=config)
 
-        adaptive_n = agent._compute_dynamic_n(
+        adaptive_n = agent.router._compute_dynamic_n(
             EvidenceState(iteration=2, best_confidence=0.30, error_category="algebra")
         )
         stall_n = config.best_of_n + config.reset_n_boost
@@ -329,10 +329,10 @@ class TestProbeA3FixableFallthroughStaleEvidence:
         stale = EvidenceState(iteration=1, best_confidence=0.85, error_category="algebra")
         fresh = EvidenceState(iteration=1, best_confidence=0.85, error_category="logic")
 
-        assert agent._compute_adaptive_revisions(stale) == 1, (
+        assert agent.router.revision_budget(stale) == 1, (
             "algebra + conf>=0.80 -> budget=1"
         )
-        assert agent._compute_adaptive_revisions(fresh) == 3, (
+        assert agent.router.revision_budget(fresh) == 3, (
             "logic + conf>=0.70 -> base budget=3"
         )
 
@@ -492,10 +492,10 @@ class TestProbeA5TaxonomyUsesWinnerCritique:
             verbose=False,
         ))
 
-        n_algebra = agent._compute_dynamic_n(
+        n_algebra = agent.router._compute_dynamic_n(
             EvidenceState(iteration=1, best_confidence=0.60, error_category="algebra")
         )
-        n_logic = agent._compute_dynamic_n(
+        n_logic = agent.router._compute_dynamic_n(
             EvidenceState(iteration=1, best_confidence=0.60, error_category="logic")
         )
 
