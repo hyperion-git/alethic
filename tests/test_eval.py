@@ -244,3 +244,35 @@ class TestPuctComparison:
         ]
         result = compute_puct_comparison(events)
         assert result["divergence_rate"] == 0.0
+
+
+class TestGateBenchmark:
+    def test_gate_benchmark_loads(self):
+        """gate-v38.json loads successfully with all 100 problems."""
+        from alethic.eval.harness import load_benchmark
+        import os
+
+        path = os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "data",
+            "benchmarks",
+            "gate-v38.json",
+        )
+        bench = load_benchmark(path)
+        assert bench["name"] == "gate-v38"
+        assert len(bench["problems"]) == 100
+
+        # Domain split
+        math_count = sum(1 for p in bench["problems"] if p["domain"] == "math")
+        physics_count = sum(1 for p in bench["problems"] if p["domain"] == "physics")
+        assert math_count == 45, f"Expected 45 math, got {math_count}"
+        assert physics_count == 45, f"Expected 45 physics, got {physics_count}"
+
+        # All IDs unique
+        ids = [p["id"] for p in bench["problems"]]
+        assert len(ids) == len(set(ids)), f"Duplicate IDs: {[x for x in ids if ids.count(x) > 1]}"
+
+        # False claims count
+        false_count = sum(1 for p in bench["problems"] if not p["expected_solvable"])
+        assert false_count == 10, f"Expected 10 false claims, got {false_count}"
