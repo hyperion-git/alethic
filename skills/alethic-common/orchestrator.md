@@ -346,7 +346,8 @@ Apply keyword matching in priority order — first match wins:
 - `citation`: citation, cite, well known, standard result, it can be shown, no source, no reference, vague appeal
 - `interpretation`: misinterpret, misread, premise, wrong problem, reinterpret, different question, weaker problem
 - `units`: unit, dimension, dimensional, si unit, conversion, does not balance, inconsistent units
-- `missing_case`: missing case, edge case, counterexample, special case, boundary case, not handled, case analysis
+- `counterexample`: counterexample, flaw found, breaker found, regime failure, falsif
+- `missing_case`: missing case, edge case, special case, boundary case, not handled, case analysis
 - `general`: (fallback — no keyword matched)
 
 **Note**: If the previous iteration's solution contained `ALETHIC_L0_CHECK: FAILURE` or `ALETHIC_L1_CHECK: FAILURE`, treat the error category as `units` (physics) or `logic` (math) respectively, regardless of the critique text — these are structural failures requiring a fundamentally different approach.
@@ -355,7 +356,7 @@ Apply keyword matching in priority order — first match wins:
 
 | Error category | Action |
 |---------------|--------|
-| `logic`, `missing_case`, `interpretation`, `units` | Set `n_this_iter = best_of_n` (full escalation — need diverse approaches) |
+| `logic`, `missing_case`, `counterexample`, `interpretation`, `units` | Set `n_this_iter = best_of_n` (full escalation — need diverse approaches) |
 | `algebra`, `citation` | Set `n_this_iter = 1` (revise-first — fixable in place) |
 | any, if `best_confidence < confidence_threshold * 0.75` | Set `n_this_iter = best_of_n` (hard problem regardless of category) |
 | otherwise | Set `n_this_iter = 1` |
@@ -438,8 +439,9 @@ For iteration 1, always use `n_this_iter = 1` (probe pass) when `adaptive_comput
    - If that fails, Read the verification file and extract the same fields.
    - If both fail, use `verdict = "unsolved"`, `confidence = 0.0`.
    - Clamp confidence to [0.0, 1.0].
+   - **Classify error category** from the verification critique text (same keyword classifier as Step 2-adaptive, Classifier 1): apply keyword matching in priority order to the critique text → set `error_category` to the first match, or `"general"` if none.
 
-   **Log event**: `{"type":"verify","iteration":{N},"candidate":{C},"verdict":"{verdict}","confidence":{confidence},"has_critical":{true|false},"timestamp":"..."}`
+   **Log event**: `{"type":"verify","iteration":{N},"candidate":{C},"verdict":"{verdict}","confidence":{confidence},"has_critical":{true|false},"error_category":"{error_category}","timestamp":"..."}`
 
 3. After all candidates are verified, **select the best candidate** — the one with the highest confidence. Copy the best candidate's files to the standard locations:
    - When `best_of_n > 1`: Copy `candidate_{best_C}.md` -> `solution.md` and `verification_c{best_C}.md` -> `verification.md` in the iteration directory.
@@ -540,7 +542,7 @@ When the selected best candidate has non-empty `atom_confidences`, print an addi
         - **Log event**: `{"type":"breaker_survived","iteration":{N},"verdict":"no_flaw_found","confidence":{confidence},"timestamp":"..."}`
         - **Proceed with acceptance.**
   - **Accept** (reached only if CRITICAL guard passed AND breaker did not find FLAW_FOUND): Update `session.json`: `"status": "solved"`, `"verdict": "correct"`, current iteration, confidence.
-  - **Log event**: `{"type":"accept","iteration":{N},"confidence":{confidence},"timestamp":"..."}`
+  - **Log event**: `{"type":"accept","iteration":{N},"confidence":{confidence},"error_category":"{error_category}","timestamp":"..."}`
   - Go to **Step 4: Format Output**, then **Step 5: Present Results**.
   - **STOP the loop.**
 
@@ -564,7 +566,7 @@ When the selected best candidate has non-empty `atom_confidences`, print an addi
     5. **If re-verification verdict is "correct" AND confidence >= {confidence_threshold}**:
        - **CRITICAL issue guard** applies (same as the "correct" branch above). If HAS_CRITICAL is "yes", treat as "major_flaw" and proceed to Step 2d.
        - Otherwise: Copy `worklog/iter{N}/corrected.md` to `worklog/iter{N}/solution.md`. Update `session.json`: `"status": "solved"`, `"verdict": "correct"`, current iteration, confidence.
-       - **Log event**: `{"type":"accept","iteration":{N},"confidence":{confidence},"via":"fixable_shortcut","timestamp":"..."}`
+       - **Log event**: `{"type":"accept","iteration":{N},"confidence":{confidence},"via":"fixable_shortcut","error_category":"{error_category}","timestamp":"..."}`
        - Go to **Step 4: Format Output**, then **Step 5: Present Results**. **STOP the loop.**
     6. **If re-verification fails**: Copy `worklog/iter{N}/corrected.md` to `worklog/iter{N}/solution.md` (use corrected version as new base). Copy the re-verification output to `worklog/iter{N}/verification.md`. Proceed to Step 2d (Revise) — the reviser will work from the corrected solution, not the original.
   - If `corrected_solution` is null:
@@ -592,6 +594,7 @@ For revision M = 1 to `max_revisions_this_iter` (which equals `max_revisions` no
     - If text contains any of: "citation", "cite", "well known", "standard result", "it can be shown", "no source", "vague appeal" → `citation`
     - If text contains any of: "misinterpret", "misread", "premise", "reinterpret", "weaker problem", "specification" → `interpretation`
     - If text contains any of: "unit", "dimension", "dimensional", "conversion", "does not balance" → `units`
+    - If text contains any of: "counterexample", "flaw found", "breaker found", "regime failure", "falsif" → `counterexample`
     - If text contains any of: "missing case", "edge case", "boundary case", "case analysis", "exhaustive", "not handled" → `missing_case`
     - Default: `general`
 
@@ -601,6 +604,7 @@ For revision M = 1 to `max_revisions_this_iter` (which equals `max_revisions` no
     - `citation`: `"**Revision focus — citation accuracy**: For every theorem or known result invoked: either (a) prove it inline, or (b) cite it by its exact conventional name. Remove all 'it is well known' and 'by a standard result' phrasing."`
     - `interpretation`: `"**Revision focus — problem interpretation**: Re-read the problem statement before writing a single line. Restate the problem in your own words at the top to confirm you understand it. Verify your conclusion directly answers the question asked."`
     - `units`: `"**Revision focus — dimensional consistency**: At every step, write the units of each quantity explicitly (e.g., [J], [m/s²]). Before finalising, verify both sides of every equation have identical dimensions."`
+    - `counterexample`: `"**Revision focus — addressing identified flaw**: A specific counterexample or logical flaw was found by the adversarial breaker. Re-examine the targeted claim at the identified input or logical step. Either refute the flaw (show why it does not actually violate your claim) or repair the proof step that fails for this input."`
     - `missing_case`: `"**Revision focus — case completeness**: Begin by enumerating all possible cases explicitly. For each case, provide a complete argument. Pay special attention to: n=0 or n=1 base cases, empty sets, zero vectors, boundary conditions, and degenerate configurations."`
     - `general`: `""` (no addendum)
 
@@ -638,7 +642,9 @@ For revision M = 1 to `max_revisions_this_iter` (which equals `max_revisions` no
 
 7. Extract verdict using the Error Handling Protocol (same as Step 2b.2).
 
-   **Log event**: `{"type":"verify","iteration":{N},"revision":{M},"verdict":"{verdict}","confidence":{confidence},"has_critical":{true|false},"timestamp":"..."}`
+   **Classify error category** from the re-verification critique text (same keyword classifier as Step 2b.2).
+
+   **Log event**: `{"type":"verify","iteration":{N},"revision":{M},"verdict":"{verdict}","confidence":{confidence},"has_critical":{true|false},"error_category":"{error_category}","timestamp":"..."}`
 
 8. Print (skip if `--quiet` is set): `[Iter {N}] Re-verification (rev {M}): VERDICT: {verdict} | CONFIDENCE: {confidence}`
 
