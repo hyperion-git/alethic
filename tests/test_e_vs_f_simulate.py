@@ -1,6 +1,9 @@
 """Tests for E vs F Monte Carlo simulation engine."""
+import numpy as np
+import pytest
+
 from alethic.experiment.distributions import CalibratedDistributions
-from alethic.experiment.simulate import AtomGuidedSimulator
+from alethic.experiment.simulate import AtomGuidedSimulator, PUCTWidenSimulator
 
 
 def test_model_e_produces_result():
@@ -157,3 +160,121 @@ def test_model_e_cost_scales_with_iterations():
     max_iter_costs = [c for c, i in zip(costs, iters, strict=True) if i == 8]
     if one_iter_costs and max_iter_costs:
         assert min(max_iter_costs) > min(one_iter_costs)
+
+
+# ---------------------------------------------------------------------------
+# Model F (PUCTWidenSimulator) tests
+# ---------------------------------------------------------------------------
+
+
+def test_model_f_produces_result():
+    """Model F runs a single trial with PUCT selection."""
+    dists = CalibratedDistributions.default()
+    sim = PUCTWidenSimulator(dists, seed=42, cpuct=1.414)
+    result = sim.run_trial(archetype="insight")
+    assert "solved" in result
+    assert "visit_counts" in result  # PUCT tracks visits
+
+
+def test_model_f_explores_approaches():
+    """Model F should visit multiple approaches over 8 iterations."""
+    dists = CalibratedDistributions.default()
+    sim = PUCTWidenSimulator(dists, seed=42, cpuct=1.414)
+    result = sim.run_trial(archetype="insight")
+    visits = result["visit_counts"]
+    # With M=4-6 and progressive widening, should visit at least 2 approaches
+    assert sum(1 for v in visits.values() if v > 0) >= 2
+
+
+def test_model_f_result_fields():
+    """Model F result dict has all expected fields with valid types."""
+    dists = CalibratedDistributions.default()
+    sim = PUCTWidenSimulator(dists, seed=99, cpuct=1.414)
+    result = sim.run_trial("adversarial")
+    assert isinstance(result["solved"], bool)
+    assert isinstance(result["confidence"], float)
+    assert isinstance(result["iterations_used"], int)
+    assert isinstance(result["cost_tokens"], float)
+    assert isinstance(result["approach_sequence"], list)
+    assert isinstance(result["stall_events"], int)
+    assert isinstance(result["fixable_shortcuts"], int)
+    assert isinstance(result["visit_counts"], dict)
+    assert result["cost_tokens"] > 0
+
+
+def test_model_f_deterministic():
+    """Same seed produces same result."""
+    dists = CalibratedDistributions.default()
+    r1 = PUCTWidenSimulator(dists, seed=42, cpuct=1.414).run_trial("insight")
+    r2 = PUCTWidenSimulator(dists, seed=42, cpuct=1.414).run_trial("insight")
+    assert r1 == r2
+
+
+def test_model_f_visit_counts_sum_to_iterations():
+    """Total visits across all approaches equals iterations_used."""
+    dists = CalibratedDistributions.default()
+    sim = PUCTWidenSimulator(dists, seed=7, cpuct=1.414)
+    result = sim.run_trial("smooth")
+    total_visits = sum(result["visit_counts"].values())
+    assert total_visits == result["iterations_used"]
+
+
+def test_model_f_target_revision_no_boost():
+    """Model F: target_revision returns base_rate unchanged."""
+    dists = CalibratedDistributions.default()
+    rng = np.random.default_rng(42)
+    sim = PUCTWidenSimulator(dists, seed=42, cpuct=1.414)
+    for rate in [0.0, 0.3, 0.5, 0.9, 1.0]:
+        assert sim.target_revision(rate, rng) == rate
+
+
+def test_model_f_handle_stall_is_noop():
+    """Model F: handle_stall always returns False (PUCT handles exploration)."""
+    dists = CalibratedDistributions.default()
+    rng = np.random.default_rng(42)
+    sim = PUCTWidenSimulator(dists, seed=42, cpuct=1.414)
+    state = {"current_approach": 0, "M": 4, "resets_used": 0, "rng": rng}
+    assert sim.handle_stall(state) is False
+    # State should be unchanged
+    assert state["current_approach"] == 0
+    assert state["resets_used"] == 0
+
+
+def test_model_f_all_archetypes():
+    """Model F works for all three archetypes."""
+    dists = CalibratedDistributions.default()
+    for arch in ["smooth", "insight", "adversarial"]:
+        result = PUCTWidenSimulator(dists, seed=42, cpuct=1.414).run_trial(arch)
+        assert "solved" in result
+        assert "visit_counts" in result
+
+
+def test_model_f_progressive_widening():
+    """Progressive widening limits active approaches to ceil(sqrt(iteration))."""
+    # We test select_candidates behavior by checking that on the very first call
+    # (iteration_count=0 before the call), only ceil(sqrt(1))=1 approach is active.
+    dists = CalibratedDistributions.default()
+    rng = np.random.default_rng(42)
+    sim = PUCTWidenSimulator(dists, seed=42, cpuct=1.414)
+    # Fresh state before any iterations
+    sim._visit_counts = {}
+    sim._approach_rewards = {}
+    sim._total_visits = 0
+    sim._iteration_count = 0
+    candidates = sim.select_candidates(n=3, n_approaches=9, current_approach=0, rng=rng)
+    # At first call (iteration 1 effective), ceil(sqrt(1)) = 1 active approach
+    unique_approaches = set(candidates)
+    assert len(unique_approaches) == 1
+
+
+def test_puct_diverges_from_greedy():
+    """PUCT and Greedy should sometimes select different approaches."""
+    dists = CalibratedDistributions.default()
+    diverged = 0
+    for seed in range(100):
+        e = AtomGuidedSimulator(dists, seed=seed).run_trial("insight")
+        f = PUCTWidenSimulator(dists, seed=seed, cpuct=1.414).run_trial("insight")
+        if e.get("approach_sequence") != f.get("approach_sequence"):
+            diverged += 1
+    # Should diverge at least 20% of the time
+    assert diverged >= 20

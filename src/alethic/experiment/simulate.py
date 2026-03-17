@@ -277,6 +277,111 @@ class AlethicSimulator(ABC):
         }
 
 
+class PUCTWidenSimulator(AlethicSimulator):
+    """Model F: PUCT scoring with progressive widening for approach selection.
+
+    Key properties:
+    - Candidates are drawn from PUCT-scored approaches (exploration + exploitation).
+    - Progressive widening: active approaches = min(M, ceil(sqrt(iteration))).
+    - Uniform revision targeting: no boost applied to base revision rate.
+    - No explicit stall handling: PUCT naturally shifts to under-explored approaches.
+    """
+
+    def __init__(
+        self,
+        dists: CalibratedDistributions,
+        *,
+        seed: int = 0,
+        cpuct: float = 1.414,
+    ):
+        super().__init__(dists, seed=seed)
+        self.cpuct = cpuct
+        # Per-trial PUCT state (reset in run_trial)
+        self._visit_counts: dict[int, int] = {}
+        self._approach_rewards: dict[int, float] = {}
+        self._total_visits: int = 0
+        self._iteration_count: int = 0
+
+    def run_trial(self, archetype: str) -> dict:
+        """Run a trial, initializing PUCT state first, then appending visit_counts."""
+        # Reset PUCT state for this trial
+        self._visit_counts = {}
+        self._approach_rewards = {}
+        self._total_visits = 0
+        self._iteration_count = 0
+
+        result = super().run_trial(archetype)
+        result["visit_counts"] = dict(self._visit_counts)
+        return result
+
+    def select_candidates(
+        self,
+        n: int,
+        n_approaches: int,
+        current_approach: int,
+        rng: np.random.Generator,
+    ) -> list[int]:
+        """Select N candidates via PUCT scoring with progressive widening.
+
+        Progressive widening: at the current iteration, only
+        ceil(sqrt(iteration_count)) approaches are active. This bounds early
+        exploration and widens over time.
+
+        One visit is recorded per call (per iteration) to the top-ranked approach.
+        """
+        import math
+
+        # Use current count before incrementing to determine active width.
+        # iteration_count=0 on first call → n_active = min(M, ceil(sqrt(1))) = 1.
+        n_active = min(n_approaches, math.ceil(math.sqrt(self._iteration_count + 1)))
+        active_approaches = list(range(n_active))
+
+        # PUCT score for each active approach:
+        #   Q(a) + cpuct * prior * sqrt(total_visits) / (1 + visits(a))
+        # where prior = 1/n_approaches (uniform).
+        prior = 1.0 / n_approaches
+        sqrt_total = math.sqrt(self._total_visits) if self._total_visits > 0 else 1.0
+
+        scores = []
+        for a in active_approaches:
+            visits_a = self._visit_counts.get(a, 0)
+            q_a = self._approach_rewards.get(a, 0.0)
+            u_a = self.cpuct * prior * sqrt_total / (1 + visits_a)
+            scores.append(q_a + u_a)
+
+        # Select top-N by PUCT score; break ties deterministically (argmax order)
+        ranked = sorted(range(len(active_approaches)), key=lambda i: scores[i], reverse=True)
+        # Assign each of the N candidates to an approach (cycle if N > n_active)
+        selected_approaches: list[int] = []
+        for c_idx in range(n):
+            approach_slot = ranked[c_idx % len(ranked)]
+            selected_approaches.append(active_approaches[approach_slot])
+
+        # Record one visit per iteration (to the top-ranked approach).
+        # This keeps sum(visit_counts) == iterations_used.
+        top_approach = active_approaches[ranked[0]]
+        self._visit_counts[top_approach] = self._visit_counts.get(top_approach, 0) + 1
+        self._total_visits += 1
+        self._iteration_count += 1
+
+        return selected_approaches
+
+    def _update_approach_reward(self, approach: int, confidence: float) -> None:
+        """Update running Q-value for an approach (called externally after select)."""
+        # Incremental mean: Q_new = Q_old + (reward - Q_old) / visits
+        visits = self._visit_counts.get(approach, 1)
+        old_q = self._approach_rewards.get(approach, 0.0)
+        self._approach_rewards[approach] = old_q + (confidence - old_q) / visits
+
+    def target_revision(self, base_rate: float, rng: np.random.Generator) -> float:
+        """Uniform revision targeting: no boost applied."""
+        return base_rate
+
+    def handle_stall(self, state: dict) -> bool:
+        """No-op: PUCT naturally explores under-visited approaches."""
+        return False
+
+
 class AtomGuidedSimulator(AlethicSimulator):
     """Model E: Atom-guided verification with focused approach selection.
 
