@@ -141,21 +141,68 @@ def find_existing_sessions(problems: list[dict]) -> dict[str, Path]:
     return result
 
 
+def _progress_bar(current: int, total: int, width: int = 30, *, extra: str = "") -> str:
+    """Render an inline progress bar: [████████░░░░░░░░] 42/100 (42%) extra."""
+    frac = current / total if total else 0
+    filled = int(width * frac)
+    bar = "\u2588" * filled + "\u2591" * (width - filled)
+    pct = f"{frac:.0%}"
+    line = f"[{bar}] {current}/{total} ({pct})"
+    if extra:
+        line += f"  {extra}"
+    return line
+
+
+def _format_eta(seconds: float) -> str:
+    """Format seconds as human-readable ETA."""
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    if seconds < 3600:
+        return f"{seconds / 60:.0f}m"
+    return f"{seconds / 3600:.1f}h"
+
+
 def driver(problems: list[dict], *, dry_run: bool = False) -> None:
     """Run each problem through claude -p with the appropriate skill."""
     existing = find_existing_sessions(problems)
     total = len(problems)
+    completed = 0
+    skipped = 0
+    errors = 0
+    elapsed_times: list[float] = []
+    run_start = time.time()
 
-    for i, problem in enumerate(problems, 1):
+    for _i, problem in enumerate(problems, 1):
         pid = problem["id"]
         domain = problem["domain"]
         skill = "/alethic-solve" if domain == "math" else "/alethic-derive"
 
         if pid in existing:
-            print(f"[{i}/{total}] SKIP {pid} (session exists)")
+            skipped += 1
+            completed += 1
+            print(
+                f"\r{_progress_bar(completed, total, extra=f'SKIP {pid}')}"
+                + " " * 10,
+                end="",
+                flush=True,
+            )
             continue
 
-        print(f"[{i}/{total}] {pid} ({domain}) ...", flush=True)
+        # ETA estimate from running average
+        if elapsed_times:
+            avg = sum(elapsed_times) / len(elapsed_times)
+            remaining = total - completed
+            eta_str = f"ETA {_format_eta(avg * remaining)}"
+        else:
+            eta_str = ""
+
+        print(
+            f"\r{_progress_bar(completed, total, extra=f'{pid} ({domain}) {eta_str}')}"
+            + " " * 10,
+            end="",
+            flush=True,
+        )
+
         start = time.time()
 
         # Write problem to temp file to avoid shell quoting issues
@@ -168,7 +215,8 @@ def driver(problems: list[dict], *, dry_run: bool = False) -> None:
         prompt = f'{skill} -p default --file {prob_path}'
 
         if dry_run:
-            print(f"  DRY RUN: claude -p {prompt!r}")
+            print(f"\n  DRY RUN: claude -p {prompt!r}", flush=True)
+            completed += 1
             continue
 
         try:
@@ -178,12 +226,25 @@ def driver(problems: list[dict], *, dry_run: bool = False) -> None:
                 timeout=1800,  # 30 min per problem max
             )
         except subprocess.TimeoutExpired:
-            print("  TIMEOUT after 30 min")
+            errors += 1
+            print(f"\n  TIMEOUT {pid}", flush=True)
         except Exception as e:
-            print(f"  ERROR: {e}")
+            errors += 1
+            print(f"\n  ERROR {pid}: {e}", flush=True)
 
         elapsed = time.time() - start
-        print(f"  done ({elapsed:.0f}s)")
+        elapsed_times.append(elapsed)
+        completed += 1
+
+    # Final summary line
+    wall = time.time() - run_start
+    print(
+        f"\r{_progress_bar(completed, total, extra='DONE')}" + " " * 20
+    )
+    print(
+        f"\nCompleted {completed} problems in {_format_eta(wall)} "
+        f"({skipped} skipped, {errors} errors)"
+    )
 
 
 def harvest(problems: list[dict]) -> dict:
