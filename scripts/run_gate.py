@@ -5,10 +5,12 @@ Runs the 100-problem gate-v38.json benchmark through /alethic-solve and
 /alethic-derive skills via `claude -p`, then harvests session directories
 to compute gate metrics (annotation_rate, puct_divergence, solve_rate).
 
-Usage:
-    python scripts/run_gate.py                    # run all problems
-    python scripts/run_gate.py --harvest-only      # skip driver, just harvest
-    python scripts/run_gate.py --dry-run           # print commands without executing
+Requires the alethic package (for atom parsing and error classification in harvest mode).
+Run via micromamba or with the alethic env activated:
+
+    micromamba run -n alethic python scripts/run_gate.py              # run all
+    micromamba run -n alethic python scripts/run_gate.py --harvest-only  # harvest only
+    micromamba run -n alethic python scripts/run_gate.py --dry-run       # preview
 """
 from __future__ import annotations
 
@@ -133,6 +135,15 @@ def driver(problems: list[dict], *, dry_run: bool = False) -> None:
 
 def harvest(problems: list[dict]) -> dict:
     """Read .alethic/ session dirs and compute gate metrics."""
+    try:
+        from alethic.atoms import parse_atoms  # noqa: F401
+    except ImportError:
+        print(
+            "ERROR: alethic package not found. Run with:\n"
+            "  micromamba run -n alethic python scripts/run_gate.py --harvest-only",
+            file=__import__("sys").stderr,
+        )
+        raise SystemExit(1) from None
 
     sessions = find_existing_sessions(problems)
     results = []
