@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
-import sys
 import tempfile
 import time
 import unicodedata
@@ -124,7 +123,7 @@ def driver(problems: list[dict], *, dry_run: bool = False) -> None:
                 timeout=1800,  # 30 min per problem max
             )
         except subprocess.TimeoutExpired:
-            print(f"  TIMEOUT after 30 min")
+            print("  TIMEOUT after 30 min")
         except Exception as e:
             print(f"  ERROR: {e}")
 
@@ -134,8 +133,6 @@ def driver(problems: list[dict], *, dry_run: bool = False) -> None:
 
 def harvest(problems: list[dict]) -> dict:
     """Read .alethic/ session dirs and compute gate metrics."""
-    from alethic.atoms import parse_atoms
-    from alethic.error_taxonomy import classify_errors
 
     sessions = find_existing_sessions(problems)
     results = []
@@ -296,7 +293,7 @@ def _compute_puct_from_events(events: list[dict]) -> dict | None:
     import hashlib
     import math
 
-    EXPLORATION_WEIGHT = 1.41
+    exploration_weight = 1.41
 
     def _ucb1_score(
         confidence: float, visit_count: int, total_visits: int
@@ -304,7 +301,7 @@ def _compute_puct_from_events(events: list[dict]) -> dict | None:
         if visit_count == 0:
             return float("inf")
         exploitation = confidence
-        exploration = EXPLORATION_WEIGHT * math.sqrt(
+        exploration = exploration_weight * math.sqrt(
             math.log(max(total_visits, 1)) / visit_count
         )
         return exploitation + exploration
