@@ -45,28 +45,30 @@ Identical to existing benchmarks. Required: `id`, `domain`, `problem`, `expected
 
 |           | Genuine | False claims | Total |
 |-----------|---------|-------------|-------|
-| Math      | 40      | 5           | 45    |
-| Physics   | 40      | 5           | 45    |
-| **Total** | **80**  | **10**      | **100** |
+| Math      | 45      | 5           | 50    |
+| Physics   | 45      | 5           | 50    |
+| **Total** | **90**  | **10**      | **100** |
 
-### 4.2 Math (45 problems)
+**Note:** Original design had 40+5=45 per domain (90 total). Arithmetic error (45+45≠100) was caught during implementation. 5 additional problems per domain were added to reach the target 100.
+
+### 4.2 Math (50 problems)
 
 | Difficulty   | Count | Purpose |
 |-------------|-------|---------|
 | Easy        | 10    | Regression floor |
-| Medium      | 17    | Core undergraduate reasoning |
+| Medium      | 22    | Core undergraduate reasoning |
 | Hard        | 8     | Multi-iteration, occasional failure |
 | Competition | 5     | Maximum PUCT signal |
 | False claim | 5     | False-premise detection |
 
 **Domain coverage (primary category per problem):** number theory (8), analysis/calculus (11), algebra (7), linear algebra (4), combinatorics (5), probability (3), topology/set theory (3), ODEs (1), cross-domain competition (3). Some problems carry multiple tags; counts reflect the primary category used for stratification.
 
-### 4.3 Physics (45 problems)
+### 4.3 Physics (50 problems)
 
 | Difficulty   | Count | Purpose |
 |-------------|-------|---------|
 | Easy        | 10    | Regression floor + dimensional analysis |
-| Medium      | 16    | Standard undergraduate derivations |
+| Medium      | 21    | Standard undergraduate derivations |
 | Hard        | 9     | Advanced undergrad, multi-method |
 | Graduate    | 5     | Ceiling test, maximum PUCT signal |
 | False claim | 5     | False-premise detection |
