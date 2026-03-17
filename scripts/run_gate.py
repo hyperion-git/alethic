@@ -6,11 +6,16 @@ Runs the 100-problem gate-v38.json benchmark through /alethic-solve and
 to compute gate metrics (annotation_rate, puct_divergence, solve_rate).
 
 Requires the alethic package (for atom parsing and error classification in harvest mode).
-Run via micromamba or with the alethic env activated:
 
-    micromamba run -n alethic python scripts/run_gate.py              # run all
-    micromamba run -n alethic python scripts/run_gate.py --harvest-only  # harvest only
-    micromamba run -n alethic python scripts/run_gate.py --dry-run       # preview
+Setup (one-time):
+    python scripts/run_gate.py --setup-env          # creates alethic-gate micromamba env
+
+Usage:
+    micromamba run -n alethic-gate python scripts/run_gate.py              # run all
+    micromamba run -n alethic-gate python scripts/run_gate.py --harvest-only  # harvest only
+    micromamba run -n alethic-gate python scripts/run_gate.py --dry-run       # preview
+
+Or use an existing env with alethic installed (e.g., micromamba run -n alethic ...).
 """
 from __future__ import annotations
 
@@ -26,6 +31,54 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 BENCHMARK_PATH = ROOT / "data" / "benchmarks" / "gate-v38.json"
 ALETHIC_DIR = ROOT / ".alethic"
+MICROMAMBA = "/home/xeal/.local/bin/micromamba"
+ENV_NAME = "alethic-gate"
+
+# Embedded environment spec — keeps the script self-contained.
+# Python 3.13 + pip; alethic installed in editable mode from project root.
+_ENV_YAML = """\
+name: {env_name}
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pip
+"""
+
+
+def setup_env() -> None:
+    """Create a clean micromamba environment for running the gate benchmark."""
+    import sys
+
+    env_yaml = _ENV_YAML.format(env_name=ENV_NAME)
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".yml", delete=False
+    ) as f:
+        f.write(env_yaml)
+        env_path = f.name
+
+    print(f"Creating micromamba environment '{ENV_NAME}'...")
+    result = subprocess.run(
+        [MICROMAMBA, "create", "-f", env_path, "-y"],
+        check=False,
+    )
+    if result.returncode != 0:
+        print("ERROR: micromamba create failed.", file=sys.stderr)
+        raise SystemExit(1)
+
+    print(f"Installing alethic package from {ROOT}...")
+    result = subprocess.run(
+        [MICROMAMBA, "run", "-n", ENV_NAME, "pip", "install", "-e", str(ROOT)],
+        check=False,
+    )
+    if result.returncode != 0:
+        print("ERROR: pip install failed.", file=sys.stderr)
+        raise SystemExit(1)
+
+    Path(env_path).unlink(missing_ok=True)
+    print(f"\nEnvironment '{ENV_NAME}' ready. Run with:")
+    print(f"  {MICROMAMBA} run -n {ENV_NAME} python scripts/run_gate.py")
 
 
 def load_benchmark(path: Path) -> list[dict]:
@@ -415,6 +468,11 @@ def report(gate_data: dict) -> None:
 def main():
     parser = argparse.ArgumentParser(description="Gate benchmark runner")
     parser.add_argument(
+        "--setup-env",
+        action="store_true",
+        help=f"Create micromamba environment '{ENV_NAME}' and exit",
+    )
+    parser.add_argument(
         "--harvest-only",
         action="store_true",
         help="Skip driver, just harvest existing sessions",
@@ -431,6 +489,10 @@ def main():
         help="Path to benchmark JSON file",
     )
     args = parser.parse_args()
+
+    if args.setup_env:
+        setup_env()
+        return
 
     problems = load_benchmark(args.benchmark)
     print(f"Loaded {len(problems)} problems from {args.benchmark}")
