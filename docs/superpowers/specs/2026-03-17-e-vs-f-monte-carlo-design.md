@@ -163,7 +163,7 @@ Overrides candidate selection and revision targeting:
 
 Overrides candidate selection:
 
-- **Candidate selection:** PUCT with progressive widening and uniform prior. At iteration t, considers min(M, ceil(t^0.5)) approaches. Score = Q(a) + cpuct * P(a) * sqrt(total_visits) / (1 + visits(a)), where P(a) = 1/M (uniform prior). Note: with uniform priors, effective exploration constant is cpuct/M. The Tier 1 default cpuct=1.414 is a starting point without theoretical guarantee for this PUCT variant; the Tier 2 sweep range (0.25-3.0) brackets the effective optimum for M=3-8. **Limitation:** progressive widening with t^0.5 limits exploration to ceil(sqrt(8))=3 approaches within 8 iterations; problems requiring approach 4+ are disadvantaged under Model F
+- **Candidate selection:** PUCT with progressive widening and uniform prior. At iteration t, considers min(M, ceil(t^0.5)) approaches. Score = Q(a) + cpuct * P(a) * sqrt(total_visits) / (1 + visits(a)), where P(a) = 1/M (uniform prior). Note: with uniform priors, effective exploration constant is cpuct/M in the low-visit regime; after ~4+ visits per approach, the denominator (1 + visits(a)) dominates and effective exploration decays naturally. The Tier 1 default cpuct=1.414 is a starting point without theoretical guarantee for this PUCT variant; the Tier 2 sweep range (0.25-3.0) brackets the effective optimum for M=3-8. **Limitation:** progressive widening with t^0.5 limits exploration to ceil(sqrt(8))=3 approaches within 8 iterations; problems requiring approach 4+ are disadvantaged under Model F
 - **Revision targeting:** Uniform (no atom guidance) — targets random step
 - **Stall recovery:** No explicit detection. PUCT naturally shifts to under-explored approaches when current one plateaus.
 - **No atom stability tracking**
@@ -324,7 +324,7 @@ If the posterior is indecisive (neither > 0.95), the per-archetype breakdown det
 
 ## 8. Cost Estimate
 
-Extended thinking (15K budget) on thorough preset means each Opus subagent call takes 30-120 seconds. With N=3 parallel generation and N=3 parallel verification, one iteration takes ~5-8 minutes. Estimates assume Task tool execution (sequential subagent calls, no ThreadPoolExecutor).
+Extended thinking (15K budget) on thorough preset means each Opus subagent call takes 30-120 seconds. With N=3 parallel generation and sequential verification, one iteration takes ~5-8 minutes. Estimates are conservative — generation is parallelized via ThreadPoolExecutor in the Python library, but verification is sequential.
 
 | Phase | Subagent calls | Subscription tokens | Wall clock |
 |-------|---------------|-------------------|-----------|
