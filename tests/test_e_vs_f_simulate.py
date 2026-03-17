@@ -405,3 +405,73 @@ def test_parameter_sweep_stall_window_restored():
         stall_window_values=[2, 5],
     )
     assert sim_module.STALL_WINDOW == original_sw
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: full pipeline end-to-end
+# ---------------------------------------------------------------------------
+
+from alethic.experiment.diagnostics import compute_diagnostics, compute_crossover_table
+
+
+def test_full_pipeline_with_defaults():
+    """Full pipeline: default distributions -> simulate -> report."""
+    dists = CalibratedDistributions.default()
+    report = run_paired_trials(dists, n_trials=500, n_traced=100, seed=42)
+
+    # Structural checks
+    assert report["model_e"]["solve_rate"] >= 0
+    assert report["model_f"]["solve_rate"] >= 0
+    assert report["bayesian"]["p_f_better_3pp"] >= 0
+    assert report["mcnemar"]["discordant_pairs"] >= 0
+    assert "per_archetype" in report
+    assert set(report["per_archetype"].keys()) == {"smooth", "insight", "adversarial"}
+
+    # NNT should be finite (not divide by zero)
+    if abs(report["model_f"]["solve_rate"] - report["model_e"]["solve_rate"]) > 0.001:
+        assert report["nnt"]["point_estimate"] > 0
+
+
+def test_sweep_identifies_best():
+    """Sweep finds best parameters for both models."""
+    dists = CalibratedDistributions.default()
+    sweep = run_parameter_sweep(
+        dists, n_trials=100, seed=42,
+        cpuct_values=[0.5, 1.414, 3.0],
+        stall_window_values=[2, 3, 4, 5],
+    )
+    assert sweep["tier3_f_best"]["cpuct"] in [0.5, 1.414, 3.0]
+    assert sweep["tier3_e_best"]["stall_window"] in [2, 3, 4, 5]
+    assert "parameter_sensitive" in sweep
+
+
+def test_diagnostics_from_traced_trials():
+    """Diagnostics computation works on traced trial results."""
+    dists = CalibratedDistributions.default()
+    report = run_paired_trials(dists, n_trials=200, n_traced=50, seed=42)
+
+    diagnostics = compute_diagnostics(report["traced_e"], report["traced_f"])
+    assert "approach_discovery_rate_e" in diagnostics
+    assert "cost_per_solve_e" in diagnostics
+    assert "stall_recovery_success_e" in diagnostics
+    assert diagnostics["wasted_iterations_e"] >= 0
+    assert diagnostics["wasted_iterations_f"] >= 0
+    assert diagnostics["candidate_diversity_f"] >= 1.0  # F explores
+
+
+def test_crossover_table():
+    """Crossover table produces results for smooth/insight sweep."""
+    e_rates = {"smooth": 0.7, "insight": 0.4, "adversarial": 0.3}
+    f_rates = {"smooth": 0.5, "insight": 0.6, "adversarial": 0.2}
+    table = compute_crossover_table(e_rates, f_rates)
+    assert len(table) > 0
+    # At some point E should win (it's better at smooth)
+    # At some point F should win (it's better at insight)
+    winners = set(row["winner"] for row in table)
+    assert "E" in winners or "F" in winners  # At least one winner
+    # Check structure
+    for row in table:
+        assert "smooth_weight" in row
+        assert "insight_weight" in row
+        assert "winner" in row
+        assert "margin" in row
