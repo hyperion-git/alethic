@@ -62,7 +62,15 @@ def test_round_trip_serialization():
 Run: `pytest tests/test_e_vs_f_distributions.py::test_round_trip_serialization -v`
 Expected: FAIL with ModuleNotFoundError
 
-- [ ] **Step 3: Implement CalibratedDistributions**
+- [ ] **Step 3: Create experiment package and implement CalibratedDistributions**
+
+Create `src/alethic/experiment/__init__.py`:
+```python
+"""E vs F Monte Carlo experiment package."""
+from alethic.experiment.distributions import CalibratedDistributions, BetaParams
+```
+
+Then implement CalibratedDistributions
 
 ```python
 # src/alethic/experiment/distributions.py
@@ -315,7 +323,7 @@ Expected: all PASS
 - [ ] **Step 7: Commit**
 
 ```bash
-git add scripts/e_vs_f_distributions.py tests/test_e_vs_f_distributions.py
+git add src/alethic/experiment/__init__.py src/alethic/experiment/distributions.py tests/test_e_vs_f_distributions.py
 git commit -m "feat(experiment): add calibrated distribution data model with quality gate"
 ```
 
@@ -394,7 +402,7 @@ Run: `pytest tests/test_e_vs_f_simulate.py -v`
 Expected: all PASS
 
 ```bash
-git add scripts/e_vs_f_simulate.py tests/test_e_vs_f_simulate.py
+git add src/alethic/experiment/simulate.py tests/test_e_vs_f_simulate.py
 git commit -m "feat(experiment): implement Model E (AtomGuidedSimulator)"
 ```
 
@@ -469,7 +477,7 @@ def test_puct_diverges_from_greedy():
 - [ ] **Step 6: Run, verify pass, commit**
 
 ```bash
-git add scripts/e_vs_f_simulate.py tests/test_e_vs_f_simulate.py
+git add src/alethic/experiment/simulate.py tests/test_e_vs_f_simulate.py
 git commit -m "feat(experiment): implement Model F (PUCTWidenSimulator)"
 ```
 
@@ -609,7 +617,7 @@ Loops over cpuct values (Model F) and stall_window values (Model E), running `ru
 - [ ] **Step 3: Run, verify pass, commit**
 
 ```bash
-git add scripts/e_vs_f_simulate.py tests/test_e_vs_f_simulate.py
+git add src/alethic/experiment/simulate.py tests/test_e_vs_f_simulate.py
 git commit -m "feat(experiment): add Tier 2 parameter sweep for cpuct and stall_window"
 ```
 
@@ -717,7 +725,7 @@ def validate(
 
 ```python
 # tests/test_e_vs_f_validate.py
-from scripts.e_vs_f_validate import check_validation_criteria
+from alethic.experiment.validate import check_validation_criteria
 
 def test_validation_passes_when_close():
     """Validation passes when simulation is within ±15pp and Spearman > 0.3."""
@@ -807,8 +815,8 @@ if __name__ == "__main__":
 - [ ] **Step 3: Commit**
 
 ```bash
-git add scripts/e_vs_f_simulate.py
-git commit -m "feat(experiment): add report generation and CLI to simulation runner"
+git add src/alethic/experiment/simulate.py src/alethic/experiment/diagnostics.py scripts/e_vs_f_simulate.py
+git commit -m "feat(experiment): add diagnostics, report generation and CLI to simulation runner"
 ```
 
 ---
