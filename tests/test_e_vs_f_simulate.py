@@ -305,3 +305,103 @@ def test_bayesian_detects_difference():
     dists.verdict_dist["smooth"]["early"]["correct"] = 0.8  # bias toward solving
     report = run_paired_trials(dists, n_trials=1000, n_traced=0, seed=42)
     assert "p_f_better_3pp" in report["bayesian"]
+
+
+# ---------------------------------------------------------------------------
+# run_parameter_sweep tests
+# ---------------------------------------------------------------------------
+
+from alethic.experiment.simulate import run_parameter_sweep
+
+
+def test_parameter_sweep():
+    """Tier 2 sweep runs multiple cpuct and stall_window values."""
+    dists = CalibratedDistributions.default()
+    sweep = run_parameter_sweep(
+        dists, n_trials=50, seed=42,
+        cpuct_values=[0.5, 1.414],
+        stall_window_values=[2, 3],
+    )
+    assert len(sweep["model_f_sweep"]) == 2
+    assert len(sweep["model_e_sweep"]) == 2
+    assert "tier3_e_best" in sweep
+    assert "tier3_f_best" in sweep
+
+
+def test_parameter_sweep_f_sweep_fields():
+    """Each model_f_sweep entry has cpuct, solve_rate, mean_confidence."""
+    dists = CalibratedDistributions.default()
+    sweep = run_parameter_sweep(
+        dists, n_trials=50, seed=42,
+        cpuct_values=[0.5, 1.0],
+        stall_window_values=[2],
+    )
+    for entry in sweep["model_f_sweep"]:
+        assert "cpuct" in entry
+        assert "solve_rate" in entry
+        assert "mean_confidence" in entry
+        assert 0 <= entry["solve_rate"] <= 1
+        assert 0 <= entry["mean_confidence"] <= 1
+
+
+def test_parameter_sweep_e_sweep_fields():
+    """Each model_e_sweep entry has stall_window, solve_rate, mean_confidence."""
+    dists = CalibratedDistributions.default()
+    sweep = run_parameter_sweep(
+        dists, n_trials=50, seed=42,
+        cpuct_values=[1.414],
+        stall_window_values=[2, 3],
+    )
+    for entry in sweep["model_e_sweep"]:
+        assert "stall_window" in entry
+        assert "solve_rate" in entry
+        assert "mean_confidence" in entry
+        assert 0 <= entry["solve_rate"] <= 1
+        assert 0 <= entry["mean_confidence"] <= 1
+
+
+def test_parameter_sweep_tier3_best_fields():
+    """tier3_f_best and tier3_e_best have the correct keys."""
+    dists = CalibratedDistributions.default()
+    sweep = run_parameter_sweep(
+        dists, n_trials=50, seed=42,
+        cpuct_values=[0.5, 1.414],
+        stall_window_values=[2, 3],
+    )
+    assert "cpuct" in sweep["tier3_f_best"]
+    assert "solve_rate" in sweep["tier3_f_best"]
+    assert "stall_window" in sweep["tier3_e_best"]
+    assert "solve_rate" in sweep["tier3_e_best"]
+
+
+def test_parameter_sweep_has_parameter_sensitive():
+    """Sweep result includes parameter_sensitive flag."""
+    dists = CalibratedDistributions.default()
+    sweep = run_parameter_sweep(
+        dists, n_trials=50, seed=42,
+        cpuct_values=[0.5, 1.414],
+        stall_window_values=[2, 3],
+    )
+    assert "parameter_sensitive" in sweep
+    assert isinstance(sweep["parameter_sensitive"], bool)
+
+
+def test_parameter_sweep_default_values():
+    """run_parameter_sweep uses default cpuct and stall_window lists when not specified."""
+    dists = CalibratedDistributions.default()
+    sweep = run_parameter_sweep(dists, n_trials=20, seed=42)
+    # Defaults: 6 cpuct values and 4 stall_window values
+    assert len(sweep["model_f_sweep"]) == 6
+    assert len(sweep["model_e_sweep"]) == 4
+
+
+def test_parameter_sweep_stall_window_restored():
+    """Module-level STALL_WINDOW is restored to original after sweep."""
+    import alethic.experiment.simulate as sim_module
+    original_sw = sim_module.STALL_WINDOW
+    dists = CalibratedDistributions.default()
+    run_parameter_sweep(
+        dists, n_trials=20, seed=42,
+        stall_window_values=[2, 5],
+    )
+    assert sim_module.STALL_WINDOW == original_sw

@@ -426,6 +426,80 @@ class AtomGuidedSimulator(AlethicSimulator):
         return True
 
 
+def run_parameter_sweep(
+    dists: CalibratedDistributions,
+    n_trials: int = 1000,
+    seed: int = 42,
+    cpuct_values: list[float] | None = None,
+    stall_window_values: list[int] | None = None,
+) -> dict:
+    """Tier 2 parameter sensitivity sweep.
+
+    Sweeps cpuct for Model F and stall_window for Model E. For each parameter value,
+    runs paired trials and reports solve rates. Identifies Tier 3 oracle-optimal values.
+
+    Returns dict with model_f_sweep, model_e_sweep, tier3_f_best, tier3_e_best,
+    and parameter_sensitive flag.
+    """
+    import alethic.experiment.simulate as _self_module
+
+    if cpuct_values is None:
+        cpuct_values = [0.25, 0.5, 1.0, 1.414, 2.0, 3.0]
+    if stall_window_values is None:
+        stall_window_values = [2, 3, 4, 5]
+
+    # --- Model F sweep: vary cpuct ---
+    model_f_sweep: list[dict] = []
+    for cpuct_val in cpuct_values:
+        report = run_paired_trials(dists, n_trials=n_trials, n_traced=0, seed=seed, cpuct=cpuct_val)
+        model_f_sweep.append({
+            "cpuct": cpuct_val,
+            "solve_rate": report["model_f"]["solve_rate"],
+            "mean_confidence": report["model_f"]["mean_confidence"],
+        })
+
+    # --- Model E sweep: vary stall_window via module global override ---
+    model_e_sweep: list[dict] = []
+    original_stall_window = _self_module.STALL_WINDOW
+    try:
+        for sw_val in stall_window_values:
+            _self_module.STALL_WINDOW = sw_val
+            report = run_paired_trials(dists, n_trials=n_trials, n_traced=0, seed=seed)
+            model_e_sweep.append({
+                "stall_window": sw_val,
+                "solve_rate": report["model_e"]["solve_rate"],
+                "mean_confidence": report["model_e"]["mean_confidence"],
+            })
+    finally:
+        _self_module.STALL_WINDOW = original_stall_window
+
+    # --- Identify Tier 3 best parameters ---
+    best_f_entry = max(model_f_sweep, key=lambda x: x["solve_rate"])
+    best_e_entry = max(model_e_sweep, key=lambda x: x["solve_rate"])
+
+    tier3_f_best = {"cpuct": best_f_entry["cpuct"], "solve_rate": best_f_entry["solve_rate"]}
+    tier3_e_best = {"stall_window": best_e_entry["stall_window"], "solve_rate": best_e_entry["solve_rate"]}
+
+    # --- Determine if Tier 1 defaults and Tier 3 bests disagree on the winner ---
+    # Tier 1 winner is based on default parameters (cpuct=1.414, stall_window=3).
+    # Find the sweep entries closest to Tier 1 defaults to get Tier 1 solve rates.
+    tier1_f_entry = min(model_f_sweep, key=lambda x: abs(x["cpuct"] - 1.414))
+    tier1_sw = original_stall_window
+    tier1_e_entry = min(model_e_sweep, key=lambda x: abs(x["stall_window"] - tier1_sw))
+
+    tier1_winner = "F" if tier1_f_entry["solve_rate"] > tier1_e_entry["solve_rate"] else "E"
+    tier3_winner = "F" if tier3_f_best["solve_rate"] > tier3_e_best["solve_rate"] else "E"
+    parameter_sensitive = tier1_winner != tier3_winner
+
+    return {
+        "model_f_sweep": model_f_sweep,
+        "model_e_sweep": model_e_sweep,
+        "tier3_f_best": tier3_f_best,
+        "tier3_e_best": tier3_e_best,
+        "parameter_sensitive": parameter_sensitive,
+    }
+
+
 def run_paired_trials(
     dists: CalibratedDistributions,
     n_trials: int = 5000,
