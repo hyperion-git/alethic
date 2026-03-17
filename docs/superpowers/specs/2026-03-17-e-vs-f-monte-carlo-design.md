@@ -25,7 +25,7 @@ Phase 3: Validation  (real subagents)     50 trials on held-out problems
 
 | Archetype | Count | Examples |
 |-----------|-------|---------|
-| Smooth refinement | 4 | prime-17, geometric-series, simple-pendulum, gauss-law |
+| Smooth refinement | 4 | prime-17, geometric-series, simple-pendulum-period, gauss-law-from-coulomb |
 | Insight-required | 4 | sqrt2-irrational, cantor-diagonal, qho-energy-levels, lorentz-transformation |
 | Adversarial | 2 | false-claim-even-odd, false-drude-lorenz-number |
 
@@ -72,7 +72,7 @@ Per-iteration, per-candidate:
 | Atom annotation count | ATOM[N] markers in solutions | Atoms-per-solution distribution |
 | Atom targeting accuracy | Atom-flagged steps vs verifier errors | P(correct_target \| atom_flag) |
 | Error category distribution | `classify_errors()` on critiques | P(category \| archetype) |
-| Approach diversity | Solution approach classification | M (distinct approaches in N=3) |
+| Approach diversity | Atom-structure hash clustering + error-category proxy | M (distinct approaches in N=3) |
 | Stall frequency | Consecutive delta_conf < epsilon | P(stall \| iteration) |
 | Breaker demotion rate | FLAW_FOUND verdicts | P(demotion \| accepted) |
 | Token usage | Subagent response metadata | Tokens per call, context utilization |
@@ -94,7 +94,13 @@ From the raw measurements, fit parametric distributions:
 - **Approach count M:** Empirical per archetype (no parametric assumption)
 - **Stall rate:** Bernoulli per iteration bucket
 
-Quality gate: coefficient of variation < 0.5 on all key metrics. If violated, expand calibration.
+Quality gate: coefficient of variation < 0.5 on all key metrics. If violated, expand calibration (+50% budget reserved for this contingency).
+
+**Approach classification:** Approaches are classified using a two-signal method: (1) atom-structure hash from `parse_atoms()` — candidates with different atom DAG structures are different approaches; (2) error-category proxy — candidates receiving different error classifications (`classify_errors()`) are likely using different strategies. Two candidates are "same approach" if both signals match. M is the number of distinct clusters per problem.
+
+**Approach ceiling derivation:** The ceiling for each approach is estimated as the maximum confidence observed across all iterations for candidates in that cluster. Per-archetype ceiling distributions are fitted as Beta distributions from these per-problem maxima.
+
+**Late-game distribution fitting:** For the iteration bucket {6-8}, archetype dimensions are collapsed (all archetypes pooled) to avoid critically sparse cells. The 3 full-depth problems yield ~27 candidate-verifications in this bucket (3 problems x 3 iterations x 3 candidates), sufficient for pooled verdict/confidence fitting but not per-archetype breakdown.
 
 ## 3. Phase 2: Simulation
 
@@ -157,7 +163,7 @@ Overrides candidate selection and revision targeting:
 
 Overrides candidate selection:
 
-- **Candidate selection:** PUCT with progressive widening. At iteration t, considers min(M, ceil(t^0.5)) approaches. Score = Q(a) + cpuct * sqrt(total_visits) / (1 + visits(a))
+- **Candidate selection:** PUCT with progressive widening and uniform prior. At iteration t, considers min(M, ceil(t^0.5)) approaches. Score = Q(a) + cpuct * P(a) * sqrt(total_visits) / (1 + visits(a)), where P(a) = 1/M (uniform prior). Note: with uniform priors, effective exploration constant is cpuct/M. The Tier 1 default cpuct=1.414 is a starting point without theoretical guarantee for this PUCT variant; the Tier 2 sweep range (0.25-3.0) brackets the effective optimum for M=3-8. **Limitation:** progressive widening with t^0.5 limits exploration to ceil(sqrt(8))=3 approaches within 8 iterations; problems requiring approach 4+ are disadvantaged under Model F
 - **Revision targeting:** Uniform (no atom guidance) — targets random step
 - **Stall recovery:** No explicit detection. PUCT naturally shifts to under-explored approaches when current one plateaus.
 - **No atom stability tracking**
@@ -264,11 +270,17 @@ At N=5K paired trials with McNemar's test (p_d = 0.20 discordant rate):
 
 5K is sufficient. 100K would be 20-50x overkill.
 
+**Bayesian sensitivity note:** For the primary Bayesian criterion P(delta > 3pp) > 0.95 to fire, the observed effect must be approximately 4.6pp or larger (3pp threshold + 1.645 x ~0.95pp posterior SD at N=5K). The frequentist MDE of 1.77pp represents the limit of detection, not the Bayesian decision boundary. If finer discrimination is needed, lower the practical threshold to 1-2pp.
+
 ## 5. Phase 3: Validation
 
 ### 5.1 Protocol
 
-Run 50 real subagent trials on the 10 held-out problems (5 per problem), alternating Model E and Model F protocols. Compare real outcomes to simulation predictions.
+Run 50 single-iteration probes on 10 held-out problems (5 per problem), alternating Model E and Model F protocols. Each probe runs one GVR iteration (generate 3 → verify 3 → revise 1 → re-verify 1 = ~8 calls), not a full 8-iteration solve. This validates the per-iteration distributions, not end-to-end solve rate.
+
+**Held-out problems:** 10 problems from `gate-v38.json` (the 100-problem benchmark), excluding the 20 calibration problems. Stratified: 4 smooth, 4 insight, 2 adversarial/false-claim. Selected by difficulty tag to cover easy/medium/hard within each archetype.
+
+Total: 50 probes x ~8 calls = ~400 subagent calls.
 
 ### 5.2 Validation Criteria
 
@@ -277,7 +289,7 @@ Per-problem validation at N=5 has no statistical power (95% CI width ~80pp). Ins
 | Criterion | Threshold | What it tests |
 |-----------|-----------|--------------|
 | **Aggregate solve rate** | Simulation within +/-15pp of observed | Absolute calibration (50 trials gives this precision) |
-| **Spearman rank-order correlation** | rho > 0.5 across 10 problems | Relative difficulty ordering |
+| **Spearman rank-order correlation** | rho > 0.3 across 10 problems | Relative difficulty ordering (rho > 0.5 has only 42% power at n=10; 0.3 gives 78% power to detect rho=0.7) |
 | **Difficulty-bin ordering** | Easy-bin solve rate > Hard-bin solve rate | Minimal sanity check with pooled samples |
 
 Per-problem +/-5pp comparisons are reported but not gated on (no statistical power at N=5).
@@ -302,7 +314,7 @@ Four metrics identified as critical to avoid a "confident but wrong" decision:
 The experiment produces a decision if ALL of:
 
 1. Calibration distributions are stable (CV < 0.5 on key metrics)
-2. Validation passes (aggregate within +/-15pp AND Spearman rho > 0.5)
+2. Validation passes (aggregate within +/-15pp AND Spearman rho > 0.3)
 3. Bayesian posterior is decisive: P(delta > 3pp) > 0.95 OR P(delta < -3pp) > 0.95
 
 If the posterior is indecisive (neither > 0.95), the per-archetype breakdown determines the recommendation:
@@ -312,16 +324,41 @@ If the posterior is indecisive (neither > 0.95), the per-archetype breakdown det
 
 ## 8. Cost Estimate
 
+Extended thinking (15K budget) on thorough preset means each Opus subagent call takes 30-120 seconds. With N=3 parallel generation and N=3 parallel verification, one iteration takes ~5-8 minutes. Estimates assume Task tool execution (sequential subagent calls, no ThreadPoolExecutor).
+
 | Phase | Subagent calls | Subscription tokens | Wall clock |
 |-------|---------------|-------------------|-----------|
-| Calibration | ~600-770 | ~2-3M tokens | 60-90 min |
+| Calibration | ~600-770 | ~15-23M tokens | 5-8 hours |
 | Simulation | 0 (pure Python) | 0 | 5-10 min |
-| Validation | ~250-350 | ~1-1.5M tokens | 30-45 min |
-| **Total** | **~850-1120** | **~3-4.5M tokens** | **~2-2.5 hours** |
+| Validation | ~400 | ~5-8M tokens | 2-3 hours |
+| **Total** | **~1000-1170** | **~20-31M tokens** | **~8-12 hours** |
 
-No API key required — all subagent calls use the Claude Code subscription.
+**Execution path:** Phase 1 and 3 use the Python library with `ANTHROPIC_API_KEY` (not Claude Code Task tool), matching the gate runner approach. The gate runner already demonstrates this works (`scripts/run_gate.py`). Subscription-only execution via Task tool is not feasible at this call volume due to sequential execution overhead.
 
-## 9. Deliverables
+**Contingency:** If CV quality gate fails, expand calibration to all 20 problems (+50% Phase 1 cost, ~3-4 additional hours).
+
+## 9. Limitations and Known Confounds
+
+### 9.1 Policy-Dependence Confound (Critical)
+
+Phase 1 calibrates distributions from the real Alethic agent, which uses the current policy: greedy selection + stall reset — essentially Model E's policy. Model F (PUCT) would make different approach selections, encounter different error distributions, and stall differently. Using E-calibrated distributions to simulate F assumes **policy-independence**, which is an approximation.
+
+Specifically, these distributions are policy-dependent:
+- **Error category distribution:** Depends on which approach was selected (PUCT may select approaches that produce different error profiles)
+- **Stall frequency:** PUCT's deliberate exploration of low-confidence branches would register as "stalls" under the current detector
+- **Approach diversity dynamics:** Calibration sees N=3 variants of one approach; Model F would produce N=3 candidates from potentially different approaches
+
+**Mitigation:** In Phase 3 validation, specifically compare F's real error-category distribution against the Phase 1 calibration. If they diverge significantly (chi-squared test, p < 0.05), flag the simulation results as potentially biased toward E and expand calibration with F-protocol runs.
+
+### 9.2 Progressive Widening Ceiling
+
+PUCT with t^0.5 widening caps exploration at ceil(sqrt(8)) = 3 approaches within 8 iterations. If the optimal approach is approach 4 or 5, Model F will never discover it. This is a structural limitation of the widening exponent, not a parameter tuning issue. The simulation reports how often the optimal approach falls outside F's exploration window.
+
+### 9.3 Subscription vs API Execution
+
+The original design assumed Claude Code subscription execution. Revised estimates require `ANTHROPIC_API_KEY` and the Python library. At thorough preset pricing (~$7.50/problem for a full 8-iteration run), Phase 1 costs ~$45-60 and Phase 3 costs ~$30-40, totaling ~$75-100 in API spend.
+
+## 10. Deliverables
 
 1. `scripts/e_vs_f_calibrate.py` — Phase 1 calibration runner
 2. `scripts/e_vs_f_simulate.py` — Phase 2 Monte Carlo simulation (Model E + Model F)
@@ -330,7 +367,7 @@ No API key required — all subagent calls use the Claude Code subscription.
 5. `data/calibration/e-vs-f-traces.jsonl` — Raw calibration event traces
 6. `docs/results/e-vs-f-report.md` — Final report with decision recommendation
 
-## 10. Appendix: Prior Evidence Summary
+## 11. Appendix: Prior Evidence Summary
 
 20 experiments across two rounds produced these key findings:
 
