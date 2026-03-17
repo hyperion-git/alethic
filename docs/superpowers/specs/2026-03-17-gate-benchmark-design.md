@@ -59,7 +59,7 @@ Identical to existing benchmarks. Required: `id`, `domain`, `problem`, `expected
 | Competition | 5     | Maximum PUCT signal |
 | False claim | 5     | False-premise detection |
 
-**Domain coverage:** number theory (10), analysis/calculus (12), algebra (7), linear algebra (4), combinatorics (5), probability (3), topology/set theory (3), ODEs (1).
+**Domain coverage (primary category per problem):** number theory (8), analysis/calculus (11), algebra (7), linear algebra (4), combinatorics (5), probability (3), topology/set theory (3), ODEs (1), cross-domain competition (3). Some problems carry multiple tags; counts reflect the primary category used for stratification.
 
 ### 4.3 Physics (45 problems)
 
@@ -231,9 +231,18 @@ The skill orchestrator (`skills/alethic-common/orchestrator.md`) does not emit `
 
 After parsing the verifier's CRITIQUE in the orchestrator, classify the critique text using the same keyword heuristic as `classify_errors()` in `error_taxonomy.py`. Add the result to the verify event.
 
-The orchestrator already parses VERDICT, CONFIDENCE, and CRITIQUE from the verifier output. The classification is a deterministic keyword match — no LLM call needed. The orchestrator implements this inline (not by importing from the Python library, which skills cannot do).
+The orchestrator already parses VERDICT, CONFIDENCE, and CRITIQUE from the verifier output, and already has an inline classifier (lines 343-350) used for adaptive revision budget. That existing classifier has 7 categories (`counterexample` is rolled into `missing_case`). The patch must:
+
+1. **Align the existing inline classifier** with `error_taxonomy.py` by splitting `counterexample` out as its own category (keywords: `counterexample`, `flaw found`, `breaker found`, `regime failure`, `falsif`). Remove `counterexample` from the `missing_case` keyword list.
+2. **Emit the classification result** as `error_category` in the verify event.
+
+This ensures the skill and library produce identical category strings, so `compute_puct_comparison()` produces comparable results across both execution paths.
 
 Categories (checked in priority order, first match wins): `algebra`, `logic`, `citation`, `interpretation`, `units`, `counterexample`, `missing_case`, `general`.
+
+### 6.4 Backward Compatibility
+
+The adaptive revision budget feature (orchestrator.md line 369) already consumes the inline classifier's output. Splitting `counterexample` from `missing_case` changes the category some critiques receive, which could change the revision budget for those iterations. Both `counterexample` and `missing_case` currently map to the same budget behavior (escalate N, not revise-first), so the behavioral impact is nil.
 
 ### 6.3 Scope
 
@@ -258,28 +267,46 @@ run_gate.py
 
 ### 7.3 Driver
 
+Problem text is written to a temporary file to avoid shell quoting issues (physics problems contain `ℏ`, `ε₀`, single quotes, parentheses, and other shell metacharacters):
+
 ```python
+import tempfile, subprocess, json
+
 for problem in benchmark["problems"]:
     domain = problem["domain"]
     skill = "/alethic-solve" if domain == "math" else "/alethic-derive"
-    cmd = f'claude -p "{skill} -p default \'{problem["problem"]}\'" --no-input'
-    subprocess.run(cmd, shell=True)
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        f.write(f'{skill} -p default --file {f.name}\n')
+        problem_file = f.name
+
+    # Write problem text to a separate file for --file flag
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as pf:
+        pf.write(problem["problem"])
+        prob_path = pf.name
+
+    prompt = f'{skill} -p default "{prob_path}"'
+    subprocess.run(["claude", "-p", prompt], check=False)
 ```
+
+**Note:** The exact `claude -p` invocation for passing problem text may need adjustment based on how the skill's `--file` flag interacts with `claude -p`. The implementation should test with one problem first. If `claude -p` cannot pass `--file` to a skill, fall back to piping: `echo "problem text" | claude -p "/alethic-solve -p default"`.
 
 Key behaviors:
 - Sequential execution (one problem at a time)
+- Uses `subprocess.run` with list args (no `shell=True`) where possible
+- Problem text passed via temp file, never interpolated into shell commands
 - Writes progress to stdout (problem N/100, elapsed time)
 - Tolerates failures (logs and continues)
-- Resumes from where it left off (skips problems with existing session dirs)
+- Resumes from where it left off (skips problems with existing session dirs matching problem ID)
 - Estimated runtime: 5-8 hours on default preset
 
 ### 7.4 Harvester
 
 Reads `.alethic/` session directories and computes gate metrics:
 
-1. **Session discovery**: scan `.alethic/` for session dirs, match to benchmark problem IDs via `session.json` problem text
-2. **Atom metrics**: read `worklog/candidate_N.md` files (full solution text, not truncated `solution_preview`), parse atoms via `parse_atoms()`, compute `annotation_rate` and `mean_atom_count`
-3. **PUCT metrics**: read `worklog/events.jsonl`, extract VERIFY events with `error_category` field (requires §6 patch), compute UCB1 divergence via same algorithm as `compute_puct_comparison()`
+1. **Session discovery**: scan `.alethic/` for session dirs. Match sessions to benchmark problem IDs by normalizing both the `session.json` `"problem"` field and the benchmark `"problem"` field (strip whitespace, normalize unicode to NFC) and comparing. If multiple sessions match the same problem (e.g., from a crashed+resumed run), use the session with `"status": "solved"` if one exists, otherwise the latest by `"created_at"`. Ignore sessions that do not match any benchmark problem (from unrelated prior runs).
+2. **Atom metrics**: read `worklog/candidate_N.md` files (full solution text, not truncated `solution_preview` — this is an advantage over the library harness which uses 500-char previews), parse atoms via `parse_atoms()`, compute `annotation_rate` and `mean_atom_count`
+3. **PUCT metrics**: read `worklog/events.jsonl` as flat JSON dicts. Convert to the format expected by the PUCT algorithm: each JSONL line has top-level fields (`"type"`, `"iteration"`, `"candidate"`, `"verdict"`, `"confidence"`, `"error_category"`). The harvester reimplements the UCB1 divergence algorithm from `compute_puct_comparison()` for flat dicts (not `AgentEvent` objects). The algorithm is ~40 lines and well-documented in `harness.py`.
 4. **Solve rate**: read `session.json` status field (`solved`/`unsolved`)
 
 ### 7.5 Output
@@ -309,9 +336,11 @@ Same gate decision format as the library harness:
 
 ## 8. Testing
 
-1. `test_gate_benchmark_loads()` — validates `load_benchmark("data/benchmarks/gate-v38.json")` succeeds, all 100 problems have required fields, counts are 45 math + 45 physics
-2. `test_error_category_classification()` — unit tests for the inline keyword classifier in the orchestrator (if applicable; may already be covered by existing `test_error_taxonomy.py`)
-3. `test_harvest_session()` — mock `.alethic/` session dir, verify harvester correctly extracts metrics
+1. `test_gate_benchmark_loads()` — validates `load_benchmark("data/benchmarks/gate-v38.json")` succeeds, all 100 problems have required fields, counts are 45 math + 45 physics, all IDs unique
+2. `test_error_category_classification()` — unit tests for the inline keyword classifier in the orchestrator (if applicable; may already be covered by existing `test_error_taxonomy.py`). Must verify `counterexample` is a separate category from `missing_case`.
+3. `test_harvest_session()` — mock `.alethic/` session dir with `session.json`, `events.jsonl`, and `worklog/candidate_1.md`, verify harvester correctly extracts atom metrics, PUCT divergence, and solve status
+4. `test_harvest_dedup()` — verify that when multiple sessions match the same problem, the harvester selects solved over unsolved, and latest over earliest
+5. `test_driver_smoke()` — run driver on a single easy problem (e.g., `prime-17`) via `claude -p`, verify session dir is created with `error_category` in verify events (integration smoke test, requires Claude Code subscription)
 
 ## 9. Gate Thresholds (unchanged)
 
@@ -322,9 +351,11 @@ Same gate decision format as the library harness:
 | `puct_would_have_won` | ≥ 15% of problems | PUCT selection would have solved problems that confidence missed |
 
 Combined decision rule:
-- `annotation_rate ≥ 0.50` + `atom_improvement ≥ 10%` → Option E
-- `puct_signal ≥ 15%` → Option F
+- `annotation_rate ≥ 0.50` AND `solve_rate` shows meaningful improvement over a no-atom baseline → Option E
+- `puct_would_have_won ≥ 15%` → Option F
 - Neither → ship v3.7 as v4.0 baseline, revisit architecture
+
+**Note:** The v3.7 design doc references `atom_improvement` (solve rate delta from atom-guided verification). Since atom-guided verification is library-only (not in skills), this metric requires a paired comparison: one run with atoms (current), one hypothetical without. In practice, the gate decision for Option E is driven primarily by `annotation_rate` (are atoms produced?) and `mean_atom_count` (are they granular?). The solve-rate improvement is estimated qualitatively, not measured in this benchmark run. Option F's `puct_would_have_won` is directly measurable.
 
 ## 10. Estimated Cost
 
