@@ -1,0 +1,1153 @@
+{
+  "name": "gate-v38",
+  "version": "1.0",
+  "description": "100-problem gate benchmark for v3.8 E-vs-F decision and v4.0 regression baseline.",
+  "problems": [
+    {
+      "id": "prime-17",
+      "domain": "math",
+      "problem": "Prove that 17 is prime.",
+      "expected_solvable": true,
+      "tags": [
+        "number-theory",
+        "elementary"
+      ],
+      "difficulty": "easy"
+    },
+    {
+      "id": "sqrt2-irrational",
+      "domain": "math",
+      "problem": "Prove that sqrt(2) is irrational.",
+      "expected_solvable": true,
+      "tags": [
+        "number-theory",
+        "proof-by-contradiction"
+      ],
+      "difficulty": "easy"
+    },
+    {
+      "id": "sum-arithmetic",
+      "domain": "math",
+      "problem": "Prove that the sum of the first n positive integers is n(n+1)/2.",
+      "expected_solvable": true,
+      "tags": [
+        "combinatorics",
+        "induction"
+      ],
+      "difficulty": "easy"
+    },
+    {
+      "id": "infinite-primes",
+      "domain": "math",
+      "problem": "Prove that there are infinitely many prime numbers.",
+      "expected_solvable": true,
+      "tags": [
+        "number-theory",
+        "euclid"
+      ],
+      "difficulty": "easy"
+    },
+    {
+      "id": "am-gm",
+      "domain": "math",
+      "problem": "Prove the AM-GM inequality: for positive reals a and b, (a+b)/2 >= sqrt(ab).",
+      "expected_solvable": true,
+      "tags": [
+        "inequalities",
+        "algebra"
+      ],
+      "difficulty": "easy"
+    },
+    {
+      "id": "geometric-series",
+      "domain": "math",
+      "problem": "Derive the formula for the sum of a finite geometric series: sum_{k=0}^{n-1} r^k = (1-r^n)/(1-r) for r != 1.",
+      "expected_solvable": true,
+      "tags": [
+        "series",
+        "algebra"
+      ],
+      "difficulty": "easy"
+    },
+    {
+      "id": "triangle-inequality",
+      "domain": "math",
+      "problem": "Prove the triangle inequality: |a + b| <= |a| + |b| for real numbers a and b.",
+      "expected_solvable": true,
+      "tags": [
+        "analysis",
+        "inequalities"
+      ],
+      "difficulty": "easy"
+    },
+    {
+      "id": "derivative-product-rule",
+      "domain": "math",
+      "problem": "Derive the product rule for derivatives: d/dx[f(x)g(x)] = f'(x)g(x) + f(x)g'(x) from first principles.",
+      "expected_solvable": true,
+      "tags": [
+        "calculus",
+        "derivatives"
+      ],
+      "difficulty": "easy"
+    },
+    {
+      "id": "bezout-identity-small",
+      "domain": "math",
+      "problem": "Prove that gcd(12, 8) = 4 using the Euclidean algorithm, and find integers x, y such that 12x + 8y = 4.",
+      "expected_solvable": true,
+      "tags": [
+        "number-theory",
+        "euclidean-algorithm"
+      ],
+      "difficulty": "easy"
+    },
+    {
+      "id": "binomial-theorem",
+      "domain": "math",
+      "problem": "Prove the binomial theorem: (a+b)^n = sum_{k=0}^{n} C(n,k) a^{n-k} b^k for all non-negative integers n, by mathematical induction.",
+      "expected_solvable": true,
+      "tags": [
+        "combinatorics",
+        "induction",
+        "algebra"
+      ],
+      "difficulty": "easy"
+    },
+    {
+      "id": "cantor-diagonal",
+      "domain": "math",
+      "problem": "Prove using Cantor's diagonal argument that the real numbers are uncountable.",
+      "expected_solvable": true,
+      "tags": [
+        "set-theory",
+        "cardinality"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "sqrt3-irrational",
+      "domain": "math",
+      "problem": "Prove that sqrt(3) is irrational.",
+      "expected_solvable": true,
+      "tags": [
+        "number-theory",
+        "proof-by-contradiction"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "fermat-little-theorem",
+      "domain": "math",
+      "problem": "Prove Fermat's Little Theorem: if p is a prime and a is an integer not divisible by p, then a^{p-1} ≡ 1 (mod p).",
+      "expected_solvable": true,
+      "tags": [
+        "number-theory",
+        "modular-arithmetic"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "euler-totient-multiplicative",
+      "domain": "math",
+      "problem": "Prove that Euler's totient function φ is multiplicative: if gcd(m, n) = 1, then φ(mn) = φ(m)φ(n).",
+      "expected_solvable": true,
+      "tags": [
+        "number-theory",
+        "multiplicative-functions"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "unique-prime-factorization",
+      "domain": "math",
+      "problem": "Prove the Fundamental Theorem of Arithmetic: every integer greater than 1 has a unique factorization into primes (up to ordering).",
+      "expected_solvable": true,
+      "tags": [
+        "number-theory",
+        "strong-induction"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "infinitude-primes-4k3",
+      "domain": "math",
+      "problem": "Prove that there are infinitely many primes of the form 4k + 3.",
+      "expected_solvable": true,
+      "tags": [
+        "number-theory",
+        "proof-by-contradiction"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "cauchy-schwarz-rn",
+      "domain": "math",
+      "problem": "Prove the Cauchy-Schwarz inequality in R^n: for vectors u, v in R^n, |u · v| <= ||u|| · ||v||.",
+      "expected_solvable": true,
+      "tags": [
+        "linear-algebra",
+        "inequalities"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "rank-nullity",
+      "domain": "math",
+      "problem": "Prove the Rank-Nullity Theorem: for a linear map T: V → W between finite-dimensional vector spaces, dim(V) = rank(T) + nullity(T).",
+      "expected_solvable": true,
+      "tags": [
+        "linear-algebra",
+        "dimension"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "ftc-part1",
+      "domain": "math",
+      "problem": "Prove the First Fundamental Theorem of Calculus: if f is continuous on [a, b] and F(x) = ∫_a^x f(t) dt, then F'(x) = f(x) for all x in (a, b).",
+      "expected_solvable": true,
+      "tags": [
+        "analysis",
+        "calculus",
+        "integration"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "mvt",
+      "domain": "math",
+      "problem": "Prove the Mean Value Theorem: if f is continuous on [a, b] and differentiable on (a, b), then there exists c in (a, b) such that f'(c) = (f(b) - f(a))/(b - a).",
+      "expected_solvable": true,
+      "tags": [
+        "analysis",
+        "calculus"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "bolzano-weierstrass",
+      "domain": "math",
+      "problem": "Prove the Bolzano-Weierstrass theorem: every bounded sequence of real numbers has a convergent subsequence.",
+      "expected_solvable": true,
+      "tags": [
+        "analysis",
+        "sequences",
+        "compactness"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "e-irrational",
+      "domain": "math",
+      "problem": "Prove that e is irrational.",
+      "expected_solvable": true,
+      "tags": [
+        "analysis",
+        "proof-by-contradiction",
+        "series"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "derangement-formula",
+      "domain": "math",
+      "problem": "Derive the formula for the number of derangements D_n of {1, 2, ..., n}: D_n = n! · sum_{k=0}^{n} (-1)^k / k!. Prove this formula using inclusion-exclusion.",
+      "expected_solvable": true,
+      "tags": [
+        "combinatorics",
+        "inclusion-exclusion"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "catalan-number-formula",
+      "domain": "math",
+      "problem": "Prove that the number of valid sequences of n pairs of balanced parentheses is the Catalan number C_n = (2n)! / ((n+1)! · n!).",
+      "expected_solvable": true,
+      "tags": [
+        "combinatorics",
+        "catalan-numbers",
+        "bijection"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "group-order-prime-cyclic",
+      "domain": "math",
+      "problem": "Prove that every group of prime order is cyclic.",
+      "expected_solvable": true,
+      "tags": [
+        "algebra",
+        "group-theory"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "lagrange-theorem-groups",
+      "domain": "math",
+      "problem": "Prove Lagrange's theorem: if H is a subgroup of a finite group G, then |H| divides |G|.",
+      "expected_solvable": true,
+      "tags": [
+        "algebra",
+        "group-theory"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "gambler-ruin-probability",
+      "domain": "math",
+      "problem": "In the gambler's ruin problem, a gambler starts with i dollars and at each step wins $1 with probability p or loses $1 with probability q = 1-p. The game ends when the gambler reaches N dollars or 0 dollars. Find the probability of ruin as a function of i, p, and N. Consider p ≠ 1/2 and p = 1/2 separately.",
+      "expected_solvable": true,
+      "tags": [
+        "probability",
+        "random-walks",
+        "difference-equations"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "cayley-hamilton",
+      "domain": "math",
+      "problem": "Prove the Cayley-Hamilton theorem: every square matrix over a field satisfies its own characteristic polynomial.",
+      "expected_solvable": true,
+      "tags": [
+        "linear-algebra",
+        "characteristic-polynomial"
+      ],
+      "difficulty": "hard"
+    },
+    {
+      "id": "basel-problem",
+      "domain": "math",
+      "problem": "Prove that sum_{n=1}^{∞} 1/n² = π²/6.",
+      "expected_solvable": true,
+      "tags": [
+        "analysis",
+        "series"
+      ],
+      "difficulty": "hard"
+    },
+    {
+      "id": "stirling-approximation",
+      "domain": "math",
+      "problem": "Prove Stirling's approximation: n! ~ √(2πn) · (n/e)^n as n → ∞.",
+      "expected_solvable": true,
+      "tags": [
+        "analysis",
+        "asymptotics"
+      ],
+      "difficulty": "hard"
+    },
+    {
+      "id": "irrationality-of-pi",
+      "domain": "math",
+      "problem": "Prove that π is irrational.",
+      "expected_solvable": true,
+      "tags": [
+        "analysis",
+        "proof-by-contradiction",
+        "integration"
+      ],
+      "difficulty": "hard"
+    },
+    {
+      "id": "sylow-first-theorem",
+      "domain": "math",
+      "problem": "Prove Sylow's first theorem: if G is a finite group and p^k divides |G| for some prime p, then G contains a subgroup of order p^k.",
+      "expected_solvable": true,
+      "tags": [
+        "algebra",
+        "group-theory",
+        "sylow-theorems"
+      ],
+      "difficulty": "hard"
+    },
+    {
+      "id": "fundamental-theorem-algebra",
+      "domain": "math",
+      "problem": "Prove the Fundamental Theorem of Algebra: every non-constant polynomial with complex coefficients has at least one root in C. You may use Liouville's theorem.",
+      "expected_solvable": true,
+      "tags": [
+        "algebra",
+        "complex-analysis"
+      ],
+      "difficulty": "hard"
+    },
+    {
+      "id": "ode-picard-lindelof",
+      "domain": "math",
+      "problem": "State and prove the Picard-Lindelöf theorem for the IVP y' = f(t, y), y(t_0) = y_0 when f is Lipschitz in y.",
+      "expected_solvable": true,
+      "tags": [
+        "differential-equations",
+        "fixed-point",
+        "contraction-mapping"
+      ],
+      "difficulty": "hard"
+    },
+    {
+      "id": "central-limit-theorem",
+      "domain": "math",
+      "problem": "Prove the Central Limit Theorem for i.i.d. random variables with finite variance: (S_n - nμ)/(σ√n) converges in distribution to N(0,1). You may use characteristic functions.",
+      "expected_solvable": true,
+      "tags": [
+        "probability",
+        "limit-theorems",
+        "characteristic-functions"
+      ],
+      "difficulty": "hard"
+    },
+    {
+      "id": "putnam-2003-a1",
+      "domain": "math",
+      "problem": "Let n be a fixed positive integer. How many ways are there to write n as a sum of positive integers n = a_1 + a_2 + ... + a_k with k arbitrary and a_1 ≤ a_2 ≤ ... ≤ a_k ≤ a_1 + 1? Find a closed-form formula and prove it.",
+      "expected_solvable": true,
+      "tags": [
+        "combinatorics",
+        "competition"
+      ],
+      "difficulty": "competition",
+      "source": "Putnam 2003 A1"
+    },
+    {
+      "id": "putnam-2010-a4",
+      "domain": "math",
+      "problem": "Prove that for each positive integer n, the number 10^{10^{10^n}} + 10^{10^n} + 10^n - 1 is not prime.",
+      "expected_solvable": true,
+      "tags": [
+        "number-theory",
+        "divisibility",
+        "competition"
+      ],
+      "difficulty": "competition",
+      "source": "Putnam 2010 A4"
+    },
+    {
+      "id": "putnam-1985-b1",
+      "domain": "math",
+      "problem": "Let f(n) denote the number of 1's in the binary expansion of n. Prove that sum_{k=1}^{n} (-1)^{f(k)} ≥ 0 for all positive integers n, and determine all n for which equality holds.",
+      "expected_solvable": true,
+      "tags": [
+        "number-theory",
+        "binary-representation",
+        "competition"
+      ],
+      "difficulty": "competition",
+      "source": "Putnam 1985 B1"
+    },
+    {
+      "id": "imo-1988-p6",
+      "domain": "math",
+      "problem": "Let a and b be positive integers such that ab + 1 divides a² + b². Prove that (a² + b²)/(ab + 1) is a perfect square.",
+      "expected_solvable": true,
+      "tags": [
+        "number-theory",
+        "vieta-jumping",
+        "competition"
+      ],
+      "difficulty": "competition",
+      "source": "IMO 1988 P6"
+    },
+    {
+      "id": "aime-style-divisors",
+      "domain": "math",
+      "problem": "Let S be the set of all positive integer divisors of 100,000. How many elements of S are divisible by exactly 2 of the prime numbers 2, 3, 5, 7? Prove your answer.",
+      "expected_solvable": true,
+      "tags": [
+        "number-theory",
+        "combinatorics",
+        "competition"
+      ],
+      "difficulty": "competition",
+      "source": "AIME-style"
+    },
+    {
+      "id": "false-claim-even-odd",
+      "domain": "math",
+      "problem": "Prove that every even number greater than 2 is the sum of exactly three primes.",
+      "expected_solvable": false,
+      "tags": [
+        "number-theory",
+        "false-claim"
+      ],
+      "difficulty": "false-claim",
+      "note": "False in general: 4 = 2+2 but that's two primes. The claim fails for 4."
+    },
+    {
+      "id": "false-n2-n-41-prime",
+      "domain": "math",
+      "problem": "Prove that n² + n + 41 is prime for every positive integer n.",
+      "expected_solvable": false,
+      "tags": [
+        "number-theory",
+        "false-claim"
+      ],
+      "difficulty": "false-claim",
+      "note": "False at n=40: 40² + 40 + 41 = 41² = 1681."
+    },
+    {
+      "id": "false-all-norms-equivalent",
+      "domain": "math",
+      "problem": "Prove that all norms on an infinite-dimensional Banach space are equivalent.",
+      "expected_solvable": false,
+      "tags": [
+        "analysis",
+        "false-claim"
+      ],
+      "difficulty": "false-claim",
+      "note": "True only in finite dimensions. On C[0,1], L¹ and sup norms are not equivalent."
+    },
+    {
+      "id": "false-every-matrix-diagonalizable",
+      "domain": "math",
+      "problem": "Prove that every square matrix over the complex numbers is diagonalizable.",
+      "expected_solvable": false,
+      "tags": [
+        "linear-algebra",
+        "false-claim"
+      ],
+      "difficulty": "false-claim",
+      "note": "The nilpotent Jordan block [[0,1],[0,0]] is not diagonalizable."
+    },
+    {
+      "id": "false-continuous-implies-differentiable",
+      "domain": "math",
+      "problem": "Prove that every continuous function f: R → R is differentiable at at least one point.",
+      "expected_solvable": false,
+      "tags": [
+        "analysis",
+        "false-claim"
+      ],
+      "difficulty": "false-claim",
+      "note": "Weierstrass function (1872) is continuous everywhere, differentiable nowhere."
+    },
+    {
+      "id": "intermediate-value-theorem",
+      "domain": "math",
+      "problem": "Prove the Intermediate Value Theorem: if f is continuous on [a, b] and f(a) < 0 < f(b), then there exists c in (a, b) such that f(c) = 0.",
+      "expected_solvable": true,
+      "tags": [
+        "analysis",
+        "continuity"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "power-set-cardinality",
+      "domain": "math",
+      "problem": "Prove that for any set A, |P(A)| > |A| (the power set of A has strictly greater cardinality than A). In particular, there is no surjection from A to P(A).",
+      "expected_solvable": true,
+      "tags": [
+        "set-theory",
+        "cardinality"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "euler-formula-polyhedra",
+      "domain": "math",
+      "problem": "Prove Euler's formula for convex polyhedra: V - E + F = 2, where V is the number of vertices, E the number of edges, and F the number of faces.",
+      "expected_solvable": true,
+      "tags": [
+        "topology",
+        "combinatorics"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "markov-inequality",
+      "domain": "math",
+      "problem": "Prove Markov's inequality: for a non-negative random variable X and a > 0, P(X >= a) <= E[X]/a. Then derive Chebyshev's inequality as a corollary.",
+      "expected_solvable": true,
+      "tags": [
+        "probability",
+        "inequalities"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "chain-rule-multivariable",
+      "domain": "math",
+      "problem": "Prove the multivariable chain rule: if g: R^n -> R^m is differentiable at a and f: R^m -> R^p is differentiable at g(a), then f∘g is differentiable at a and D(f∘g)(a) = Df(g(a)) · Dg(a).",
+      "expected_solvable": true,
+      "tags": [
+        "analysis",
+        "calculus",
+        "linear-algebra"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "kepler-third-law",
+      "domain": "physics",
+      "problem": "Derive Kepler's third law (T² ∝ a³) from Newton's law of universal gravitation for a planet in a circular orbit of radius a around a star of mass M.",
+      "expected_solvable": true,
+      "tags": [
+        "classical-mechanics",
+        "orbital-mechanics"
+      ],
+      "difficulty": "easy"
+    },
+    {
+      "id": "simple-pendulum-period",
+      "domain": "physics",
+      "problem": "Derive the period of a simple pendulum of length L for small-angle oscillations. Start from Newton's second law applied to the bob and show that T = 2π√(L/g).",
+      "expected_solvable": true,
+      "tags": [
+        "classical-mechanics",
+        "oscillations"
+      ],
+      "difficulty": "easy"
+    },
+    {
+      "id": "ideal-gas-kinetic-theory",
+      "domain": "physics",
+      "problem": "Derive the ideal gas law PV = NkT from the kinetic theory of gases. Consider N identical molecules of mass m in a cubic container of side L, and compute the average pressure from molecular collisions with the walls.",
+      "expected_solvable": true,
+      "tags": [
+        "thermodynamics",
+        "kinetic-theory"
+      ],
+      "difficulty": "easy"
+    },
+    {
+      "id": "carnot-efficiency",
+      "domain": "physics",
+      "problem": "Derive the efficiency of a Carnot engine operating between a hot reservoir at temperature T_H and a cold reservoir at temperature T_C. Show that η = 1 - T_C/T_H using the properties of reversible isothermal and adiabatic processes.",
+      "expected_solvable": true,
+      "tags": [
+        "thermodynamics",
+        "heat-engines"
+      ],
+      "difficulty": "easy"
+    },
+    {
+      "id": "infinite-square-well",
+      "domain": "physics",
+      "problem": "Solve the time-independent Schrödinger equation for a particle of mass m in an infinite square well of width a (V=0 for 0<x<a, V=∞ otherwise). Find the normalized energy eigenfunctions and show that the energy eigenvalues are E_n = n²π²ℏ²/(2ma²).",
+      "expected_solvable": true,
+      "tags": [
+        "quantum-mechanics",
+        "bound-states"
+      ],
+      "difficulty": "easy"
+    },
+    {
+      "id": "escape-velocity",
+      "domain": "physics",
+      "problem": "Derive the escape velocity from the surface of a spherical body of mass M and radius R. Use conservation of energy with U(r) = -GMm/r. Show that v_esc = √(2GM/R).",
+      "expected_solvable": true,
+      "tags": [
+        "classical-mechanics",
+        "gravitation"
+      ],
+      "difficulty": "easy"
+    },
+    {
+      "id": "projectile-range",
+      "domain": "physics",
+      "problem": "Derive the range formula for a projectile launched from ground level with initial speed v_0 at angle θ in uniform gravity g (no air resistance). Show R = v_0² sin(2θ)/g and maximum range at θ = 45°.",
+      "expected_solvable": true,
+      "tags": [
+        "classical-mechanics",
+        "kinematics"
+      ],
+      "difficulty": "easy"
+    },
+    {
+      "id": "rigid-body-parallel-axis",
+      "domain": "physics",
+      "problem": "Derive the parallel axis theorem: I = I_cm + Md² from the definition I = ∫ r_⊥² dm.",
+      "expected_solvable": true,
+      "tags": [
+        "classical-mechanics",
+        "rigid-body"
+      ],
+      "difficulty": "easy"
+    },
+    {
+      "id": "em-wave-equation",
+      "domain": "physics",
+      "problem": "Derive the electromagnetic wave equation in vacuum from Maxwell's equations. Show that E and B satisfy ∇²F = (1/c²)∂²F/∂t² and identify c = 1/√(μ₀ε₀).",
+      "expected_solvable": true,
+      "tags": [
+        "electromagnetism",
+        "waves"
+      ],
+      "difficulty": "easy"
+    },
+    {
+      "id": "thin-lens-equation",
+      "domain": "physics",
+      "problem": "Derive the thin lens equation 1/s + 1/s' = 1/f from the lensmaker's equation. Show 1/f = (n-1)(1/R₁ - 1/R₂).",
+      "expected_solvable": true,
+      "tags": [
+        "optics",
+        "geometrical-optics"
+      ],
+      "difficulty": "easy"
+    },
+    {
+      "id": "qho-energy-levels",
+      "domain": "physics",
+      "problem": "Derive the energy eigenvalues of the one-dimensional quantum harmonic oscillator with potential V(x) = ½mω²x² using the algebraic (ladder operator) method. Show that E_n = ℏω(n + ½) for n = 0, 1, 2, ...",
+      "expected_solvable": true,
+      "tags": [
+        "quantum-mechanics",
+        "harmonic-oscillator"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "hydrogen-energy-spectrum",
+      "domain": "physics",
+      "problem": "Derive the energy spectrum of the hydrogen atom by solving the radial Schrödinger equation for the Coulomb potential V(r) = -e²/(4πε₀r). Show that the bound-state energies are E_n = -13.6 eV/n² for n = 1, 2, 3, ...",
+      "expected_solvable": true,
+      "tags": [
+        "quantum-mechanics",
+        "hydrogen-atom"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "lorentz-transformation",
+      "domain": "physics",
+      "problem": "Derive the Lorentz transformation equations from Einstein's two postulates of special relativity: (1) the laws of physics are the same in all inertial frames, and (2) the speed of light is the same in all inertial frames. Consider a frame S' moving with velocity v along the x-axis of frame S.",
+      "expected_solvable": true,
+      "tags": [
+        "relativity",
+        "special-relativity"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "gauss-law-from-coulomb",
+      "domain": "physics",
+      "problem": "Derive Gauss's law (∮ E·dA = Q_enc/ε₀) from Coulomb's law for a point charge. Show that it holds for an arbitrary closed surface enclosing the charge by computing the flux through the surface.",
+      "expected_solvable": true,
+      "tags": [
+        "electromagnetism",
+        "gauss-law"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "central-force-orbit",
+      "domain": "physics",
+      "problem": "Derive the orbit equation r(θ) = L²/(mk) · 1/(1 + e cos θ) for a particle of mass m in an inverse-square central force F = -k/r² using the Binet substitution u = 1/r. Identify the eccentricity e in terms of energy and angular momentum.",
+      "expected_solvable": true,
+      "tags": [
+        "classical-mechanics",
+        "orbital-mechanics",
+        "multi-method"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "euler-lagrange",
+      "domain": "physics",
+      "problem": "Derive the Euler-Lagrange equation d/dt(∂L/∂q̇) - ∂L/∂q = 0 from Hamilton's principle δS = δ∫L dt = 0 using the calculus of variations.",
+      "expected_solvable": true,
+      "tags": [
+        "classical-mechanics",
+        "lagrangian-mechanics",
+        "multi-method"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "coupled-oscillators",
+      "domain": "physics",
+      "problem": "Two identical masses m are connected by three identical springs of constant k in the configuration wall-spring-mass-spring-mass-spring-wall. Derive the normal mode frequencies ω₁² = k/m and ω₂² = 3k/m and their corresponding mode shapes.",
+      "expected_solvable": true,
+      "tags": [
+        "classical-mechanics",
+        "oscillations",
+        "multi-method"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "noether-energy",
+      "domain": "physics",
+      "problem": "Prove Noether's theorem for time translation invariance: if the Lagrangian has no explicit time dependence (∂L/∂t = 0), then the Hamiltonian H = q̇(∂L/∂q̇) - L is conserved.",
+      "expected_solvable": true,
+      "tags": [
+        "classical-mechanics",
+        "lagrangian-mechanics",
+        "symmetry"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "maxwell-boltzmann",
+      "domain": "physics",
+      "problem": "Derive the Maxwell-Boltzmann speed distribution f(v) = 4πn(m/(2πkT))^{3/2} v² exp(-mv²/(2kT)). Find the most probable, mean, and rms speeds.",
+      "expected_solvable": true,
+      "tags": [
+        "thermodynamics",
+        "statistical-mechanics",
+        "multi-method"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "stefan-boltzmann",
+      "domain": "physics",
+      "problem": "Integrate the Planck distribution to derive the Stefan-Boltzmann law. Show that the total energy density is u = aT⁴ and the radiant exitance is j = σT⁴, expressing σ = 2π⁵k⁴/(15c²h³).",
+      "expected_solvable": true,
+      "tags": [
+        "thermodynamics",
+        "statistical-mechanics"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "clausius-clapeyron",
+      "domain": "physics",
+      "problem": "Derive the Clausius-Clapeyron equation dP/dT = L/(TΔv) from the equality of Gibbs free energies along a phase coexistence curve.",
+      "expected_solvable": true,
+      "tags": [
+        "thermodynamics",
+        "phase-transitions"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "spin-half-pauli",
+      "domain": "physics",
+      "problem": "Derive the 2×2 Pauli matrix representations of S_x, S_y, S_z from the angular momentum commutation relations [S_i, S_j] = iℏε_{ijk}S_k and the eigenvalue condition S² = s(s+1)ℏ² with s = 1/2.",
+      "expected_solvable": true,
+      "tags": [
+        "quantum-mechanics",
+        "angular-momentum",
+        "multi-method"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "density-of-states-3d",
+      "domain": "physics",
+      "problem": "Derive the density of states g(E) = (V/(2π²))(2m/ℏ²)^{3/2} √E for a free electron gas in 3D.",
+      "expected_solvable": true,
+      "tags": [
+        "quantum-mechanics",
+        "solid-state",
+        "multi-method"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "relativistic-energy-momentum",
+      "domain": "physics",
+      "problem": "Derive E² = (pc)² + (mc²)² from the four-momentum. Verify the non-relativistic limit E → mc² + mv²/2.",
+      "expected_solvable": true,
+      "tags": [
+        "relativity",
+        "special-relativity"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "biot-savart",
+      "domain": "physics",
+      "problem": "Derive the Biot-Savart law from the magnetostatic vector potential A = (μ₀/4π)∫ J/r dV'. Reduce to the wire integral form and compute B = ∇ × A.",
+      "expected_solvable": true,
+      "tags": [
+        "electromagnetism",
+        "magnetostatics",
+        "multi-method"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "partition-function-two-level",
+      "domain": "physics",
+      "problem": "Derive the partition function Z, mean energy ⟨E⟩, heat capacity C, and entropy S for a two-level system with energies 0 and ε. Show the Schottky anomaly peak at kT ≈ 0.42ε.",
+      "expected_solvable": true,
+      "tags": [
+        "thermodynamics",
+        "statistical-mechanics"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "sackur-tetrode",
+      "domain": "physics",
+      "problem": "Derive the Sackur-Tetrode equation for the entropy of an ideal monatomic gas from the microcanonical ensemble, using the volume of a 3N-dimensional hypersphere and Stirling's approximation.",
+      "expected_solvable": true,
+      "tags": [
+        "thermodynamics",
+        "statistical-mechanics"
+      ],
+      "difficulty": "hard"
+    },
+    {
+      "id": "debye-model-low-t",
+      "domain": "physics",
+      "problem": "Derive the low-temperature heat capacity C_V = (12/5)π⁴Nk(T/Θ_D)³ from the Debye density of states and Bose-Einstein statistics.",
+      "expected_solvable": true,
+      "tags": [
+        "solid-state",
+        "statistical-mechanics"
+      ],
+      "difficulty": "hard"
+    },
+    {
+      "id": "wkb-tunneling",
+      "domain": "physics",
+      "problem": "Derive the WKB tunneling probability T ≈ exp(-2∫κ dx) where κ = √(2m(V-E))/ℏ. Apply to a rectangular barrier of height V₀ and width a.",
+      "expected_solvable": true,
+      "tags": [
+        "quantum-mechanics",
+        "semiclassical",
+        "multi-method"
+      ],
+      "difficulty": "hard"
+    },
+    {
+      "id": "hydrogen-selection-rules",
+      "domain": "physics",
+      "problem": "Derive the electric dipole selection rules Δl = ±1, Δm = 0, ±1 for hydrogen atom transitions from the transition matrix element ⟨f|r|i⟩ using spherical harmonic orthogonality properties.",
+      "expected_solvable": true,
+      "tags": [
+        "quantum-mechanics",
+        "angular-momentum"
+      ],
+      "difficulty": "hard"
+    },
+    {
+      "id": "fermi-golden-rule",
+      "domain": "physics",
+      "problem": "Derive Fermi's golden rule Γ = (2π/ℏ)|⟨f|V|i⟩|² ρ(E_f) from first-order time-dependent perturbation theory.",
+      "expected_solvable": true,
+      "tags": [
+        "quantum-mechanics",
+        "perturbation-theory"
+      ],
+      "difficulty": "hard"
+    },
+    {
+      "id": "born-approximation",
+      "domain": "physics",
+      "problem": "Derive the first Born approximation for the scattering amplitude f(θ). Apply to the Yukawa potential V(r) = -βe^{-μr}/r and show f = -2mβ/(ℏ²(μ² + q²)).",
+      "expected_solvable": true,
+      "tags": [
+        "quantum-mechanics",
+        "scattering",
+        "multi-method"
+      ],
+      "difficulty": "hard"
+    },
+    {
+      "id": "aharonov-bohm",
+      "domain": "physics",
+      "problem": "Derive the Aharonov-Bohm phase shift Δφ = qΦ/ℏ from the canonical momentum and the path integral of the vector potential around a solenoid of magnetic flux Φ.",
+      "expected_solvable": true,
+      "tags": [
+        "quantum-mechanics",
+        "topology"
+      ],
+      "difficulty": "hard"
+    },
+    {
+      "id": "larmor-radiation",
+      "domain": "physics",
+      "problem": "Derive the Larmor radiation formula P = q²a²/(6πε₀c³) for a non-relativistic accelerating charge from retarded potentials and Poynting vector integration.",
+      "expected_solvable": true,
+      "tags": [
+        "electromagnetism",
+        "radiation",
+        "multi-method"
+      ],
+      "difficulty": "hard"
+    },
+    {
+      "id": "variational-helium",
+      "domain": "physics",
+      "problem": "Use the variational method with a screened-charge trial wavefunction ψ = (Z_eff³/πa₀³)e^{-Z_eff r/a₀} for each electron to estimate the ground state energy of helium. Find Z_eff = 27/16 and compare the result to the experimental -79.0 eV.",
+      "expected_solvable": true,
+      "tags": [
+        "quantum-mechanics",
+        "variational-method",
+        "multi-method"
+      ],
+      "difficulty": "hard"
+    },
+    {
+      "id": "ising-1d-transfer-matrix",
+      "domain": "physics",
+      "problem": "Solve the 1D Ising model with N spins in an external field h via the transfer matrix method. Find the eigenvalues λ_± and show there is no finite-temperature phase transition in the thermodynamic limit.",
+      "expected_solvable": true,
+      "tags": [
+        "statistical-mechanics",
+        "exactly-solvable",
+        "multi-method"
+      ],
+      "difficulty": "graduate"
+    },
+    {
+      "id": "dirac-nr-limit",
+      "domain": "physics",
+      "problem": "Derive the Pauli equation from the Dirac equation by separating large and small spinor components in the non-relativistic limit. Identify the electron g-factor g = 2.",
+      "expected_solvable": true,
+      "tags": [
+        "quantum-mechanics",
+        "relativity",
+        "multi-method"
+      ],
+      "difficulty": "graduate"
+    },
+    {
+      "id": "casimir-effect",
+      "domain": "physics",
+      "problem": "Derive the Casimir force per unit area F/A = -π²ℏc/(240d⁴) between two perfectly conducting parallel plates separated by distance d, using zeta-function regularization of the zero-point energy sum.",
+      "expected_solvable": true,
+      "tags": [
+        "quantum-field-theory",
+        "multi-method"
+      ],
+      "difficulty": "graduate"
+    },
+    {
+      "id": "hawking-temperature",
+      "domain": "physics",
+      "problem": "Derive the Hawking temperature T_H = ℏc³/(8πGMk_B) via Euclidean path integral: Wick-rotate the Schwarzschild metric t → -iτ, require regularity at the horizon to fix the periodicity β = 8πGM/c³, identify T = 1/(k_B β).",
+      "expected_solvable": true,
+      "tags": [
+        "general-relativity",
+        "quantum-field-theory"
+      ],
+      "difficulty": "graduate"
+    },
+    {
+      "id": "berry-phase-spin-half",
+      "domain": "physics",
+      "problem": "Derive the Berry phase γ = -Ω/2 acquired by a spin-1/2 particle in a magnetic field that slowly rotates tracing a solid angle Ω on the unit sphere. Verify γ = -π for an equatorial loop.",
+      "expected_solvable": true,
+      "tags": [
+        "quantum-mechanics",
+        "topology",
+        "multi-method"
+      ],
+      "difficulty": "graduate"
+    },
+    {
+      "id": "fresnel-equations",
+      "domain": "physics",
+      "problem": "Derive the Fresnel equations for the reflection and transmission coefficients of electromagnetic waves at a planar interface between two dielectric media with refractive indices n₁ and n₂. Treat both s-polarization and p-polarization. Show that Brewster's angle satisfies tan θ_B = n₂/n₁.",
+      "expected_solvable": true,
+      "tags": [
+        "electromagnetism",
+        "optics",
+        "multi-method"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "bernoulli-equation",
+      "domain": "physics",
+      "problem": "Derive Bernoulli's equation P + ½ρv² + ρgh = const along a streamline from the Euler equation for an ideal, incompressible, steady flow in a gravitational field.",
+      "expected_solvable": true,
+      "tags": [
+        "fluid-mechanics",
+        "classical-mechanics"
+      ],
+      "difficulty": "medium"
+    },
+    {
+      "id": "navier-stokes-poiseuille",
+      "domain": "physics",
+      "problem": "Solve the Navier-Stokes equations for steady, fully developed, laminar flow of an incompressible Newtonian fluid through a long circular pipe of radius R. Derive Poiseuille's law Q = πR⁴ΔP/(8μL).",
+      "expected_solvable": true,
+      "tags": [
+        "fluid-mechanics",
+        "classical-mechanics"
+      ],
+      "difficulty": "hard"
+    },
+    {
+      "id": "stokes-drag",
+      "domain": "physics",
+      "problem": "Derive Stokes' law for the drag force on a sphere of radius R moving with velocity v through a viscous fluid of viscosity μ at low Reynolds number: F = 6πμRv. Use the Navier-Stokes equations in the creeping flow limit.",
+      "expected_solvable": true,
+      "tags": [
+        "fluid-mechanics",
+        "classical-mechanics"
+      ],
+      "difficulty": "hard"
+    },
+    {
+      "id": "geodesic-equation",
+      "domain": "physics",
+      "problem": "Derive the geodesic equation d²xμ/dτ² + Γμ_αβ (dxα/dτ)(dxβ/dτ) = 0 from the variational principle δ∫ ds = 0 in a curved spacetime with metric g_μν.",
+      "expected_solvable": true,
+      "tags": [
+        "general-relativity",
+        "multi-method"
+      ],
+      "difficulty": "graduate"
+    },
+    {
+      "id": "false-drude-lorenz-number",
+      "domain": "physics",
+      "problem": "Prove that the classical Drude model of metallic conduction predicts the exact Lorenz number L₀ = π²k²_B/(3e²) from the Wiedemann-Franz law.",
+      "expected_solvable": false,
+      "tags": [
+        "solid-state",
+        "false-claim"
+      ],
+      "difficulty": "false-claim",
+      "note": "The Drude model actually predicts L₀ = 3k²_B/(2e²), which differs from the quantum (Sommerfeld) result π²k²_B/(3e²) by a factor of 2π²/9 ≈ 2.19. The agent should detect this discrepancy."
+    },
+    {
+      "id": "false-equipartition-all-temps",
+      "domain": "physics",
+      "problem": "Prove that the classical equipartition theorem ⟨E⟩ = (1/2)kT per quadratic degree of freedom holds at all temperatures for a quantum harmonic oscillator.",
+      "expected_solvable": false,
+      "tags": [
+        "thermodynamics",
+        "false-claim"
+      ],
+      "difficulty": "false-claim",
+      "note": "Fails for kT ≪ ℏω; QHO freezes out to zero-point energy E₀ = ℏω/2."
+    },
+    {
+      "id": "false-maxwell-monopoles",
+      "domain": "physics",
+      "problem": "Prove that Maxwell's equations in vacuum predict the existence of magnetic monopoles.",
+      "expected_solvable": false,
+      "tags": [
+        "electromagnetism",
+        "false-claim"
+      ],
+      "difficulty": "false-claim",
+      "note": "Maxwell's equations give ∇·B = 0; monopoles require a modified div B = ρ_m term."
+    },
+    {
+      "id": "false-rayleigh-jeans-full",
+      "domain": "physics",
+      "problem": "Prove that the Rayleigh-Jeans law u(ν) = 8πν²kT/c³ correctly describes the full blackbody spectrum at all frequencies.",
+      "expected_solvable": false,
+      "tags": [
+        "thermodynamics",
+        "false-claim"
+      ],
+      "difficulty": "false-claim",
+      "note": "Diverges as ν → ∞ (ultraviolet catastrophe); Planck quantization is required."
+    },
+    {
+      "id": "false-bell-classical",
+      "domain": "physics",
+      "problem": "Prove that quantum mechanics satisfies Bell's inequality (the CHSH bound S ≤ 2) for all entangled states.",
+      "expected_solvable": false,
+      "tags": [
+        "quantum-mechanics",
+        "false-claim"
+      ],
+      "difficulty": "false-claim",
+      "note": "QM violates CHSH with S_max = 2√2 ≈ 2.83 (Tsirelson's bound)."
+    }
+  ]
+}

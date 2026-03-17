@@ -266,8 +266,8 @@ class TestGateBenchmark:
         # Domain split
         math_count = sum(1 for p in bench["problems"] if p["domain"] == "math")
         physics_count = sum(1 for p in bench["problems"] if p["domain"] == "physics")
-        assert math_count == 45, f"Expected 45 math, got {math_count}"
-        assert physics_count == 45, f"Expected 45 physics, got {physics_count}"
+        assert math_count == 50, f"Expected 50 math, got {math_count}"
+        assert physics_count == 50, f"Expected 50 physics, got {physics_count}"
 
         # All IDs unique
         ids = [p["id"] for p in bench["problems"]]
