@@ -242,7 +242,13 @@ Categories (checked in priority order, first match wins): `algebra`, `logic`, `c
 
 ### 6.4 Backward Compatibility
 
-The adaptive revision budget feature (orchestrator.md line 369) already consumes the inline classifier's output. Splitting `counterexample` from `missing_case` changes the category some critiques receive, which could change the revision budget for those iterations. Both `counterexample` and `missing_case` currently map to the same budget behavior (escalate N, not revise-first), so the behavioral impact is nil.
+The orchestrator has **two** inline classifiers that must both be updated:
+
+1. **Dynamic N / revision budget classifier** (lines 343-350): used for adaptive compute decisions. After splitting `counterexample`, add it to the escalation category list (alongside `logic`, `missing_case`, `interpretation`, `units`) in the Dynamic N table (lines 356-361). This preserves the current behavior where `counterexample` keywords triggered escalation via the `missing_case` bucket.
+
+2. **Revision strategy addendum classifier** (lines 589-596): used to inject category-specific revision guidance. After splitting `counterexample`, add a corresponding revision addendum for it (matching `REVISION_ADDENDA["counterexample"]` in `error_taxonomy.py`).
+
+Both changes preserve existing behavior — `counterexample` critiques continue to escalate N and receive targeted revision guidance, just under their own category label rather than being lumped into `missing_case`.
 
 ### 6.3 Scope
 
@@ -276,20 +282,16 @@ for problem in benchmark["problems"]:
     domain = problem["domain"]
     skill = "/alethic-solve" if domain == "math" else "/alethic-derive"
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-        f.write(f'{skill} -p default --file {f.name}\n')
-        problem_file = f.name
-
-    # Write problem text to a separate file for --file flag
+    # Write problem text to a temp file
     with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as pf:
         pf.write(problem["problem"])
         prob_path = pf.name
 
-    prompt = f'{skill} -p default "{prob_path}"'
+    prompt = f'{skill} -p default --file {prob_path}'
     subprocess.run(["claude", "-p", prompt], check=False)
 ```
 
-**Note:** The exact `claude -p` invocation for passing problem text may need adjustment based on how the skill's `--file` flag interacts with `claude -p`. The implementation should test with one problem first. If `claude -p` cannot pass `--file` to a skill, fall back to piping: `echo "problem text" | claude -p "/alethic-solve -p default"`.
+**Note:** The exact `claude -p` invocation for passing problem text may need adjustment based on how the skill's `--file` flag interacts with `claude -p`. The implementation should test with one problem first. If `claude -p` cannot pass `--file` to a skill, fall back to piping the problem on stdin: `subprocess.run(["claude", "-p", f"{skill} -p default"], input=problem["problem"], text=True)`.
 
 Key behaviors:
 - Sequential execution (one problem at a time)
