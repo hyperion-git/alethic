@@ -278,3 +278,30 @@ def test_puct_diverges_from_greedy():
             diverged += 1
     # Should diverge at least 20% of the time
     assert diverged >= 20
+
+
+# ---------------------------------------------------------------------------
+# run_paired_trials tests
+# ---------------------------------------------------------------------------
+
+from alethic.experiment.simulate import run_paired_trials
+
+
+def test_paired_runner_basic():
+    """Paired runner produces solve rates and NNT for both models."""
+    dists = CalibratedDistributions.default()
+    report = run_paired_trials(dists, n_trials=100, n_traced=20, seed=42)
+    assert "model_e" in report
+    assert "model_f" in report
+    assert "bayesian" in report
+    assert "mcnemar" in report
+    assert 0 <= report["model_e"]["solve_rate"] <= 1
+    assert 0 <= report["model_f"]["solve_rate"] <= 1
+
+
+def test_bayesian_detects_difference():
+    """When models have different solve rates, Bayesian criterion fires."""
+    dists = CalibratedDistributions.default()
+    dists.verdict_dist["smooth"]["early"]["correct"] = 0.8  # bias toward solving
+    report = run_paired_trials(dists, n_trials=1000, n_traced=0, seed=42)
+    assert "p_f_better_3pp" in report["bayesian"]

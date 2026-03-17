@@ -424,3 +424,165 @@ class AtomGuidedSimulator(AlethicSimulator):
 
         state["resets_used"] += 1
         return True
+
+
+def run_paired_trials(
+    dists: CalibratedDistributions,
+    n_trials: int = 5000,
+    n_traced: int = 2000,
+    seed: int = 42,
+    cpuct: float = 1.414,
+    stall_window: int = 3,
+    archetype_weights: dict[str, float] | None = None,
+) -> dict:
+    """Run N paired trials of Model E vs Model F.
+
+    Each trial uses the same seed and archetype for both models (paired design).
+    Returns a report dict with per-model stats, Bayesian posterior analysis,
+    McNemar's test, NNT, per-archetype breakdown, and traced diagnostics.
+    """
+    from scipy.stats import chi2 as chi2_dist
+
+    if archetype_weights is None:
+        archetype_weights = {"smooth": 0.40, "insight": 0.50, "adversarial": 0.10}
+
+    rng = np.random.default_rng(seed)
+
+    # Pre-draw archetypes for all trials
+    arch_keys = list(archetype_weights.keys())
+    arch_vals = np.array([archetype_weights[k] for k in arch_keys], dtype=float)
+    arch_vals /= arch_vals.sum()
+    archetype_choices = [
+        arch_keys[int(rng.choice(len(arch_keys), p=arch_vals))]
+        for _ in range(n_trials)
+    ]
+
+    # Accumulators
+    e_results: list[dict] = []
+    f_results: list[dict] = []
+    e_solved: list[bool] = []
+    f_solved: list[bool] = []
+    traced_e: list[dict] = []
+    traced_f: list[dict] = []
+
+    for trial_idx in range(n_trials):
+        trial_seed = seed + trial_idx
+        archetype = archetype_choices[trial_idx]
+
+        model_e = AtomGuidedSimulator(dists, seed=trial_seed)
+        model_f = PUCTWidenSimulator(dists, seed=trial_seed, cpuct=cpuct)
+
+        res_e = model_e.run_trial(archetype)
+        res_f = model_f.run_trial(archetype)
+
+        e_results.append(res_e)
+        f_results.append(res_f)
+        e_solved.append(res_e["solved"])
+        f_solved.append(res_f["solved"])
+
+        if trial_idx < n_traced:
+            traced_e.append(res_e)
+            traced_f.append(res_f)
+
+    # --- Per-model stats ---
+    solved_e = sum(e_solved)
+    solved_f = sum(f_solved)
+
+    def _model_stats(results: list[dict], solved_count: int) -> dict:
+        return {
+            "solve_rate": solved_count / n_trials,
+            "mean_confidence": float(np.mean([r["confidence"] for r in results])),
+            "mean_iterations": float(np.mean([r["iterations_used"] for r in results])),
+            "mean_cost": float(np.mean([r["cost_tokens"] for r in results])),
+        }
+
+    # --- Bayesian analysis (Beta-Bernoulli conjugate) ---
+    alpha_e = 1 + solved_e
+    beta_e = 1 + (n_trials - solved_e)
+    alpha_f = 1 + solved_f
+    beta_f = 1 + (n_trials - solved_f)
+
+    bayes_rng = np.random.default_rng(seed + 999999)
+    samples_e = bayes_rng.beta(alpha_e, beta_e, size=100_000)
+    samples_f = bayes_rng.beta(alpha_f, beta_f, size=100_000)
+    delta = samples_f - samples_e
+
+    bayesian = {
+        "p_f_better_1pp": float(np.mean(delta > 0.01)),
+        "p_f_better_3pp": float(np.mean(delta > 0.03)),
+        "p_f_better_5pp": float(np.mean(delta > 0.05)),
+        "p_f_better_10pp": float(np.mean(delta > 0.10)),
+        "mean_delta": float(np.mean(delta)),
+        "ci_95": [float(np.percentile(delta, 2.5)), float(np.percentile(delta, 97.5))],
+    }
+
+    # --- McNemar's test ---
+    b = sum(1 for e, f in zip(e_solved, f_solved) if e and not f)
+    c = sum(1 for e, f in zip(e_solved, f_solved) if f and not e)
+    discordant = b + c
+    if discordant > 0:
+        chi2_stat = (abs(b - c) - 1) ** 2 / discordant
+        p_value = 1 - chi2_dist.cdf(chi2_stat, df=1)
+    else:
+        chi2_stat = 0.0
+        p_value = 1.0
+
+    mcnemar = {
+        "b_e_only": b,
+        "c_f_only": c,
+        "discordant_pairs": discordant,
+        "chi2": float(chi2_stat),
+        "p_value": float(p_value),
+    }
+
+    # --- NNT (Number Needed to Treat) ---
+    rate_e = solved_e / n_trials
+    rate_f = solved_f / n_trials
+    delta_rate = rate_f - rate_e
+
+    if abs(delta_rate) > 0.001:
+        nnt_point = 1.0 / abs(delta_rate)
+        nonzero_delta = delta[delta != 0]
+        if len(nonzero_delta) > 0:
+            nnt_samples = 1.0 / np.abs(nonzero_delta)
+            nnt_ci = [
+                float(np.percentile(nnt_samples, 2.5)),
+                float(np.percentile(nnt_samples, 97.5)),
+            ]
+        else:
+            nnt_ci = [float("inf"), float("inf")]
+    else:
+        nnt_point = float("inf")
+        nnt_ci = [float("inf"), float("inf")]
+
+    nnt = {
+        "point_estimate": nnt_point,
+        "ci_95": nnt_ci,
+        "winner": "F" if delta_rate > 0 else ("E" if delta_rate < 0 else "tie"),
+    }
+
+    # --- Per-archetype breakdown ---
+    per_archetype: dict[str, dict] = {}
+    for arch in ARCHETYPES:
+        arch_indices = [i for i, a in enumerate(archetype_choices) if a == arch]
+        if arch_indices:
+            e_rate = sum(e_solved[i] for i in arch_indices) / len(arch_indices)
+            f_rate = sum(f_solved[i] for i in arch_indices) / len(arch_indices)
+            per_archetype[arch] = {
+                "e_rate": float(e_rate),
+                "f_rate": float(f_rate),
+                "n": len(arch_indices),
+            }
+
+    return {
+        "model_e": _model_stats(e_results, solved_e),
+        "model_f": _model_stats(f_results, solved_f),
+        "bayesian": bayesian,
+        "mcnemar": mcnemar,
+        "nnt": nnt,
+        "per_archetype": per_archetype,
+        "n_trials": n_trials,
+        "n_traced": n_traced,
+        "traced_e": traced_e,
+        "traced_f": traced_f,
+    }
