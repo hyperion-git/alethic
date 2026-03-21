@@ -13,6 +13,7 @@ class TestRoutingDecision:
             n_candidates=2,
             is_reset=False,
             reset_context=None,
+            disproof_escalation=False,
             verifier_extra_system=None,
             next_oracle=OracleType.LAYER3_LLM,
             force_adversarial=False,

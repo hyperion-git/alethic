@@ -56,6 +56,7 @@ from alethic.models import (
 from alethic.oracle_router import OracleRouter
 from alethic.prompts import (
     ADVERSARIAL_VERIFIER_ADDENDUM,
+    DISPROOF_STRATEGY_ADDENDUM,
     GENERATOR_SYSTEM,
     STRATEGY_RESET_ADDENDUM,
     TOOL_GUIDANCE,
@@ -183,6 +184,7 @@ class MathAgent:
             domain=self._domain(),
             adversarial_addendum_fn=self._adversarial_addendum,
             reset_addendum_fn=self._reset_addendum,
+            disproof_addendum_fn=self._disproof_addendum,
         )
         self._setup_logging()
 
@@ -237,6 +239,14 @@ class MathAgent:
         Override in subclasses to use domain-specific reset prompts.
         """
         return STRATEGY_RESET_ADDENDUM
+
+    def _disproof_addendum(self) -> str:
+        """Return the disproof escalation overlay for this domain.
+
+        Appended to the reset context when Bayesian-adaptive disproof is
+        warranted. Override in subclasses for domain-specific disproof prompts.
+        """
+        return DISPROOF_STRATEGY_ADDENDUM
 
     def _breaker_domain(self) -> str:
         """Return the domain string for the adversarial breaker. Override in subclasses."""
@@ -443,6 +453,21 @@ class MathAgent:
         _extra_system = self.router.build_verifier_extra_system(state)
 
         for idx, (solution, gen_time) in enumerate(candidates, 1):
+            # Skip empty candidates — no point burning verifier tokens
+            if not solution.solution_text or solution.solution_text == "[No response generated]":
+                verified.append((
+                    solution,
+                    VerificationResult(
+                        verdict=Verdict.UNSOLVED,
+                        confidence=1.0,
+                        critique="No solution was generated (empty model response).",
+                        reason="Empty response — model produced no text output.",
+                    ),
+                    gen_time,
+                    0.0,
+                    idx,
+                ))
+                continue
             t0 = time.time()
             verification = verify(
                 self.client,
@@ -762,8 +787,9 @@ class MathAgent:
                     # Clear atom history on reset — new strategy, fresh tracking
                     state.atom_history.clear()
                     state.confidence_history.clear()
+                    disproof_tag = " + DISPROOF" if decision.disproof_escalation else ""
                     self._log(
-                        f"[STALL RESET] Triggered (reason: {reason}) — "
+                        f"[STALL RESET{disproof_tag}] Triggered (reason: {reason}) — "
                         f"N={n_this_iter}, max_revisions=1"
                     )
                     log.emit(
@@ -774,6 +800,7 @@ class MathAgent:
                         max_revisions_override=1,
                         resets_used=state.resets_used,
                         stall_counter=state.iterations_since_meaningful_improvement,
+                        disproof_escalation=decision.disproof_escalation,
                     )
                 else:
                     if state.reset_cooldown_remaining > 0:

@@ -316,6 +316,36 @@ Consider approaches from a different branch of mathematics entirely.
 {atom_stability_context}"""
 
 # ---------------------------------------------------------------------------
+# Disproof escalation overlay (Bayesian-adaptive, appended to reset context)
+# ---------------------------------------------------------------------------
+
+DISPROOF_STRATEGY_ADDENDUM = """
+
+## DISPROOF ESCALATION — Consider that the claim may be false
+
+Previous iterations have repeatedly failed to prove this statement. Based on \
+accumulated evidence, there is a meaningful probability that the claim is FALSE.
+
+In addition to exploring categorically different proof techniques, you MUST also:
+
+1. **Systematically search for counterexamples**: Test small cases exhaustively \
+(n=0,1,2,3,...). For claims about real numbers, test rationals, irrationals \
+(sqrt(2), pi, e), negative numbers, zero, and boundary cases. Use Python/SymPy \
+to automate the search.
+
+2. **Identify necessary conditions**: What would NEED to be true for the claim \
+to hold? Can you show one of those necessary conditions fails?
+
+3. **Check known results**: Does this claim conflict with known theorems? Would \
+it imply something known to be false?
+
+If you find evidence the claim is false, present a clear disproof:
+- State the counterexample or contradiction explicitly
+- Verify it computationally using Python code
+- Explain why it violates the original claim
+"""
+
+# ---------------------------------------------------------------------------
 # Adversarial verifier self-correction (feature 2.7)
 # ---------------------------------------------------------------------------
 

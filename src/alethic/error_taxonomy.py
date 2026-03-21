@@ -29,6 +29,12 @@ _TAXONOMY_KEYWORDS: dict[str, list[str]] = {
         "it is known", "no source", "no reference", "no proof given", "vague appeal",
         "theorem name", "by a known", "appeal to",
     ],
+    "false_premise": [
+        "false premise", "false claim", "claim is false", "statement is false",
+        "does not hold", "no valid solution", "no solution exists",
+        "unsolvable", "cannot be proved", "impossible to prove",
+        "contradicts known", "violates known",
+    ],
     "interpretation": [
         "misinterpret", "misread", "premise", "wrong problem", "reinterpret",
         "different question", "weaker problem", "specification", "scope",
@@ -77,6 +83,15 @@ REVISION_ADDENDA: dict[str, str] = {
         "inequality', 'by Fermat's Little Theorem'). Remove all 'it is well known' "
         "and 'by a standard result' phrasing."
     ),
+    "false_premise": (
+        "\n\n## Revision focus: questioning the premise\n"
+        "Accumulated evidence suggests the problem's claim may be FALSE. "
+        "Before attempting another proof, systematically search for counterexamples. "
+        "Test small cases exhaustively (n=0,1,2,3). For real-valued claims, try "
+        "rationals, irrationals, negative numbers, zero, and boundary values. "
+        "Use Python/SymPy to automate the search. If you find a counterexample, "
+        "present it clearly with computational verification."
+    ),
     "interpretation": (
         "\n\n## Revision focus: problem interpretation\n"
         "The dominant error is misinterpretation. Re-read the problem statement "
@@ -120,8 +135,9 @@ def classify_errors(critique: str) -> str:
         critique: The verifier's critique text.
 
     Returns:
-        One of: "algebra", "logic", "citation", "interpretation",
-                "units", "missing_case", "general".
+        One of: "algebra", "logic", "citation", "false_premise",
+                "interpretation", "units", "counterexample",
+                "missing_case", "general".
     """
     lower = critique.lower()
     for category, pattern in _TAXONOMY_PATTERNS:
@@ -143,6 +159,7 @@ _ORACLE_ROUTING: dict[str, tuple[OracleType, bool]] = {
     "algebra": (OracleType.LAYER2_CONSISTENCY, False),
     "logic": (OracleType.LAYER3_LLM_ADVERSARIAL, True),
     "citation": (OracleType.LAYER3_LLM, False),
+    "false_premise": (OracleType.LAYER3_LLM_ADVERSARIAL, True),
     "interpretation": (OracleType.LAYER3_LLM, False),
     "units": (OracleType.LAYER0_STRUCTURAL, False),
     "counterexample": (OracleType.LAYER1_BEHAVIORAL, False),

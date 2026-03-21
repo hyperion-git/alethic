@@ -96,7 +96,7 @@ class TestRoutingTableCompleteness:
         Verify all taxonomy categories are accounted for in either the escalate
         set or the revise-first set (or fall through to confidence-based)."""
         # These sets are from agent.py _compute_dynamic_n
-        escalate_categories = {"logic", "missing_case", "interpretation", "units", "counterexample"}
+        escalate_categories = {"logic", "missing_case", "interpretation", "units", "counterexample", "false_premise"}
         revise_first_categories = {"algebra", "citation"}
         all_taxonomy_cats = set(_TAXONOMY_KEYWORDS.keys())
 
@@ -174,10 +174,10 @@ class TestMultiCategoryPriority:
 
     def test_priority_order_is_deterministic(self):
         """_TAXONOMY_KEYWORDS iteration order is: algebra, logic, citation,
-        interpretation, units, counterexample, missing_case."""
+        false_premise, interpretation, units, counterexample, missing_case."""
         expected_order = [
-            "algebra", "logic", "citation", "interpretation", "units",
-            "counterexample", "missing_case",
+            "algebra", "logic", "citation", "false_premise", "interpretation",
+            "units", "counterexample", "missing_case",
         ]
         actual_order = list(_TAXONOMY_KEYWORDS.keys())
         assert actual_order == expected_order, (

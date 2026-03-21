@@ -110,17 +110,43 @@ _SEVERITY_MAP: dict[str, IssueSeverity] = {s.name: s for s in IssueSeverity}
 def _extract_text(response) -> str:
     """Extract concatenated text blocks from an Anthropic response."""
     parts = [b.text for b in response.content if getattr(b, "type", None) == "text"]
+    if not parts:
+        block_types = [getattr(b, "type", "unknown") for b in response.content]
+        logger.warning(
+            "No text blocks in response (stop_reason=%s, blocks=%s, content_len=%d)",
+            getattr(response, "stop_reason", "?"),
+            block_types,
+            len(response.content),
+        )
     return "\n".join(parts) if parts else "[No response generated]"
 
 
 _MAX_RETRIES = 3
 
 
+def _do_create(client, kwargs: dict):
+    """Single API call with automatic streaming fallback.
+
+    SDK 0.79+ raises ValueError for non-streaming calls estimated to exceed
+    10 minutes (based on max_tokens). Fall back to streaming transparently.
+    """
+    try:
+        return client.messages.create(**kwargs)
+    except ValueError as e:
+        if "Streaming is required" not in str(e):
+            raise
+        # Long-running request: use streaming, collect full response
+        logger.debug("Streaming fallback triggered for model=%s max_tokens=%s",
+                      kwargs.get("model"), kwargs.get("max_tokens"))
+        with client.messages.stream(**kwargs) as stream:
+            return stream.get_final_message()
+
+
 def _create_with_retry(client, kwargs: dict):
-    """Call client.messages.create with exponential backoff on rate limits."""
+    """Call client.messages with exponential backoff on rate limits."""
     for attempt in range(_MAX_RETRIES + 1):
         try:
-            return client.messages.create(**kwargs)
+            return _do_create(client, kwargs)
         except anthropic.RateLimitError:
             if attempt < _MAX_RETRIES:
                 delay = 2**attempt  # 1s, 2s, 4s
@@ -179,7 +205,9 @@ def _call_model(
         "messages": messages,
     }
     if config.extended_thinking:
-        # Extended thinking requires temperature=1 and uses a budget_tokens param
+        # Extended thinking requires temperature=1 and uses a budget_tokens param.
+        # SDK 0.79+ emits a deprecation warning suggesting "adaptive" type, but
+        # adaptive doesn't accept budget_tokens — we need explicit budget control.
         kwargs["thinking"] = {
             "type": "enabled",
             "budget_tokens": config.thinking_budget,
@@ -195,13 +223,22 @@ def _call_model(
     if tools:
         kwargs["tools"] = tools
 
-    # Tool-use loop: keep calling until we get a final text response
-    max_tool_rounds = 5
+    # Tool-use loop: keep calling until we get a final text response.
+    # Accumulate text across ALL rounds — each round may produce text + tool_use
+    # blocks, and we need to collect text from every round (not just the last).
+    max_tool_rounds = 15
+    accumulated_text: list[str] = []
     for _ in range(max_tool_rounds):
         response = _create_with_retry(client, kwargs)
 
         if ledger is not None:
             ledger.record(response.usage)
+
+        # Collect text blocks from this round
+        round_text = [
+            b.text for b in response.content if getattr(b, "type", None) == "text"
+        ]
+        accumulated_text.extend(round_text)
 
         # Check for tool use
         tool_results = process_tool_calls(response) if tools else []
@@ -213,8 +250,8 @@ def _call_model(
                     f"Response truncated (stop_reason=max_tokens) after "
                     f"{ledger.api_calls if ledger else '?'} calls"
                 )
-            # No tool calls — extract final text
-            return _extract_text(response)
+            # No tool calls — return all accumulated text
+            return "\n".join(accumulated_text) if accumulated_text else "[No response generated]"
 
         # Build tool result messages and continue the loop
         # First, add the assistant's response (with tool_use blocks)
@@ -241,8 +278,10 @@ def _call_model(
                 f"(threshold: {int(context_threshold * context_limit)} of {context_limit})"
             )
 
-    # Exhausted tool rounds — return whatever text we have
-    return _extract_text(response)
+    # Exhausted tool rounds — return whatever text we accumulated
+    if not accumulated_text:
+        logger.warning("Exhausted %d tool rounds with no text output", max_tool_rounds)
+    return "\n".join(accumulated_text) if accumulated_text else "[No response generated]"
 
 
 # ---------------------------------------------------------------------------

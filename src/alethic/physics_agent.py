@@ -10,6 +10,7 @@ from alethic.agent import MathAgent
 from alethic.physics_prompts import (
     BALANCED_PHYSICS_ADDENDUM,
     PHYSICS_ADVERSARIAL_VERIFIER_ADDENDUM,
+    PHYSICS_DISPROOF_STRATEGY_ADDENDUM,
     PHYSICS_GENERATOR_SYSTEM,
     PHYSICS_GENERATOR_USER,
     PHYSICS_REVISER_SYSTEM,
@@ -53,6 +54,9 @@ class PhysicsAgent(MathAgent):
 
     def _reset_addendum(self) -> str:
         return PHYSICS_STRATEGY_RESET_ADDENDUM
+
+    def _disproof_addendum(self) -> str:
+        return PHYSICS_DISPROOF_STRATEGY_ADDENDUM
 
     def _adversarial_addendum(self) -> str | None:
         if not self.config.adversarial_self_correction:

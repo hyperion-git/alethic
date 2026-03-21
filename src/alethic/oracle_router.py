@@ -60,6 +60,7 @@ class RoutingDecision:
     n_candidates: int
     is_reset: bool
     reset_context: str | None
+    disproof_escalation: bool  # True when disproof overlay was appended to reset
 
     # Verification
     verifier_extra_system: str | None
@@ -82,11 +83,13 @@ class OracleRouter:
         domain: str,
         adversarial_addendum_fn: Callable[[], str | None],
         reset_addendum_fn: Callable[[], str],
+        disproof_addendum_fn: Callable[[], str] | None = None,
     ):
         self._config = config
         self._domain = domain
         self._adversarial_addendum_fn = adversarial_addendum_fn
         self._reset_addendum_fn = reset_addendum_fn
+        self._disproof_addendum_fn = disproof_addendum_fn
         self._confidence_floor = config.confidence_threshold * 0.85
 
     # --- Pre-iteration bundle ---
@@ -112,10 +115,15 @@ class OracleRouter:
             next_oracle = OracleType.LAYER3_LLM
             force_adversarial = False
 
+        disproof = is_reset and self._should_disproof(state, evidence)
+
         return RoutingDecision(
             n_candidates=self._compute_n(evidence, is_reset),
             is_reset=is_reset,
-            reset_context=self.build_reset_context(state) if is_reset else None,
+            reset_context=(
+                self.build_reset_context(state, evidence) if is_reset else None
+            ),
+            disproof_escalation=disproof,
             verifier_extra_system=self.build_verifier_extra_system(state),
             next_oracle=next_oracle,
             force_adversarial=force_adversarial,
@@ -125,10 +133,15 @@ class OracleRouter:
     # Each preserves exact logic from the original. See agent.py git history.
 
     def rank_candidates(self, verifications: list[VerificationResult]) -> int:
-        """Select best candidate index. Max-confidence in v3.7; PUCT in v3.8."""
-        return max(
+        """Select best candidate index. Verdict-aware: better verdicts win,
+        confidence breaks ties within the same verdict tier."""
+        verdict_rank = {v: i for i, v in enumerate(Verdict)}
+        return min(
             range(len(verifications)),
-            key=lambda i: verifications[i].confidence,
+            key=lambda i: (
+                verdict_rank[verifications[i].verdict],
+                -verifications[i].confidence,
+            ),
         )
 
     def check_stall(self, state) -> bool:
@@ -170,8 +183,14 @@ class OracleRouter:
             directive = None
         return combine(self._adversarial_addendum_fn(), directive)
 
-    def build_reset_context(self, state) -> str:
+    def build_reset_context(
+        self, state, evidence: EvidenceState | None = None
+    ) -> str:
         """Build the strategy-reset prompt overlay for a reset iteration.
+
+        When Bayesian-adaptive disproof is warranted (false_premise/interpretation/
+        counterexample error signal OR consecutive UNSOLVED verdicts), the
+        domain-specific disproof addendum is appended to the standard reset.
 
         Moved from MathAgent._build_reset_context().
         """
@@ -195,11 +214,51 @@ class OracleRouter:
                     f"Build on them rather than abandoning them."
                 )
 
-        return (
+        base = (
             self._reset_addendum_fn()
             .replace("{failed_approaches}", approaches_text)
             .replace("{atom_stability_context}", atom_stability_context)
         )
+
+        if self._should_disproof(state, evidence):
+            return combine(base, self._disproof_addendum_fn()) or base
+
+        return base
+
+    def _should_disproof(
+        self, state, evidence: EvidenceState | None
+    ) -> bool:
+        """Bayesian-adaptive check: is disproof escalation warranted?
+
+        Fires when the accumulated evidence suggests the problem's premise may
+        be false. Two independent signals (either triggers):
+
+        1. Error taxonomy: the verifier critique classified as false_premise,
+           interpretation, or counterexample — direct evidence of premise doubt.
+        2. Consecutive UNSOLVED verdicts: the verifier repeatedly says the
+           solution doesn't address the problem, suggesting solvability is low.
+
+        Only fires when a disproof addendum is actually configured.
+        """
+        if self._disproof_addendum_fn is None:
+            return False
+
+        # Signal 1: error taxonomy suggests false premise
+        _DISPROOF_CATEGORIES = {"false_premise", "interpretation", "counterexample"}
+        if (
+            evidence is not None
+            and evidence.error_category in _DISPROOF_CATEGORIES
+        ):
+            return True
+
+        # Signal 2: consecutive UNSOLVED verdicts
+        verdicts = state.iteration_final_verdicts
+        if len(verdicts) >= 2 and all(
+            v == Verdict.UNSOLVED for v in verdicts
+        ):
+            return True
+
+        return False
 
     def build_atom_context(
         self,
@@ -300,7 +359,8 @@ class OracleRouter:
     def _compute_dynamic_n(self, evidence: EvidenceState) -> int:
         """Dynamic N based on difficulty. Moved from MathAgent._compute_dynamic_n()."""
         _escalate_categories = {
-            "logic", "missing_case", "interpretation", "units", "counterexample"
+            "logic", "missing_case", "interpretation", "units", "counterexample",
+            "false_premise",
         }
         base_n = self._config.best_of_n
 

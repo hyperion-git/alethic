@@ -5,11 +5,19 @@ Runs problems through the Alethic Python library (MathAgent, PhysicsAgent),
 collects per-iteration measurements, fits parametric distributions, and
 writes calibration data for Phase 2 simulation.
 
+Supports --resume to skip already-completed problems and continue from
+a crashed or interrupted run.  Traces are written incrementally after each
+problem so that progress is never lost.
+
+Uses --workers to run problems concurrently (default 3).  Each problem
+gets its own agent instance; results are merged in the main thread.
+
 Requires ANTHROPIC_API_KEY environment variable.
 
 Usage:
     python scripts/e_vs_f_calibrate.py --preset thorough
-    python scripts/e_vs_f_calibrate.py -p thorough -o data/calibration
+    python scripts/e_vs_f_calibrate.py -p thorough -w 4   # 4 concurrent problems
+    python scripts/e_vs_f_calibrate.py --resume            # continue from crash
 """
 from __future__ import annotations
 
@@ -18,8 +26,10 @@ import hashlib
 import json
 import os
 import sys
+import threading
 import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
 
@@ -64,6 +74,209 @@ PROBLEM_ARCHETYPES: dict[str, str] = {
 FULL_DEPTH_PROBLEMS = {"prime-17", "sqrt2-irrational", "qho-energy-levels"}
 FULL_DEPTH_ITERS = 8
 BROAD_ITERS = 5
+
+# Verdict priority for best-candidate selection (lower = better).
+# Mirrors oracle_router.rank_candidates() logic.
+_VERDICT_RANK = {
+    "correct": 0,
+    "minor_issues": 1,
+    "fixable": 2,
+    "major_flaw": 3,
+    "unsolved": 4,
+}
+
+
+# ---------------------------------------------------------------------------
+# Resume helpers
+# ---------------------------------------------------------------------------
+
+
+def _completed_problems(traces_path: str) -> set[str]:
+    """Read traces JSONL and return problem IDs that have a summary line.
+
+    A problem is considered complete if there exists a trace line with a
+    ``best_candidate`` key for that problem_id.
+    """
+    completed: set[str] = set()
+    if not os.path.exists(traces_path):
+        return completed
+    with open(traces_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if "best_candidate" in obj:
+                completed.add(obj["problem_id"])
+    return completed
+
+
+def _reconstruct_raw(traces_path: str) -> dict[str, list]:
+    """Reconstruct raw_measurements from existing traces for distribution fitting.
+
+    Recovers: confidences, verdict counts, atom_counts, approach_keys, total_tokens.
+    Cannot recover: revision_improvements, stall_events, breaker_demotions.
+    """
+    raw: dict[str, list] = defaultdict(list)
+    if not os.path.exists(traces_path):
+        return dict(raw)
+
+    # Track max tokens per problem for total_tokens (avoid double counting)
+    max_tokens_per_problem: dict[str, int] = {}
+
+    with open(traces_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            # Skip summary lines (those with best_candidate key)
+            if "best_candidate" in obj:
+                continue
+
+            # Non-summary lines have per-candidate data
+            pid = obj.get("problem_id", "")
+            verdict = obj.get("verdict", "")
+            confidence = float(obj.get("confidence", 0.0))
+
+            raw["confidences"].append(confidence)
+            if verdict:
+                raw[f"verdict_{verdict}"].append(1.0)
+
+            raw["atom_counts"].append(obj.get("atom_count", 0))
+
+            approach_key = obj.get("approach_key", "")
+            if approach_key:
+                raw["approach_keys"].append(approach_key)
+
+            tokens = obj.get("tokens_used", 0)
+            if tokens > 0 and pid:
+                max_tokens_per_problem[pid] = max(
+                    max_tokens_per_problem.get(pid, 0), tokens
+                )
+
+    # Use max tokens per problem as the total (each trace line has cumulative)
+    for total in max_tokens_per_problem.values():
+        raw["total_tokens"].append(total)
+
+    return dict(raw)
+
+
+def _write_traces(traces_path: str, traces: list[dict]) -> None:
+    """Append trace lines to JSONL file."""
+    with open(traces_path, "a") as f:
+        for trace in traces:
+            f.write(json.dumps(trace) + "\n")
+
+
+# ---------------------------------------------------------------------------
+# Progress display
+# ---------------------------------------------------------------------------
+
+# Lock for interleaved print output from concurrent workers
+_print_lock = threading.Lock()
+
+
+def _format_duration(seconds: float) -> str:
+    """Format seconds as human-readable duration."""
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    minutes = int(seconds) // 60
+    secs = int(seconds) % 60
+    if minutes < 60:
+        return f"{minutes}m {secs:02d}s"
+    hours = minutes // 60
+    mins = minutes % 60
+    return f"{hours}h {mins:02d}m"
+
+
+# ---------------------------------------------------------------------------
+# Per-problem worker (runs in thread pool)
+# ---------------------------------------------------------------------------
+
+
+def _run_problem(
+    pid: str,
+    problem_data: dict,
+    api_key: str,
+    preset: str,
+    model: str | None,
+) -> dict:
+    """Run a single calibration problem and return results.
+
+    Each call creates its own agent instance (thread-safe — the Anthropic
+    client uses httpx under the hood).  Returns a dict with traces,
+    raw_measurements, timing, and verdict info.
+    """
+    archetype = PROBLEM_ARCHETYPES[pid]
+    max_iters = FULL_DEPTH_ITERS if pid in FULL_DEPTH_PROBLEMS else BROAD_ITERS
+    domain = problem_data["domain"]
+    problem_text = problem_data["problem"]
+
+    with _print_lock:
+        print(f"  Starting: {pid} (archetype={archetype}, domain={domain}, iters={max_iters})")
+
+    overrides: dict = {"max_iterations": max_iters}
+    if model is not None:
+        overrides["model"] = model
+    config = AgentConfig.from_preset(preset, **overrides)
+
+    agent_cls = PhysicsAgent if domain == "physics" else MathAgent
+    agent = agent_cls(api_key=api_key, config=config)
+
+    start_time = time.time()
+    try:
+        result = agent.solve(problem_text)
+    except Exception as exc:  # noqa: BLE001
+        elapsed = time.time() - start_time
+        with _print_lock:
+            print(f"  FAILED:   {pid} — {elapsed:.0f}s — {exc}", file=sys.stderr)
+        return {
+            "pid": pid,
+            "archetype": archetype,
+            "domain": domain,
+            "traces": [],
+            "raw": {},
+            "elapsed": elapsed,
+            "verdict": "error",
+            "confidence": 0.0,
+            "error": str(exc),
+        }
+    elapsed = time.time() - start_time
+
+    traces: list[dict] = []
+    raw: dict[str, list] = defaultdict(list)
+    _extract_measurements(result, pid, archetype, domain, traces, raw)
+
+    if result.token_ledger is not None:
+        total = result.token_ledger.input_tokens + result.token_ledger.output_tokens
+        if total > 0:
+            raw["total_tokens"].append(total)
+
+    with _print_lock:
+        print(
+            f"  Done:     {pid} — {elapsed:.0f}s — "
+            f"{result.verdict.value} @ {result.confidence:.2f}"
+        )
+
+    return {
+        "pid": pid,
+        "archetype": archetype,
+        "domain": domain,
+        "traces": traces,
+        "raw": dict(raw),
+        "elapsed": elapsed,
+        "verdict": result.verdict.value,
+        "confidence": result.confidence,
+        "error": None,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -150,8 +363,8 @@ def _extract_measurements(
                 tokens_so_far = 0
                 if result.token_ledger is not None:
                     tokens_so_far = (
-                        result.token_ledger.total_input
-                        + result.token_ledger.total_output
+                        result.token_ledger.input_tokens
+                        + result.token_ledger.output_tokens
                     )
                 trace_line = {
                     "problem_id": pid,
@@ -178,10 +391,14 @@ def _extract_measurements(
         elif etype in ("breaker_flaw_found",):
             raw_measurements["breaker_demotions"].append(1.0)
 
-    # Best candidate summary per iteration — emit after all events processed
+    # Best candidate summary — verdict-aware ranking (matches oracle_router)
     if current_candidates:
-        best_idx = int(
-            np.argmax([c["confidence"] for c in current_candidates])
+        best_idx = min(
+            range(len(current_candidates)),
+            key=lambda i: (
+                _VERDICT_RANK.get(current_candidates[i]["verdict"], 5),
+                -current_candidates[i]["confidence"],
+            ),
         )
         traces_summary = {
             "problem_id": pid,
@@ -283,6 +500,9 @@ def calibrate(
     api_key: str,
     preset: str = "thorough",
     output_dir: str = "data/calibration",
+    model: str | None = None,
+    resume: bool = False,
+    workers: int = 3,
 ) -> CalibratedDistributions | None:
     """Run Phase 1 calibration.
 
@@ -290,11 +510,18 @@ def calibrate(
     library, collects per-iteration measurements, fits parametric
     distributions, and writes calibration data to ``output_dir``.
 
+    Problems run concurrently with up to ``workers`` threads.  Each thread
+    creates its own agent instance.  Results are merged in the main thread.
+
+    When ``resume=True``, skips problems that already have completed traces
+    and appends new results to existing trace files.
+
     Returns:
         ``CalibratedDistributions`` if the quality gate passes, ``None``
         otherwise.
     """
     os.makedirs(output_dir, exist_ok=True)
+    traces_path = os.path.join(output_dir, "e-vs-f-traces.jsonl")
 
     # Load benchmark problems (validates format, raises ValueError on bad entries)
     math_bench = load_benchmark("data/benchmarks/math-sample.json")
@@ -323,67 +550,90 @@ def calibrate(
         print("ERROR: No calibration problems found in benchmarks", file=sys.stderr)
         return None
 
-    print(
-        f"Calibrating on {len(calibration_problems)} problems "
-        f"with preset '{preset}'..."
-    )
-
-    # Collect measurements
-    traces: list[dict] = []
+    # Resume: identify already-completed problems
+    already_done: set[str] = set()
     raw_measurements: dict[str, list] = defaultdict(list)
 
-    for pid, problem_data in calibration_problems.items():
-        archetype = PROBLEM_ARCHETYPES[pid]
-        max_iters = FULL_DEPTH_ITERS if pid in FULL_DEPTH_PROBLEMS else BROAD_ITERS
-        domain = problem_data["domain"]
-        problem_text = problem_data["problem"]
+    if resume:
+        already_done = _completed_problems(traces_path)
+        if already_done:
+            print(f"Resuming: {len(already_done)} problem(s) already completed")
+            for pid in sorted(already_done):
+                print(f"  - {pid}")
+            # Reconstruct raw_measurements from existing traces
+            existing_raw = _reconstruct_raw(traces_path)
+            for k, v in existing_raw.items():
+                raw_measurements[k].extend(v)
+    else:
+        # Fresh run: truncate existing traces
+        if os.path.exists(traces_path):
+            os.remove(traces_path)
 
-        print(f"\n{'=' * 60}")
+    # Filter to remaining problems
+    remaining = {
+        pid: data
+        for pid, data in calibration_problems.items()
+        if pid not in already_done
+    }
+    total_all = len(calibration_problems)
+    n_done = len(already_done)
+    n_remaining = len(remaining)
+
+    if n_remaining == 0:
+        print("All problems already completed. Fitting distributions from traces...")
+    else:
+        effective_workers = min(workers, n_remaining)
         print(
-            f"Problem: {pid} "
-            f"(archetype={archetype}, domain={domain}, iters={max_iters})"
-        )
-        print(f"{'=' * 60}")
-
-        # Build config: start from preset, override max_iterations only
-        config = AgentConfig.from_preset(preset, max_iterations=max_iters)
-
-        # Create appropriate agent
-        agent_cls = PhysicsAgent if domain == "physics" else MathAgent
-        agent = agent_cls(api_key=api_key, config=config)
-
-        # Run the problem
-        start_time = time.time()
-        try:
-            result = agent.solve(problem_text)
-        except Exception as exc:  # noqa: BLE001
-            print(f"  ERROR: {exc}", file=sys.stderr)
-            continue
-        elapsed = time.time() - start_time
-
-        print(
-            f"  Completed in {elapsed:.1f}s — "
-            f"verdict: {result.verdict.value}, "
-            f"confidence: {result.confidence:.3f}"
+            f"Calibrating {n_remaining} problem(s) "
+            f"({n_done} already done, {total_all} total) "
+            f"with preset '{preset}', {effective_workers} worker(s)..."
         )
 
-        # Accumulate token totals for cost estimation
-        if result.token_ledger is not None:
-            total = result.token_ledger.total_input + result.token_ledger.total_output
-            if total > 0:
-                raw_measurements["total_tokens"].append(total)
+    # Run remaining problems concurrently with incremental trace writing
+    wall_start = time.time()
+    n_completed = 0
 
-        # Extract per-iteration measurements from the event log
-        _extract_measurements(
-            result, pid, archetype, domain, traces, raw_measurements
-        )
+    if n_remaining > 0:
+        effective_workers = min(workers, n_remaining)
+        with ThreadPoolExecutor(max_workers=effective_workers) as pool:
+            futures = {
+                pool.submit(
+                    _run_problem, pid, data, api_key, preset, model,
+                ): pid
+                for pid, data in remaining.items()
+            }
+
+            for future in as_completed(futures):
+                res = future.result()
+                n_completed += 1
+                progress_num = n_done + n_completed
+
+                # Merge raw measurements (main thread — no lock needed)
+                for k, v in res["raw"].items():
+                    raw_measurements[k].extend(v)
+
+                # Write traces incrementally (crash-safe)
+                if res["traces"]:
+                    _write_traces(traces_path, res["traces"])
+
+                # Progress
+                wall_elapsed = time.time() - wall_start
+                avg_wall = wall_elapsed / n_completed
+                eta = avg_wall * (n_remaining - n_completed)
+                pct = (progress_num / total_all) * 100
+                print(
+                    f"  [{progress_num}/{total_all}] "
+                    f"Progress: {pct:.0f}% | "
+                    f"Wall: {_format_duration(wall_elapsed)} | "
+                    f"ETA: ~{_format_duration(eta)}"
+                )
 
     if not raw_measurements:
         print("ERROR: No measurements collected (all problems failed?)", file=sys.stderr)
         return None
 
     # Fit distributions from pooled raw measurements
-    print("\nFitting distributions...")
+    print(f"\nFitting distributions from {len(raw_measurements.get('confidences', []))} verify events...")
     dists = _fit_distributions(dict(raw_measurements))
 
     # Quality gate: CV < 0.5 on key metrics
@@ -409,12 +659,13 @@ def calibrate(
         f.write(dists.to_json())
     print(f"Wrote distributions to {dists_path}")
 
-    # Write raw traces JSONL (one JSON object per line)
-    traces_path = os.path.join(output_dir, "e-vs-f-traces.jsonl")
-    with open(traces_path, "w") as f:
-        for trace in traces:
-            f.write(json.dumps(trace) + "\n")
-    print(f"Wrote {len(traces)} trace lines to {traces_path}")
+    # Summary
+    wall_total = time.time() - wall_start if n_remaining > 0 else 0.0
+    if n_completed > 0:
+        print(
+            f"\nRan {n_completed} problem(s) in {_format_duration(wall_total)} wall time "
+            f"({workers} worker(s))"
+        )
 
     return dists if gate["passed"] else None
 
@@ -444,6 +695,24 @@ def main() -> None:
         help="Output directory for distributions and traces (default: data/calibration)",
     )
     parser.add_argument(
+        "--model",
+        "-m",
+        default=None,
+        help="Override model (e.g. claude-sonnet-4-6). Default: preset's model",
+    )
+    parser.add_argument(
+        "--workers",
+        "-w",
+        type=int,
+        default=3,
+        help="Concurrent problem workers (default: 3). Use 1 for sequential.",
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from a crashed/interrupted run (skip completed problems)",
+    )
+    parser.add_argument(
         "--api-key",
         default=os.environ.get("ANTHROPIC_API_KEY"),
         help="Anthropic API key (default: ANTHROPIC_API_KEY env var)",
@@ -454,7 +723,14 @@ def main() -> None:
         print("ERROR: ANTHROPIC_API_KEY not set", file=sys.stderr)
         sys.exit(1)
 
-    dists = calibrate(args.api_key, args.preset, args.output_dir)
+    dists = calibrate(
+        args.api_key,
+        args.preset,
+        args.output_dir,
+        model=args.model,
+        resume=args.resume,
+        workers=args.workers,
+    )
 
     if dists is not None:
         print("\nCalibration complete. Quality gate: PASSED")

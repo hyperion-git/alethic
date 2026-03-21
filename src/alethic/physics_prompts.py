@@ -356,6 +356,38 @@ methods or symmetry arguments).
 {atom_stability_context}"""
 
 # ---------------------------------------------------------------------------
+# Disproof escalation overlay (Bayesian-adaptive, appended to reset context)
+# ---------------------------------------------------------------------------
+
+PHYSICS_DISPROOF_STRATEGY_ADDENDUM = """
+
+## DISPROOF ESCALATION — Consider that the physical claim may be incorrect
+
+Previous iterations have repeatedly failed to derive this result. Based on \
+accumulated evidence, there is a meaningful probability that the claimed result \
+is INCORRECT.
+
+In addition to exploring categorically different derivation techniques, you MUST also:
+
+1. **Check dimensional consistency**: Does the claimed result have correct \
+dimensions? Verify with sympy.physics.units or scipy.constants.
+
+2. **Test limiting cases**: Does the result reduce correctly in known limits? \
+(hbar->0 for classical, c->inf for non-relativistic, T->0 for ground state, etc.)
+
+3. **Compare with established results**: Does this claim contradict known physical \
+principles, conservation laws, or experimental data?
+
+4. **Numerical estimation**: Compute an order-of-magnitude estimate. Does the \
+claimed value match known experimental values?
+
+If you find evidence the claim is false, present a clear disproof:
+- Identify the specific physical principle, limiting case, or data point that contradicts it
+- Verify computationally using Python code
+- Explain the correct result if you can determine it
+"""
+
+# ---------------------------------------------------------------------------
 # Adversarial verifier self-correction (feature 2.7)
 # ---------------------------------------------------------------------------
 
