@@ -319,6 +319,7 @@ def _extract_measurements(
             confidence = float(event.data.get("confidence", 0.0))
             critique = event.data.get("critique", "")
             error_cat = event.data.get("error_category") or classify_errors(critique)
+            error_level = event.data.get("error_level", "")
 
             # Raw metric pools
             raw_measurements["confidences"].append(confidence)
@@ -381,6 +382,7 @@ def _extract_measurements(
                     "verdict": verdict,
                     "confidence": confidence,
                     "error_category": error_cat,
+                    "error_level": error_level,
                     "atom_count": atom_count,
                     "approach_key": approach_key,
                     "tokens_used": tokens_so_far,
@@ -464,6 +466,9 @@ def _fit_distributions(raw: dict) -> CalibratedDistributions:
         dists.revision_rates["interpretation"] = overall_rate * 0.5
         dists.revision_rates["units"] = min(overall_rate * 1.2, 0.95)
         dists.revision_rates["missing_case"] = overall_rate * 0.7
+        dists.revision_rates["false_premise"] = overall_rate * 0.3
+        dists.revision_rates["counterexample"] = overall_rate * 0.4
+        dists.revision_rates["wrong_method"] = overall_rate * 0.2
 
     # --- Atom count (Poisson lambda) ---
     atom_counts = raw.get("atom_counts", [])

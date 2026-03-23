@@ -21,8 +21,9 @@ VERDICTS = ["correct", "minor_issues", "fixable", "major_flaw"]
 
 # Error categories matching alethic.error_taxonomy
 # "general" is the fallback category when no keyword matches in classify_errors()
-ERROR_CATS = ["algebra", "logic", "citation", "interpretation", "units",
-              "counterexample", "missing_case", "general"]
+ERROR_CATS = ["false_premise", "counterexample", "wrong_method",
+              "missing_case", "logic", "algebra", "units",
+              "interpretation", "citation", "general"]
 
 
 @dataclass
