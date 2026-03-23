@@ -206,12 +206,22 @@ class TestTranslateKwargs:
         assert "system" not in result
         assert result["messages"][0]["role"] == "system"
 
-    def test_thinking_stripped(self):
-        """S-7: extended thinking removed, temperature reset."""
-        kw = {"model": "test", "messages": [], "thinking": {"type": "enabled", "budget_tokens": 10000}, "temperature": 1}
+    def test_thinking_mapped_to_nemotron_reasoning(self):
+        """Anthropic thinking → Nemotron enable_thinking + reasoning_budget."""
+        kw = {"model": "test", "messages": [], "thinking": {"type": "enabled", "budget_tokens": 15000}, "temperature": 1}
         result = translate_kwargs(kw)
         assert "thinking" not in result
-        assert result["temperature"] == 0.7
+        assert result["temperature"] == 1  # Keep 1.0 — required for Nemotron reasoning
+        assert result["reasoning_budget"] == 15000
+        assert result["extra_body"]["chat_template_kwargs"]["enable_thinking"] is True
+        assert result["extra_body"]["chat_template_kwargs"]["force_nonempty_content"] is True
+
+    def test_no_thinking_still_forces_nonempty(self):
+        """force_nonempty_content set even without thinking mode."""
+        kw = {"model": "test", "messages": [], "temperature": 0.5}
+        result = translate_kwargs(kw)
+        assert result["extra_body"]["chat_template_kwargs"]["force_nonempty_content"] is True
+        assert "reasoning_budget" not in result
 
     def test_tools_translated(self):
         kw = {"model": "test", "messages": [], "tools": [{"name": "t", "input_schema": {}}]}

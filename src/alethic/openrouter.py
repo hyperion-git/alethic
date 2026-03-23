@@ -243,17 +243,25 @@ def translate_kwargs(anthropic_kwargs: dict) -> dict:
     if tools:
         kw["tools"] = translate_tools(tools)
 
-    # Strip extended thinking (not supported by non-Claude models — S-7)
-    # Primary fix: calibration script sets config.extended_thinking=False,
-    # so _call_model never adds thinking kwargs. This is a safety net.
+    # Translate Anthropic extended thinking → Nemotron reasoning mode.
+    # Nemotron Super/Nano support native reasoning via enable_thinking + reasoning_budget.
+    # Claude's thinking.budget_tokens maps to Nemotron's reasoning_budget.
+    # Temperature=1.0 is CORRECT for Nemotron reasoning (required, same as Claude).
     if "thinking" in kw:
-        logger.warning("Extended thinking not supported by OpenRouter model — proceeding without.")
-        kw.pop("thinking")
-        # Reset temperature to a sensible default if it was forced to 1 for thinking.
-        # With thinking enabled, _call_model forces temperature=1 (required by Claude).
-        # Without thinking, that's unnecessarily high — reset to 0.7.
-        if kw.get("temperature") == 1:
-            kw["temperature"] = 0.7
+        thinking = kw.pop("thinking")
+        budget = thinking.get("budget_tokens", 10000) if isinstance(thinking, dict) else 10000
+        extra_body = kw.get("extra_body", {})
+        extra_body.setdefault("chat_template_kwargs", {})["enable_thinking"] = True
+        extra_body["chat_template_kwargs"]["force_nonempty_content"] = True
+        kw["extra_body"] = extra_body
+        kw["reasoning_budget"] = budget
+        # Keep temperature=1.0 — both Claude and Nemotron require it for reasoning
+        logger.info("Mapped Anthropic thinking (budget=%d) → Nemotron reasoning mode", budget)
+    else:
+        # No thinking requested — still set force_nonempty_content to avoid null responses
+        extra_body = kw.get("extra_body", {})
+        extra_body.setdefault("chat_template_kwargs", {})["force_nonempty_content"] = True
+        kw["extra_body"] = extra_body
 
     return kw
 

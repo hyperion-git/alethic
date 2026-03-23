@@ -241,9 +241,11 @@ def _run_problem(
     if model is not None:
         overrides["model"] = model
     if openrouter:
-        overrides["extended_thinking"] = False
-        overrides["variant_b"] = None
-        overrides["adversarial_breaker"] = False
+        # Nemotron Super/Nano support native reasoning mode — adapter translates
+        # Anthropic thinking → Nemotron enable_thinking + reasoning_budget.
+        # Leave extended_thinking at preset default (adapter handles translation).
+        overrides["variant_b"] = None  # No mixed-provider variant-B
+        overrides["adversarial_breaker"] = False  # Needs separate model call
         overrides["best_of_n"] = 1  # Reduce API calls for rate-limited models
     config = AgentConfig.from_preset(preset, **overrides)
 
