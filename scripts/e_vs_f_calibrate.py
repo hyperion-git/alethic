@@ -57,13 +57,23 @@ PROBLEM_ARCHETYPES: dict[str, str] = {
     # Smooth refinement — confidence typically improves monotonically
     "prime-17": "smooth",
     "geometric-series": "smooth",
+    "sum-arithmetic": "smooth",
     "simple-pendulum-period": "smooth",
     "gauss-law-from-coulomb": "smooth",
+    "derivative-product-rule": "smooth",
+    "carnot-efficiency": "smooth",
+    "kepler-third-law": "smooth",
     # Insight-required — early iterations may plateau until the key idea lands
     "sqrt2-irrational": "insight",
     "cantor-diagonal": "insight",
+    "infinite-primes": "insight",
+    "am-gm": "insight",
+    "triangle-inequality": "insight",
     "qho-energy-levels": "insight",
     "lorentz-transformation": "insight",
+    "infinite-square-well": "insight",
+    "ideal-gas-kinetic-theory": "insight",
+    "hydrogen-energy-spectrum": "insight",
     # Adversarial / false claims — correct answer is "the premise is false"
     "false-claim-even-odd": "adversarial",
     "false-drude-lorenz-number": "adversarial",
@@ -71,7 +81,10 @@ PROBLEM_ARCHETYPES: dict[str, str] = {
 
 # Full-depth problems get 8 iterations to see late-iteration dynamics;
 # broad problems get 5 to cover the space without excessive cost.
-FULL_DEPTH_PROBLEMS = {"prime-17", "sqrt2-irrational", "qho-energy-levels"}
+FULL_DEPTH_PROBLEMS = {
+    "prime-17", "sqrt2-irrational", "qho-energy-levels",
+    "hydrogen-energy-spectrum", "infinite-square-well",
+}
 FULL_DEPTH_ITERS = 8
 BROAD_ITERS = 5
 
