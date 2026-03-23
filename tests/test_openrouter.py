@@ -212,7 +212,7 @@ class TestTranslateKwargs:
         result = translate_kwargs(kw)
         assert "thinking" not in result
         assert result["temperature"] == 1  # Keep 1.0 — required for Nemotron reasoning
-        assert result["reasoning_budget"] == 15000
+        assert result["extra_body"]["reasoning_budget"] == 15000
         assert result["extra_body"]["chat_template_kwargs"]["enable_thinking"] is True
         assert result["extra_body"]["chat_template_kwargs"]["force_nonempty_content"] is True
 

@@ -253,8 +253,8 @@ def translate_kwargs(anthropic_kwargs: dict) -> dict:
         extra_body = kw.get("extra_body", {})
         extra_body.setdefault("chat_template_kwargs", {})["enable_thinking"] = True
         extra_body["chat_template_kwargs"]["force_nonempty_content"] = True
+        extra_body["reasoning_budget"] = budget
         kw["extra_body"] = extra_body
-        kw["reasoning_budget"] = budget
         # Keep temperature=1.0 — both Claude and Nemotron require it for reasoning
         logger.info("Mapped Anthropic thinking (budget=%d) → Nemotron reasoning mode", budget)
     else:
