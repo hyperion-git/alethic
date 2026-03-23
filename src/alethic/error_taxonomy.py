@@ -61,16 +61,21 @@ _KEYWORDS: dict[str, list[str]] = {
         "missing case", "edge case", "special case",
         "boundary case", "boundary condition", "not handled", "case analysis",
         "degenerate", "not considered", "overlooked",
+        "incomplete", "not addressed", "omitted", "left out",
     ],
     "logic": [
         "does not follow", "non sequitur", "circular", "circular argument",
         "implication", "gap in", "logical gap", "invalid inference",
         "unjustified", "without justification", "not proven", "assumption not established",
+        "flawed", "not rigorous", "lacks rigor", "reasoning error",
+        "invalid", "fallacy", "unsound", "does not prove", "fails to show",
     ],
     "algebra": [
         "sign error", "wrong sign", "arithmetic", "calculation error",
         "simplif", "expand", "factor", "distribut", "algebraic error",
         "incorrect step", "wrong value", "computation error",
+        "incorrect result", "miscalculation", "math error", "numerical error",
+        "wrong answer", "error in step", "incorrectly",
     ],
     "units": [
         "dimension", "dimensional", "si unit", "inconsistent units",

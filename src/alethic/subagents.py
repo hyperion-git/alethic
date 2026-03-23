@@ -71,7 +71,12 @@ _ATOM_CONF_BLOCK_RE = re.compile(
 )
 _ATOM_CONF_LINE_RE = re.compile(r"^ATOM\[(\d+)\]:\s+([\d.]+)(?:\s+(.+))?$")
 _VERDICT_RE = re.compile(
-    r"VERDICT:\s*(correct|minor_issues|fixable|major_flaw|unsolved)", re.IGNORECASE
+    r"VERDICT:\s*(correct|minor_issues|fixable|major_flaw|unsolved)[\s.,;]*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+# Fallback: looser match for non-Claude models that deviate from format
+_VERDICT_FUZZY_RE = re.compile(
+    r"VERDICT:\s*(.+?)$", re.IGNORECASE | re.MULTILINE
 )
 _CONFIDENCE_RE = re.compile(r"CONFIDENCE:\s*([\d.]+)", re.IGNORECASE)
 _CRITIQUE_RE = re.compile(
@@ -383,6 +388,44 @@ def generate(
 _VERDICT_MAP: dict[str, Verdict] = {v.value: v for v in Verdict}
 
 
+def _fuzzy_match_verdict(raw: str) -> str:
+    """Fuzzy-match a non-standard verdict string to a known verdict value.
+
+    Handles: trailing punctuation, partial matches, common synonyms.
+    Returns a lowercase verdict string suitable for _VERDICT_MAP lookup.
+    Conservative fallback: "major_flaw" (forces revision rather than false acceptance).
+    """
+    cleaned = raw.strip().strip(".,;:()").lower().replace(" ", "_")
+
+    # Direct match after cleanup
+    if cleaned in _VERDICT_MAP:
+        return cleaned
+
+    # Substring containment: check if any known verdict is contained in the raw string
+    # Check longest first to avoid "correct" matching inside "minor_issues" context
+    for candidate in ["minor_issues", "major_flaw", "unsolved", "fixable", "correct"]:
+        if candidate in cleaned:
+            return candidate
+
+    # Common synonyms — conservative: only map to CORRECT for exact synonyms,
+    # map ambiguous terms to MINOR_ISSUES or MAJOR_FLAW
+    _SYNONYMS = {
+        "mostly_correct": "minor_issues",
+        "partially_correct": "minor_issues",
+        "almost_correct": "minor_issues",
+        "wrong": "major_flaw",
+        "incorrect": "major_flaw",
+        "invalid": "major_flaw",
+        "fail": "major_flaw",
+    }
+    for pattern, mapped in _SYNONYMS.items():
+        if pattern in cleaned:
+            return mapped
+
+    logger.warning("Fuzzy verdict match failed for %r — defaulting to major_flaw", raw)
+    return "major_flaw"
+
+
 def _parse_issues(text: str) -> list[Issue]:
     """Parse the ISSUES block from verifier output into Issue objects."""
     issues_match = _ISSUES_BLOCK_RE.search(text)
@@ -461,8 +504,14 @@ def _parse_verification(text: str) -> VerificationResult:
     if verdict_match:
         verdict_str = verdict_match.group(1).lower()
     else:
-        logger.warning("Verdict regex failed to match — defaulting to major_flaw")
-        verdict_str = "major_flaw"
+        # Fuzzy fallback: try looser regex then substring matching
+        fuzzy_match = _VERDICT_FUZZY_RE.search(text)
+        if fuzzy_match:
+            verdict_str = _fuzzy_match_verdict(fuzzy_match.group(1))
+            logger.info("Fuzzy verdict match: %r → %s", fuzzy_match.group(1).strip(), verdict_str)
+        else:
+            logger.warning("No VERDICT: line found — defaulting to major_flaw")
+            verdict_str = "major_flaw"
 
     verdict = _VERDICT_MAP.get(verdict_str, Verdict.MAJOR_FLAW)
 

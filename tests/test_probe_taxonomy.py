@@ -376,9 +376,9 @@ class TestPhysicsErrorPatterns:
         assert result == "general"
 
     def test_commutator_wrong(self):
-        """'commutator is wrong' has no keyword coverage."""
+        """'incorrectly' matches algebra (computational error)."""
         result = classify_errors("The commutator relation [x, p] is computed incorrectly")
-        assert result == "general"
+        assert result == "algebra"
 
     def test_lorentz_covariance_broken(self):
         """'Lorentz covariance broken' is a physics error — no keyword."""

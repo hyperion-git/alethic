@@ -49,7 +49,8 @@ class TestClassifyErrors:
     def test_general_fallback(self):
         from alethic.error_taxonomy import classify_errors
 
-        assert classify_errors("The solution is incomplete.") == "general"
+        # "incomplete" now matches missing_case; use a truly unmatched phrase
+        assert classify_errors("The proof is beautiful but has concerns.") == "general"
         assert classify_errors("") == "general"
 
     def test_case_insensitive(self):
