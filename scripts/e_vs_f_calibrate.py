@@ -245,7 +245,6 @@ def _run_problem(
         overrides["variant_b"] = None
         overrides["adversarial_breaker"] = False
         overrides["best_of_n"] = 1  # Reduce API calls for rate-limited models
-        overrides["max_tokens"] = 4096  # Free models often cap lower than Claude
     config = AgentConfig.from_preset(preset, **overrides)
 
     agent_cls = PhysicsAgent if domain == "physics" else MathAgent
