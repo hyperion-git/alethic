@@ -3,19 +3,45 @@
 Classifies verifier critique text into error categories via keyword heuristics
 (no additional LLM call). Returns a category string and a per-category revision
 addendum that guides the reviser toward the most effective repair strategy.
+
+Categories are organized into a 5-level hierarchy (most → least severe):
+
+    Level 0  PROBLEM        false_premise, counterexample
+    Level 1  APPROACH       wrong_method
+    Level 2  STRUCTURAL     missing_case, logic
+    Level 3  MECHANICAL     algebra, units
+    Level 4  PRESENTATION   interpretation, citation
+
+Classification traverses top-down.  The first LEVEL with any keyword hits
+determines the firing level and primary category.  Within a level, the
+category with the most hits wins (ties broken by list position — first =
+higher severity).  All levels are scanned to populate ``all_matches``.
 """
 
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 from alethic.models import OracleType
 
-# Keyword -> category mapping. Checked in SEVERITY ORDER; first match wins.
-# Most-severe categories first so that co-occurring keywords resolve to the
-# most dangerous error (e.g. "false premise" + "sign error" → false_premise,
-# not algebra). Keys are category names; values are lowercase substrings.
-_TAXONOMY_KEYWORDS: dict[str, list[str]] = {
+# ---------------------------------------------------------------------------
+# Hierarchical category tree
+# ---------------------------------------------------------------------------
+
+_TREE: list[tuple[str, list[str]]] = [
+    ("problem",      ["false_premise", "counterexample"]),
+    ("approach",     ["wrong_method"]),
+    ("structural",   ["missing_case", "logic"]),
+    ("mechanical",   ["algebra", "units"]),
+    ("presentation", ["interpretation", "citation"]),
+]
+
+# ---------------------------------------------------------------------------
+# Keywords per category (exact same lists as before for 8 existing cats)
+# ---------------------------------------------------------------------------
+
+_KEYWORDS: dict[str, list[str]] = {
     "false_premise": [
         "false premise", "false claim", "claim is false", "statement is false",
         "does not hold", "no valid solution", "no solution exists",
@@ -25,6 +51,11 @@ _TAXONOMY_KEYWORDS: dict[str, list[str]] = {
     "counterexample": [
         "counterexample", "flaw found", "breaker found",
         "regime failure", "falsif",
+    ],
+    "wrong_method": [
+        "wrong approach", "different method", "different approach",
+        "not suitable", "inapplicable", "should use", "consider using",
+        "try instead", "does not apply here", "not the right",
     ],
     "missing_case": [
         "missing case", "edge case", "special case",
@@ -56,11 +87,152 @@ _TAXONOMY_KEYWORDS: dict[str, list[str]] = {
     ],
 }
 
+# Backward-compatible alias — some callers import _TAXONOMY_KEYWORDS directly.
+# Includes all categories in tree-traversal (severity) order.
+_TAXONOMY_KEYWORDS: dict[str, list[str]] = {
+    cat: _KEYWORDS[cat]
+    for _level_name, _cats in _TREE
+    for cat in _cats
+}
+
 # Pre-compiled regex per category: single alternation of all keywords (escaped).
+_KEYWORD_PATTERNS: dict[str, re.Pattern[str]] = {
+    cat: re.compile("|".join(re.escape(kw) for kw in kws))
+    for cat, kws in _KEYWORDS.items()
+}
+
+# Legacy alias (list-of-tuples, severity order without wrong_method).
 _TAXONOMY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    (cat, re.compile("|".join(re.escape(kw) for kw in kws)))
-    for cat, kws in _TAXONOMY_KEYWORDS.items()
+    (cat, _KEYWORD_PATTERNS[cat])
+    for cat in _TAXONOMY_KEYWORDS
 ]
+
+# ---------------------------------------------------------------------------
+# Scoring
+# ---------------------------------------------------------------------------
+
+def _score_keyword(categories: list[str], lower: str) -> dict[str, int]:
+    """Count keyword hits for each *category* in *lower*-cased critique text."""
+    scores: dict[str, int] = {}
+    for cat in categories:
+        hits = len(_KEYWORD_PATTERNS[cat].findall(lower))
+        if hits > 0:
+            scores[cat] = hits
+    return scores
+
+
+_score_fn = _score_keyword
+
+# ---------------------------------------------------------------------------
+# InconsistencyResult dataclass
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class InconsistencyResult:
+    """Full classification result with level, primary category, and all matches.
+
+    Attributes:
+        level: The name of the firing level (e.g. "problem", "mechanical"),
+               or "none" when nothing matched.
+        primary: The winning category at the firing level (e.g. "false_premise"),
+                 or "general" when nothing matched.
+        all_matches: ``{category: hit_count}`` across ALL levels (not just the
+                     firing level).  Empty dict when nothing matched.
+    """
+
+    level: str
+    primary: str
+    all_matches: dict[str, int]
+
+# ---------------------------------------------------------------------------
+# Main classifier
+# ---------------------------------------------------------------------------
+
+def classify_inconsistency(critique: str) -> InconsistencyResult:
+    """Classify a verifier critique into the hierarchical error taxonomy.
+
+    Traverses the ``_TREE`` top-down.  The first level with any keyword hits
+    determines the firing level; within that level the category with the most
+    hits wins (ties broken by list position — first = higher severity).
+    All levels are scanned so ``all_matches`` is always complete.
+
+    Returns an :class:`InconsistencyResult` with ``level``, ``primary``, and
+    ``all_matches``.  When no keywords match, returns
+    ``InconsistencyResult("none", "general", {})``.
+    """
+    lower = critique.lower()
+
+    firing_level: str | None = None
+    primary: str | None = None
+    all_matches: dict[str, int] = {}
+
+    for level_name, categories in _TREE:
+        scores = _score_fn(categories, lower)
+        all_matches.update(scores)
+
+        if scores and firing_level is None:
+            # First level with hits — determine primary by max score,
+            # ties broken by list position (first = higher severity).
+            best_cat = max(
+                categories,
+                key=lambda c: scores.get(c, 0),
+            )
+            # Only set if the best actually has hits (max among 0s is spurious).
+            if scores.get(best_cat, 0) > 0:
+                firing_level = level_name
+                primary = best_cat
+
+    if firing_level is None:
+        return InconsistencyResult("none", "general", {})
+    assert primary is not None  # guaranteed by the logic above
+    return InconsistencyResult(firing_level, primary, dict(all_matches))
+
+# ---------------------------------------------------------------------------
+# Backward-compatible wrappers
+# ---------------------------------------------------------------------------
+
+def classify_errors(critique: str) -> str:
+    """Classify a verifier critique into an error category via keyword heuristics.
+
+    Thin wrapper around :func:`classify_inconsistency` — returns only the
+    primary category string.
+
+    Returns "general" if no category matches.
+
+    Args:
+        critique: The verifier's critique text.
+
+    Returns:
+        One of: "algebra", "logic", "citation", "false_premise",
+                "interpretation", "units", "counterexample",
+                "missing_case", "wrong_method", "general".
+    """
+    return classify_inconsistency(critique).primary
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def get_all_categories() -> list[str]:
+    """Return all category names in severity order (most → least severe).
+
+    Includes ``"general"`` as the final entry.
+    """
+    cats = [cat for _, categories in _TREE for cat in categories]
+    cats.append("general")
+    return cats
+
+
+def get_revision_addendum(category: str) -> str:
+    """Return the revision strategy addendum for the given error category.
+
+    Returns "" for unknown categories and "general".
+    """
+    return REVISION_ADDENDA.get(category, "")
+
+# ---------------------------------------------------------------------------
+# Revision addenda
+# ---------------------------------------------------------------------------
 
 REVISION_ADDENDA: dict[str, str] = {
     "algebra": (
@@ -123,38 +295,20 @@ REVISION_ADDENDA: dict[str, str] = {
         "singular matrices, boundary conditions, and degenerate configurations. "
         "Verify each case numerically where possible."
     ),
+    "wrong_method": (
+        "\n\n## Revision focus: change of approach\n"
+        "The current method appears fundamentally unsuitable for this problem. "
+        "Do NOT revise within the current approach — choose a categorically "
+        "different method. Consider what mathematical/physical structure the "
+        "problem has (symmetry, recursion, conservation law, etc.) and pick "
+        "a technique that exploits that structure directly."
+    ),
     "general": "",
 }
 
-
-def classify_errors(critique: str) -> str:
-    """Classify a verifier critique into an error category via keyword heuristics.
-
-    Checks categories in priority order; returns the first match.
-    Returns "general" if no category matches.
-
-    Args:
-        critique: The verifier's critique text.
-
-    Returns:
-        One of: "algebra", "logic", "citation", "false_premise",
-                "interpretation", "units", "counterexample",
-                "missing_case", "general".
-    """
-    lower = critique.lower()
-    for category, pattern in _TAXONOMY_PATTERNS:
-        if pattern.search(lower):
-            return category
-    return "general"
-
-
-def get_revision_addendum(category: str) -> str:
-    """Return the revision strategy addendum for the given error category.
-
-    Returns "" for unknown categories and "general".
-    """
-    return REVISION_ADDENDA.get(category, "")
-
+# ---------------------------------------------------------------------------
+# Oracle routing
+# ---------------------------------------------------------------------------
 
 # Oracle routing table: error_category -> (OracleType, force_adversarial)
 _ORACLE_ROUTING: dict[str, tuple[OracleType, bool]] = {
@@ -166,6 +320,7 @@ _ORACLE_ROUTING: dict[str, tuple[OracleType, bool]] = {
     "units": (OracleType.LAYER0_STRUCTURAL, False),
     "counterexample": (OracleType.LAYER1_BEHAVIORAL, False),
     "missing_case": (OracleType.LAYER1_BEHAVIORAL, False),
+    "wrong_method": (OracleType.LAYER3_LLM_ADVERSARIAL, True),
     "general": (OracleType.LAYER3_LLM, False),
 }
 
@@ -177,6 +332,6 @@ def classify_errors_routed(critique: str) -> tuple[str, OracleType, bool]:
     The agent.py orchestrator reads next_oracle to decide verifier configuration
     for the next iteration.
     """
-    category = classify_errors(critique)
-    oracle, force_adv = _ORACLE_ROUTING[category]
-    return category, oracle, force_adv
+    result = classify_inconsistency(critique)
+    oracle, force_adv = _ORACLE_ROUTING[result.primary]
+    return result.primary, oracle, force_adv
