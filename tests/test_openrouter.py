@@ -218,3 +218,46 @@ class TestTranslateKwargs:
         result = translate_kwargs(kw)
         assert result["tools"][0]["type"] == "function"
         assert "tools" in kw  # Original not mutated (popped from copy)
+
+
+class TestOpenRouterClient:
+    def test_create_calls_openai_and_translates(self):
+        from unittest.mock import MagicMock
+        from alethic.openrouter import OpenRouterClient, _MessagesAPI, Message
+
+        mock_openai = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.choices = [MagicMock()]
+        mock_resp.choices[0].message.content = "VERDICT: correct\nCONFIDENCE: 0.95"
+        mock_resp.choices[0].message.tool_calls = None
+        mock_resp.choices[0].finish_reason = "stop"
+        mock_resp.usage.prompt_tokens = 50
+        mock_resp.usage.completion_tokens = 20
+        mock_openai.chat.completions.create.return_value = mock_resp
+
+        client = OpenRouterClient.__new__(OpenRouterClient)
+        client._openai = mock_openai
+        client._model = "test-model"
+        client.messages = _MessagesAPI(mock_openai, "test-model")
+
+        result = client.messages.create(
+            model="ignored",
+            system="You are a verifier",
+            messages=[{"role": "user", "content": "Check this"}],
+            max_tokens=1000,
+        )
+
+        assert isinstance(result, Message)
+        assert result.content[0].text == "VERDICT: correct\nCONFIDENCE: 0.95"
+        assert result.stop_reason == "end_turn"
+        assert result.usage.input_tokens == 50
+        call_kwargs = mock_openai.chat.completions.create.call_args.kwargs
+        assert call_kwargs["model"] == "test-model"
+        assert call_kwargs["messages"][0]["role"] == "system"
+
+    def test_stream_raises_not_implemented(self):
+        from unittest.mock import MagicMock
+        from alethic.openrouter import _MessagesAPI
+        api = _MessagesAPI(MagicMock(), "test")
+        with pytest.raises(NotImplementedError):
+            api.stream(model="test", messages=[])

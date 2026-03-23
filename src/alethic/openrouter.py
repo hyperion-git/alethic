@@ -266,3 +266,55 @@ _KEY_PATTERN = re.compile(r"sk-or-v1-[a-zA-Z0-9]+")
 def _sanitize_error(error: Exception) -> str:
     """Remove API keys from error messages."""
     return _KEY_PATTERN.sub("sk-or-v1-***REDACTED***", str(error))
+
+
+# ---------------------------------------------------------------------------
+# Client class (duck-types anthropic.Anthropic)
+# ---------------------------------------------------------------------------
+
+class _MessagesAPI:
+    """Duck-types anthropic.Anthropic().messages with .create() and .stream()."""
+
+    def __init__(self, openai_client, model: str):
+        self._client = openai_client
+        self._model = model
+
+    def create(self, **kwargs) -> Message:
+        """Translate Anthropic kwargs → OpenAI call → translate response back."""
+        kwargs["model"] = self._model
+        openai_kwargs = translate_kwargs(kwargs)
+        try:
+            openai_response = self._client.chat.completions.create(**openai_kwargs)
+        except Exception as e:
+            sanitized = _sanitize_error(e)
+            logger.error("OpenRouter API error (sanitized): %s", sanitized)
+            raise
+        return translate_response(openai_response)
+
+    def stream(self, **kwargs):
+        """Streaming not implemented — raise descriptive error."""
+        raise NotImplementedError(
+            "OpenRouterClient does not support streaming. "
+            "The Anthropic SDK streaming fallback will not trigger."
+        )
+
+
+class OpenRouterClient:
+    """Drop-in replacement for anthropic.Anthropic that routes to OpenRouter.
+
+    Usage:
+        client = OpenRouterClient(api_key="sk-or-...", model="nvidia/nemotron-3-nano-30b-a3b:free")
+    """
+
+    def __init__(self, api_key: str, model: str, base_url: str = "https://openrouter.ai/api/v1"):
+        try:
+            from openai import OpenAI
+        except ImportError as e:
+            raise ImportError(
+                "OpenRouter support requires the 'openai' package. "
+                "Install with: pip install alethic[openrouter]"
+            ) from e
+
+        self._openai = OpenAI(api_key=api_key, base_url=base_url)
+        self._model = model
+        self.messages = _MessagesAPI(self._openai, model)
