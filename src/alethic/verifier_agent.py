@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import anthropic
 
+from alethic.client_factory import get_client
 from alethic.check_prompts import CHECKER_SYSTEM, CHECKER_USER
 from alethic.domain import detect_domain
 from alethic.models import (
@@ -35,7 +36,7 @@ class VerifierAgent:
 
     def __init__(self, config: VerifierConfig | None = None, *, api_key: str | None = None):
         self.config = config or VerifierConfig()
-        self.client = anthropic.Anthropic(api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"))
+        self.client = get_client(api_key=api_key)
 
     def _select_prompts(self, domain: str) -> tuple[str, str]:
         """Return (system_prompt, user_template) for the detected domain."""

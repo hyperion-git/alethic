@@ -32,6 +32,15 @@ from dataclasses import dataclass, field
 
 import anthropic
 
+from alethic.client_factory import get_client
+
+_API_ERRORS: tuple[type, ...] = (anthropic.APIError,)
+try:
+    import openai
+    _API_ERRORS = (anthropic.APIError, openai.APIError)
+except ImportError:
+    pass
+
 from alethic.atoms import (
     AtomAnnotation,
     content_hash,
@@ -178,7 +187,7 @@ class MathAgent:
     ):
         self.config = config or AgentConfig()
         self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        self.client = anthropic.Anthropic(api_key=self._api_key)
+        self.client = get_client(api_key=self._api_key)
         self.router = OracleRouter(
             config=self.config,
             domain=self._domain(),
@@ -411,7 +420,7 @@ class MathAgent:
         if self.config.variant_b is not None:
             variant_b_config = self.config.build_variant_b_config()
             if variant_b_config.model != self.config.model:
-                variant_b_client = anthropic.Anthropic(api_key=self._api_key)
+                variant_b_client = get_client(api_key=self._api_key)
             else:
                 variant_b_client = self.client
 
@@ -1193,7 +1202,7 @@ class MathAgent:
                 log.emit(EventType.ERROR, iteration, error=f"truncated: {e}")
                 continue
 
-            except anthropic.APIError as e:
+            except _API_ERRORS as e:
                 logger.warning("Iteration %d failed: %s", iteration, e)
                 log.emit(EventType.ERROR, iteration, error=str(e))
                 continue

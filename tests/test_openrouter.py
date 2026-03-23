@@ -261,3 +261,31 @@ class TestOpenRouterClient:
         api = _MessagesAPI(MagicMock(), "test")
         with pytest.raises(NotImplementedError):
             api.stream(model="test", messages=[])
+
+
+class TestExceptionMapping:
+    def test_rate_limit_tuple_contains_anthropic(self):
+        from alethic.subagents import _RATE_LIMIT_ERRORS
+        import anthropic
+        assert anthropic.RateLimitError in _RATE_LIMIT_ERRORS
+
+    def test_rate_limit_tuple_contains_openai(self):
+        from alethic.subagents import _RATE_LIMIT_ERRORS
+        try:
+            import openai
+            assert openai.RateLimitError in _RATE_LIMIT_ERRORS
+        except ImportError:
+            pytest.skip("openai not installed")
+
+    def test_api_error_tuple_contains_anthropic(self):
+        from alethic.agent import _API_ERRORS
+        import anthropic
+        assert anthropic.APIError in _API_ERRORS
+
+    def test_api_error_tuple_contains_openai(self):
+        from alethic.agent import _API_ERRORS
+        try:
+            import openai
+            assert openai.APIError in _API_ERRORS
+        except ImportError:
+            pytest.skip("openai not installed")

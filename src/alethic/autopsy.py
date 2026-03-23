@@ -12,6 +12,7 @@ import os
 
 import anthropic
 
+from alethic.client_factory import get_client
 from alethic.models import AgentResult, EventType
 from alethic.subagents import _create_with_retry, _extract_text
 
@@ -152,7 +153,7 @@ def generate_autopsy(
         f"{context}"
     )
 
-    client = anthropic.Anthropic(api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"))
+    client = get_client(api_key=api_key)
     response = _create_with_retry(
         client,
         {

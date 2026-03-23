@@ -14,6 +14,13 @@ from typing import Any
 
 import anthropic
 
+_RATE_LIMIT_ERRORS: tuple[type, ...] = (anthropic.RateLimitError,)
+try:
+    import openai
+    _RATE_LIMIT_ERRORS = (anthropic.RateLimitError, openai.RateLimitError)
+except ImportError:
+    pass
+
 from alethic.exceptions import ContextExhaustedError, TruncatedResponseError
 from alethic.models import (
     AgentConfig,
@@ -147,7 +154,7 @@ def _create_with_retry(client, kwargs: dict):
     for attempt in range(_MAX_RETRIES + 1):
         try:
             return _do_create(client, kwargs)
-        except anthropic.RateLimitError:
+        except _RATE_LIMIT_ERRORS:
             if attempt < _MAX_RETRIES:
                 delay = 2**attempt  # 1s, 2s, 4s
                 logger.warning(

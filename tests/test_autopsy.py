@@ -76,15 +76,15 @@ class TestClassifyFailurePattern:
 
 
 class TestGenerateAutopsy:
-    @patch("alethic.autopsy.anthropic")
-    def test_generate_autopsy_returns_markdown(self, mock_anthropic):
+    @patch("alethic.autopsy.get_client")
+    def test_generate_autopsy_returns_markdown(self, mock_get_client):
         from alethic.autopsy import generate_autopsy
 
         mock_block = MagicMock()
         mock_block.text = "## Failure Analysis\n\nThe loop stalled.\n\n## Recommended Next Steps\n\n- Try thorough preset"
         mock_resp = MagicMock()
         mock_resp.content = [mock_block]
-        mock_anthropic.Anthropic.return_value.messages.create.return_value = mock_resp
+        mock_get_client.return_value.messages.create.return_value = mock_resp
 
         result = _make_result(["minor_issues", "minor_issues"], [0.7, 0.72])
         report = generate_autopsy(result, api_key="fake-key")
@@ -93,15 +93,15 @@ class TestGenerateAutopsy:
         assert "Failure Pattern" in report
         assert "stall" in report.lower() or "Stall" in report
 
-    @patch("alethic.autopsy.anthropic")
-    def test_generate_autopsy_includes_all_sections(self, mock_anthropic):
+    @patch("alethic.autopsy.get_client")
+    def test_generate_autopsy_includes_all_sections(self, mock_get_client):
         from alethic.autopsy import generate_autopsy
 
         mock_block = MagicMock()
         mock_block.text = "## Failure Analysis\n\nStalled.\n\n## Recommended Next Steps\n\n- Increase N"
         mock_resp = MagicMock()
         mock_resp.content = [mock_block]
-        mock_anthropic.Anthropic.return_value.messages.create.return_value = mock_resp
+        mock_get_client.return_value.messages.create.return_value = mock_resp
 
         result = _make_result(["major_flaw", "major_flaw"], [0.2, 0.2])
         report = generate_autopsy(result, api_key="fake-key")
