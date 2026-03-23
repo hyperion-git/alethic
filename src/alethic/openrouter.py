@@ -9,6 +9,8 @@ import copy
 import json
 import logging
 import re
+import threading
+import time
 from dataclasses import dataclass, field
 
 logger = logging.getLogger("alethic")
@@ -275,12 +277,29 @@ def _sanitize_error(error: Exception) -> str:
 class _MessagesAPI:
     """Duck-types anthropic.Anthropic().messages with .create() and .stream()."""
 
-    def __init__(self, openai_client, model: str):
+    def __init__(self, openai_client, model: str, request_interval: float = 0.0):
         self._client = openai_client
         self._model = model
+        self._request_interval = request_interval
+        self._last_request: float = 0.0
+        self._lock = threading.Lock()
+
+    def _throttle(self) -> None:
+        """Enforce minimum interval between requests (thread-safe)."""
+        if self._request_interval <= 0:
+            return
+        with self._lock:
+            now = time.time()
+            elapsed = now - self._last_request
+            if elapsed < self._request_interval:
+                wait = self._request_interval - elapsed
+                logger.debug("Throttling: waiting %.1fs before next request", wait)
+                time.sleep(wait)
+            self._last_request = time.time()
 
     def create(self, **kwargs) -> Message:
         """Translate Anthropic kwargs → OpenAI call → translate response back."""
+        self._throttle()
         kwargs["model"] = self._model
         openai_kwargs = translate_kwargs(kwargs)
         try:
@@ -306,7 +325,16 @@ class OpenRouterClient:
         client = OpenRouterClient(api_key="sk-or-...", model="nvidia/nemotron-3-nano-30b-a3b:free")
     """
 
-    def __init__(self, api_key: str, model: str, base_url: str = "https://openrouter.ai/api/v1"):
+    # Free models have aggressive rate limits; auto-throttle to avoid 429s.
+    _FREE_MODEL_INTERVAL = 4.0  # seconds between requests for :free models
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        base_url: str = "https://openrouter.ai/api/v1",
+        request_interval: float | None = None,
+    ):
         try:
             from openai import OpenAI
         except ImportError as e:
@@ -317,4 +345,14 @@ class OpenRouterClient:
 
         self._openai = OpenAI(api_key=api_key, base_url=base_url)
         self._model = model
-        self.messages = _MessagesAPI(self._openai, model)
+
+        # Auto-detect free models and apply throttling
+        if request_interval is not None:
+            interval = request_interval
+        elif ":free" in model:
+            interval = self._FREE_MODEL_INTERVAL
+            logger.info("Free model detected — throttling to 1 request per %.0fs", interval)
+        else:
+            interval = 0.0
+
+        self.messages = _MessagesAPI(self._openai, model, request_interval=interval)
