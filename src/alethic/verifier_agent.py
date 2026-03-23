@@ -7,14 +7,11 @@ CheckerAgent: solution only -> ConsensusResult (internal consistency)
 from __future__ import annotations
 
 import logging
-import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import anthropic
-
-from alethic.client_factory import get_client
 from alethic.check_prompts import CHECKER_SYSTEM, CHECKER_USER
+from alethic.client_factory import get_client
 from alethic.domain import detect_domain
 from alethic.models import (
     AgentConfig,

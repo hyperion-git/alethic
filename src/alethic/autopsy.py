@@ -8,10 +8,6 @@ the session directory (if available) and returned as a Markdown string.
 
 from __future__ import annotations
 
-import os
-
-import anthropic
-
 from alethic.client_factory import get_client
 from alethic.models import AgentResult, EventType
 from alethic.subagents import _create_with_retry, _extract_text
