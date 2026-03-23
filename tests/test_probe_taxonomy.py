@@ -143,14 +143,12 @@ class TestEmptyCritiqueHandling:
         long_text = "This solution has problems. " * 10000
         assert classify_errors(long_text) == "general"
 
-    def test_keyword_as_substring_in_longer_word(self):
-        """'unit' is a keyword for 'units'. 'community' contains 'unit'.
-        This is a known false-positive risk in substring matching."""
-        # "community" contains "unit" as a substring
+    def test_community_no_longer_false_positive(self):
+        """'unit' was removed from units keywords to avoid false positives.
+        'community' no longer triggers units."""
         result = classify_errors("The community of mathematicians agrees this is wrong")
-        # This WILL match 'units' due to substring matching of "unit" in "community"
-        assert result == "units", (
-            "Expected false-positive: 'community' contains 'unit' substring"
+        assert result == "general", (
+            "'community' should no longer match units (bare 'unit' keyword removed)"
         )
 
     def test_get_revision_addendum_empty_critique_category(self):
@@ -173,62 +171,70 @@ class TestMultiCategoryPriority:
     matching category in _TAXONOMY_KEYWORDS dict order wins (insertion order)."""
 
     def test_priority_order_is_deterministic(self):
-        """_TAXONOMY_KEYWORDS iteration order is: algebra, logic, citation,
-        false_premise, interpretation, units, counterexample, missing_case."""
+        """_TAXONOMY_KEYWORDS iteration order is severity-descending:
+        false_premise, counterexample, interpretation, missing_case,
+        logic, units, citation, algebra."""
         expected_order = [
-            "algebra", "logic", "citation", "false_premise", "interpretation",
-            "units", "counterexample", "missing_case",
+            "false_premise", "counterexample", "missing_case",
+            "logic", "algebra", "units", "interpretation", "citation",
         ]
         actual_order = list(_TAXONOMY_KEYWORDS.keys())
         assert actual_order == expected_order, (
             f"Priority order changed! Expected {expected_order}, got {actual_order}"
         )
 
-    def test_algebra_beats_logic(self):
-        """When critique has both algebra and logic keywords, algebra wins."""
-        critique = "There is a sign error AND the inference does not follow"
+    def test_false_premise_beats_algebra(self):
+        """false_premise (most severe) beats algebra (least severe)."""
+        critique = "There is a sign error but the claim is false"
+        assert classify_errors(critique) == "false_premise"
+
+    def test_false_premise_beats_logic(self):
+        """false_premise beats logic."""
+        critique = "The inference does not follow because the claim is false"
+        assert classify_errors(critique) == "false_premise"
+
+    def test_counterexample_beats_logic(self):
+        """counterexample beats logic."""
+        critique = "A counterexample was found and the logic does not follow"
+        assert classify_errors(critique) == "counterexample"
+
+    def test_algebra_beats_interpretation(self):
+        """algebra (hard error) beats interpretation (guidance)."""
+        critique = "The solution misinterprets the problem and has a sign error"
         assert classify_errors(critique) == "algebra"
 
-    def test_algebra_beats_units(self):
-        """Algebra has higher priority than units."""
-        critique = "The dimensional analysis shows a sign error in the calculation"
-        assert classify_errors(critique) == "algebra"
+    def test_missing_case_beats_algebra(self):
+        """missing_case beats algebra."""
+        critique = "There is a sign error and a missing case for n=0"
+        assert classify_errors(critique) == "missing_case"
 
     def test_logic_beats_citation(self):
-        """Logic has higher priority than citation."""
+        """Logic has higher severity than citation."""
         critique = "The conclusion does not follow from the cited theorem"
-        # "does not follow" -> logic; "cite" -> citation; logic wins
         assert classify_errors(critique) == "logic"
 
-    def test_logic_beats_missing_case(self):
-        """Logic has higher priority than missing_case."""
-        critique = "The reasoning does not follow and is missing a case for n=0"
+    def test_logic_beats_algebra(self):
+        """Logic beats algebra in severity order."""
+        critique = "There is a sign error and the inference does not follow"
         assert classify_errors(critique) == "logic"
 
-    def test_citation_beats_interpretation(self):
-        """Citation has higher priority than interpretation."""
-        critique = "The solution cites a vague result and misinterprets the problem"
-        # "cite" -> citation (3rd); "misinterpret" -> interpretation (4th)
-        assert classify_errors(critique) == "citation"
-
-    def test_interpretation_beats_units(self):
-        """Interpretation has higher priority than units."""
-        critique = "The solution misinterprets the dimensional requirements"
-        # "misinterpret" -> interpretation; "dimensional" -> units
-        assert classify_errors(critique) == "interpretation"
-
-    def test_units_beats_missing_case(self):
-        """Units has higher priority than missing_case."""
-        critique = "The unit conversion is wrong and the edge case is not handled"
-        assert classify_errors(critique) == "units"
-
-    def test_all_categories_present_algebra_wins(self):
-        """When all categories are present, algebra (highest priority) wins."""
-        critique = (
-            "sign error, does not follow, no citation, misinterprets the problem, "
-            "dimensional issue, missing case for n=0"
-        )
+    def test_algebra_beats_units(self):
+        """Algebra beats units (both mean wrong, but algebra is checked first)."""
+        critique = "There is a sign error and a dimensional mismatch"
         assert classify_errors(critique) == "algebra"
+
+    def test_algebra_beats_citation(self):
+        """Algebra (wrong answer) beats citation (sloppy presentation)."""
+        critique = "There is a sign error and no citation is given"
+        assert classify_errors(critique) == "algebra"
+
+    def test_all_categories_present_false_premise_wins(self):
+        """When all categories are present, false_premise (highest severity) wins."""
+        critique = (
+            "The claim is false, sign error, does not follow, no citation, "
+            "misinterprets the problem, dimensional issue, missing case for n=0"
+        )
+        assert classify_errors(critique) == "false_premise"
 
 
 # ---------------------------------------------------------------------------
@@ -328,13 +334,13 @@ class TestPhysicsErrorPatterns:
         """'dimensional mismatch' should match units."""
         assert classify_errors("The result has a dimensional mismatch") == "units"
 
-    def test_units_dont_balance_maps_to_units(self):
-        """'does not balance' is a units keyword."""
-        assert classify_errors("Energy equation does not balance dimensionally") == "units"
+    def test_dimensional_keyword_maps_to_units(self):
+        """'dimensional' is a units keyword."""
+        assert classify_errors("Energy equation has dimensional inconsistency") == "units"
 
-    def test_si_conversion_maps_to_units(self):
-        """SI unit conversion error maps to units."""
-        assert classify_errors("SI unit conversion from eV to Joules is wrong") == "units"
+    def test_si_unit_maps_to_units(self):
+        """'si unit' is a units keyword."""
+        assert classify_errors("The SI unit for energy should be Joules") == "units"
 
     # --- Patterns that fall through to general (potential gaps) ---
 
@@ -405,29 +411,25 @@ class TestPhysicsErrorPatterns:
 
     # --- Subtle substring false positives ---
 
-    def test_magnitude_maps_to_units(self):
-        """'magnitude' is a units keyword. Even in non-units context it matches."""
+    def test_magnitude_no_longer_maps_to_units(self):
+        """'magnitude' was removed from units keywords to avoid false positives."""
         result = classify_errors("The magnitude of the vector is large")
-        assert result == "units", (
-            "'magnitude' is a units keyword, matches even in non-units context"
+        assert result == "general", (
+            "'magnitude' removed from units keywords — no longer triggers"
         )
 
-    def test_scope_shadowed_by_expand(self):
-        """'scope' is an interpretation keyword, but 'expanding' contains the
-        algebra keyword 'expand'. Since algebra has higher priority, algebra wins.
-        This is a documented false-positive from substring matching."""
-        result = classify_errors("The scope of the proof needs expanding")
-        # "expand" (algebra) matches before "scope" (interpretation) due to priority
+    def test_expand_in_expanding_still_matches_algebra(self):
+        """'expand' substring in 'expanding' still triggers algebra."""
+        result = classify_errors("The proof needs expanding on this point")
         assert result == "algebra", (
-            "'expand' substring in 'expanding' triggers algebra before 'scope' triggers interpretation"
+            "'expand' substring in 'expanding' triggers algebra"
         )
 
-    def test_conversion_maps_to_units(self):
-        """'conversion' is a units keyword."""
+    def test_conversion_no_longer_maps_to_units(self):
+        """'conversion' was removed from units keywords to avoid false positives."""
         result = classify_errors("The Fourier conversion step is wrong")
-        # 'conversion' in units keyword list; matches 'units'
-        assert result == "units", (
-            "'conversion' is a units keyword — matches even for Fourier context"
+        assert result == "general", (
+            "'conversion' removed from units keywords — no longer triggers"
         )
 
 

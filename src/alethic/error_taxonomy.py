@@ -11,37 +11,16 @@ import re
 
 from alethic.models import OracleType
 
-# Keyword -> category mapping. Checked in priority order; first match wins.
-# Keys are category names; values are lists of lowercase substrings to search for.
+# Keyword -> category mapping. Checked in SEVERITY ORDER; first match wins.
+# Most-severe categories first so that co-occurring keywords resolve to the
+# most dangerous error (e.g. "false premise" + "sign error" → false_premise,
+# not algebra). Keys are category names; values are lowercase substrings.
 _TAXONOMY_KEYWORDS: dict[str, list[str]] = {
-    "algebra": [
-        "sign error", "wrong sign", "arithmetic", "calculation error",
-        "simplif", "expand", "factor", "distribut", "algebraic error",
-        "incorrect step", "wrong value", "computation error",
-    ],
-    "logic": [
-        "does not follow", "non sequitur", "circular", "circular argument",
-        "implication", "gap in", "logical gap", "invalid inference",
-        "unjustified", "without justification", "not proven", "assumption not established",
-    ],
-    "citation": [
-        "citation", "cite", "well known", "standard result", "it can be shown",
-        "it is known", "no source", "no reference", "no proof given", "vague appeal",
-        "theorem name", "by a known", "appeal to",
-    ],
     "false_premise": [
         "false premise", "false claim", "claim is false", "statement is false",
         "does not hold", "no valid solution", "no solution exists",
         "unsolvable", "cannot be proved", "impossible to prove",
         "contradicts known", "violates known",
-    ],
-    "interpretation": [
-        "misinterpret", "misread", "premise", "wrong problem", "reinterpret",
-        "different question", "weaker problem", "specification", "scope",
-    ],
-    "units": [
-        "unit", "dimension", "dimensional", "si unit", "conversion",
-        "magnitude", "does not balance", "inconsistent units",
     ],
     "counterexample": [
         "counterexample", "flaw found", "breaker found",
@@ -51,6 +30,29 @@ _TAXONOMY_KEYWORDS: dict[str, list[str]] = {
         "missing case", "edge case", "special case",
         "boundary case", "boundary condition", "not handled", "case analysis",
         "degenerate", "not considered", "overlooked",
+    ],
+    "logic": [
+        "does not follow", "non sequitur", "circular", "circular argument",
+        "implication", "gap in", "logical gap", "invalid inference",
+        "unjustified", "without justification", "not proven", "assumption not established",
+    ],
+    "algebra": [
+        "sign error", "wrong sign", "arithmetic", "calculation error",
+        "simplif", "expand", "factor", "distribut", "algebraic error",
+        "incorrect step", "wrong value", "computation error",
+    ],
+    "units": [
+        "dimension", "dimensional", "si unit", "inconsistent units",
+        "dimensionless", "dimensional mismatch",
+    ],
+    "interpretation": [
+        "misinterpret", "misread", "wrong problem", "reinterpret",
+        "different question", "weaker problem", "specification gaming",
+    ],
+    "citation": [
+        "citation", "cite", "well known", "standard result", "it can be shown",
+        "it is known", "no source", "no reference", "no proof given", "vague appeal",
+        "theorem name", "by a known", "appeal to",
     ],
 }
 
