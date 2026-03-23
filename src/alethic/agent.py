@@ -38,7 +38,7 @@ from alethic.atoms import (
     parse_atoms,
 )
 from alethic.breaker import BreakerResult, run_breaker
-from alethic.error_taxonomy import classify_errors, get_revision_addendum
+from alethic.error_taxonomy import classify_errors, classify_inconsistency, get_revision_addendum
 from alethic.exceptions import ContextExhaustedError, TruncatedResponseError
 from alethic.models import (
     MODEL_CONTEXT_LIMITS,
@@ -880,6 +880,7 @@ class MathAgent:
 
                 # Record all in log (use original generation-order index)
                 for _sol, ver, _gen_t, _ver_t, orig_idx in verified:
+                    _inc_result = classify_inconsistency(ver.critique)
                     log.emit(
                         EventType.VERIFY,
                         iteration,
@@ -887,7 +888,8 @@ class MathAgent:
                         verdict=ver.verdict.value,
                         confidence=ver.confidence,
                         num_issues=len(ver.issues),
-                        error_category=classify_errors(ver.critique),
+                        error_category=_inc_result.primary,
+                        error_level=_inc_result.level,
                     )
 
                 # Best candidate is first (sorted by confidence desc)

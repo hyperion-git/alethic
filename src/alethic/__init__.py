@@ -31,7 +31,7 @@ Usage:
 from alethic.agent import MathAgent, rank_candidates
 from alethic.autopsy import generate_autopsy
 from alethic.calibration import calibrate
-from alethic.error_taxonomy import classify_errors
+from alethic.error_taxonomy import classify_errors, classify_inconsistency, InconsistencyResult
 from alethic.exceptions import (
     AlethicError,
     CheckpointError,
@@ -72,6 +72,8 @@ __all__ = [
     "CheckerAgent",
     "CheckpointError",
     "classify_errors",
+    "classify_inconsistency",
+    "InconsistencyResult",
     "ConsensusIssue",
     "ConsensusResult",
     "ContextExhaustedError",

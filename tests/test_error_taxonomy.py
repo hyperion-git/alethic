@@ -165,3 +165,27 @@ def test_counterexample_oracle_routing():
     cat, oracle, force_adv = classify_errors_routed("A counterexample was found.")
     assert cat == "counterexample"
     assert oracle == OracleType.LAYER1_BEHAVIORAL
+
+
+def test_wrong_method_classification():
+    from alethic.error_taxonomy import classify_errors
+
+    assert classify_errors("The approach is inapplicable") == "wrong_method"
+
+
+def test_wrong_method_routed():
+    from alethic.error_taxonomy import classify_errors_routed
+    from alethic.models import OracleType
+
+    cat, oracle, force = classify_errors_routed("wrong approach to this problem")
+    assert cat == "wrong_method"
+    assert oracle == OracleType.LAYER3_LLM_ADVERSARIAL
+    assert force is True
+
+
+def test_wrong_method_addendum():
+    from alethic.error_taxonomy import get_revision_addendum
+
+    addendum = get_revision_addendum("wrong_method")
+    assert addendum  # non-empty
+    assert "approach" in addendum.lower() or "method" in addendum.lower()
