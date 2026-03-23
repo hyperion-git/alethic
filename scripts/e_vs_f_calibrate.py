@@ -224,7 +224,7 @@ def _run_problem(
     with _print_lock:
         print(f"  Starting: {pid} (archetype={archetype}, domain={domain}, iters={max_iters})")
 
-    overrides: dict = {"max_iterations": max_iters}
+    overrides: dict = {"max_iterations": max_iters, "verbose": False}
     if model is not None:
         overrides["model"] = model
     if openrouter:
@@ -652,17 +652,18 @@ def calibrate(
                 if res["traces"]:
                     _write_traces(traces_path, res["traces"])
 
-                # Progress
+                # Progress (lock to prevent interleaving with worker output)
                 wall_elapsed = time.time() - wall_start
                 avg_wall = wall_elapsed / n_completed
                 eta = avg_wall * (n_remaining - n_completed)
                 pct = (progress_num / total_all) * 100
-                print(
-                    f"  [{progress_num}/{total_all}] "
-                    f"Progress: {pct:.0f}% | "
-                    f"Wall: {_format_duration(wall_elapsed)} | "
-                    f"ETA: ~{_format_duration(eta)}"
-                )
+                with _print_lock:
+                    print(
+                        f"  [{progress_num}/{total_all}] "
+                        f"Progress: {pct:.0f}% | "
+                        f"Wall: {_format_duration(wall_elapsed)} | "
+                        f"ETA: ~{_format_duration(eta)}"
+                    )
 
     if not raw_measurements:
         print("ERROR: No measurements collected (all problems failed?)", file=sys.stderr)
