@@ -114,11 +114,13 @@ class Message:
 
 ### Stop Reason Mapping
 
-| OpenAI | Anthropic |
-|--------|-----------|
-| `"stop"` | `"end_turn"` |
-| `"length"` | `"max_tokens"` |
-| `"tool_calls"` | `"tool_use"` |
+| OpenAI | Anthropic | Notes |
+|--------|-----------|-------|
+| `"stop"` | `"end_turn"` | Normal completion |
+| `"length"` | `"max_tokens"` | Critical: triggers TruncatedResponseError (S-6) |
+| `"tool_calls"` | `"tool_use"` | Model wants to call a tool |
+| `"content_filter"` | `"end_turn"` + `content_filtered=True` flag | S-37: don't map to max_tokens; log warning, retry once |
+| unknown | `"end_turn"` | Log warning with raw value |
 
 ### Tool Schema Translation
 
@@ -149,7 +151,37 @@ Outbound (Anthropic kwargs → OpenAI kwargs):
 - `messages` with content block lists → flatten to string content where needed
 - Strip `thinking` kwargs (not supported) with log warning
 
-Inbound (round-trip): when `response.content` (block list) is appended to messages at `subagents.py:258`, the adapter must handle re-serialization on the next API call. The `.create()` method must translate assistant messages containing block objects back to OpenAI format.
+### Bidirectional Message Serialization (Critical — S-9/S-21/S-28)
+
+When `response.content` (block list) is appended to messages at `subagents.py:258`, the adapter must serialize them BACK to OpenAI format on the next `.create()` call. This is the hardest translation:
+
+**Anthropic assistant message in history:**
+```python
+{"role": "assistant", "content": [TextBlock("Let me verify..."), ToolUseBlock(id="t1", name="execute_python", input={"code": "..."})]}
+```
+
+**Must become OpenAI format:**
+```python
+{"role": "assistant", "content": "Let me verify...", "tool_calls": [{"id": "t1", "type": "function", "function": {"name": "execute_python", "arguments": "{\"code\": \"...\"}"}}]}
+```
+
+**Interleaved blocks** (S-28): If text and tool_use blocks alternate within one assistant message, OpenAI format cannot represent this in a single message. The adapter splits into sequential messages preserving causal order.
+
+**Tool result messages:**
+```python
+# Anthropic in history: {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "4"}]}
+# Must become: {"role": "tool", "tool_call_id": "t1", "content": "4"}
+```
+
+The adapter's `.create()` method pre-processes all messages before sending, translating any Anthropic-shaped content to OpenAI format.
+
+### Null Content Handling (S-3)
+
+When OpenAI returns `content=null` (tool-only response), the adapter must NOT create `TextBlock(text="None")`. Produce `response.content = [ToolUseBlock(...)]` with zero TextBlocks. The tool-use loop handles rounds with no text blocks correctly.
+
+### Malformed Tool Arguments (S-11)
+
+When `tool_calls[].function.arguments` is invalid JSON, catch `json.JSONDecodeError` and construct `ToolUseBlock(input={"code": ""})`. The sandbox returns an error message, and the tool-use loop continues.
 
 ## Exception Mapping
 
@@ -165,10 +197,10 @@ Recommended: update catch sites (3 locations) since it's simpler than wrapping e
 
 ## Extended Thinking
 
-Not supported by non-Claude models. The adapter strips `thinking` kwargs before sending, logs a warning:
-```
-WARNING: Extended thinking not supported by OpenRouter model — proceeding without.
-```
+Not supported by non-Claude models. The adapter:
+1. Strips `thinking` kwargs before sending
+2. **Resets temperature to the configured value** (S-7: Anthropic forces `temperature=1` when thinking is enabled; the adapter must undo this, restoring the original temperature from `_call_model`'s `temperature` parameter)
+3. Logs a warning: `WARNING: Extended thinking not supported by OpenRouter model — proceeding without.`
 
 The agent will function identically to `config.extended_thinking=False`.
 
@@ -228,11 +260,48 @@ The `--openrouter` flag:
 2. **Integration smoke test** (real API): 1-problem end-to-end with Nemotron nano, verify solve() completes without crash
 3. **Parser compliance** (real API): Run 5 problems, measure VERDICT/CONFIDENCE parse rate, gate on >80%
 
+## Security (S-42)
+
+API keys must never leak into logs, session files, or error messages.
+
+1. The adapter sanitizes all exceptions before re-raising: regex-replace `sk-or-v1-[a-zA-Z0-9]+` with `sk-or-v1-***REDACTED***`
+2. `_create_with_retry` error logging must not include raw request headers
+3. Session `events.jsonl` must not contain API keys (verify in tests)
+
+## Model Context Limits (S-34)
+
+`MODEL_CONTEXT_LIMITS` in `models.py` only has Claude entries. The adapter should:
+1. Add OpenRouter model entries to the dict (or query OpenRouter's model metadata API at init)
+2. Apply a 0.8x safety factor for non-Claude tokenizers in the chars/4 heuristic
+3. Map OpenRouter 400 errors containing "context length" to `ContextExhaustedError`
+
+## Parser Hardening for Non-Claude Models (S-29/S-30/S-32)
+
+These are NOT adapter changes — they're `subagents.py` improvements that make the pipeline robust to non-Claude output:
+
+1. **Confidence clamping** (S-29): After parsing, clamp to [0.0, 1.0]. If raw value is in (1.0, 100.0], divide by 100 (percentage heuristic). Log warning for any clamped value.
+2. **Verdict fuzzy matching** (S-30): Case-insensitive match with punctuation stripping. If no exact match, substring containment (`"MOSTLY_CORRECT"` contains `"CORRECT"` → map to `MINOR_ISSUES`). Conservative fallback: `MAJOR_FLAW`.
+3. **Issue tag tolerance** (S-32): Accept `[major]` (lowercase), `[MAJOR]` anywhere in line (not just prefix). For untagged issues, keyword heuristic → MAJOR if contains "error"/"wrong"/"missing", else MINOR.
+
+These improvements benefit ALL models (including Claude edge cases) and should be implemented regardless of the adapter.
+
+## Calibration Resume Safety (P7-4)
+
+The calibration script must:
+1. Store `model` field in each trace entry
+2. On `--resume`, validate that existing traces use the same model as the current `--model` flag
+3. Reject mixed-model resume unless `--force-resume` is specified
+
 ## Risks and Mitigations
 
 | Risk | Mitigation |
 |------|-----------|
 | Nemotron output quality degrades on hard problems | Default to nano model (better compliance); fall back to manual CLI |
-| OpenRouter rate limits free models | Calibration script has `--workers` concurrency control; default to 1 for free models |
+| OpenRouter rate limits free models | Default to `--workers 1` for free models; add jitter to retry delays (S-24) |
 | openai SDK version churn | Pin `openai>=1.0,<3.0`; the chat completions API is stable |
 | Tool use round-trip breaks on edge cases | Deep-copy PYTHON_TOOL before translation; test multi-round tool loops |
+| Bidirectional message serialization (S-9/S-21) | Dedicated `_serialize_messages()` method with round-trip tests |
+| API key leakage (S-42) | Sanitize exceptions; test that events.jsonl contains no key substrings |
+| Daily token limit on free models (S-44) | Detect "daily" in rate limit message; checkpoint immediately instead of retrying |
+| Content filtering on physics problems (S-37) | Map content_filter finish_reason; retry once; fall back to different model |
+| Mixed-model calibration resume (P7-4) | Store model in traces; validate on resume |
