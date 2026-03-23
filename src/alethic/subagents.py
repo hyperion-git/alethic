@@ -128,7 +128,8 @@ def _extract_text(response) -> str:
     return "\n".join(parts) if parts else "[No response generated]"
 
 
-_MAX_RETRIES = 3
+_MAX_RETRIES = 5
+_BASE_RETRY_DELAY = 5  # seconds; free-tier rate limits need longer backoff
 
 
 def _do_create(client, kwargs: dict):
@@ -156,9 +157,11 @@ def _create_with_retry(client, kwargs: dict):
             return _do_create(client, kwargs)
         except _RATE_LIMIT_ERRORS:
             if attempt < _MAX_RETRIES:
-                delay = 2**attempt  # 1s, 2s, 4s
+                # Exponential backoff with jitter; free-tier needs longer waits
+                import random
+                delay = _BASE_RETRY_DELAY * (2 ** attempt) + random.uniform(0, 2)
                 logger.warning(
-                    "Rate limited (attempt %d/%d) — retrying in %ds",
+                    "Rate limited (attempt %d/%d) — retrying in %.0fs",
                     attempt + 1,
                     _MAX_RETRIES,
                     delay,

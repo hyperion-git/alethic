@@ -781,6 +781,10 @@ def main() -> None:
             sys.exit(1)
         model = args.model or "nvidia/nemotron-3-nano-30b-a3b:free"
         set_client_factory(lambda api_key: OpenRouterClient(api_key=or_key, model=model))
+        # Free models have aggressive rate limits — force sequential execution
+        if ":free" in model and args.workers > 1:
+            print(f"Note: forcing --workers 1 for free model (rate limit protection)")
+            args.workers = 1
         print(f"Using OpenRouter: {model}")
     elif not args.api_key:
         print("ERROR: ANTHROPIC_API_KEY not set", file=sys.stderr)
