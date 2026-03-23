@@ -345,7 +345,7 @@ class TestAgentConfigPresetsUnchanged:
         assert c.max_revisions_per_cycle == 1
         assert c.confidence_threshold == 0.85
         assert c.extended_thinking is False
-        assert c.max_tokens == 16384
+        assert c.max_tokens == 32768
         assert c.best_of_n == 1
 
     def test_default_preset(self):
@@ -354,7 +354,7 @@ class TestAgentConfigPresetsUnchanged:
         assert c.max_revisions_per_cycle == 3
         assert c.confidence_threshold == 0.90
         assert c.extended_thinking is False
-        assert c.max_tokens == 16384
+        assert c.max_tokens == 32768
         assert c.best_of_n == 2
 
     def test_thorough_preset(self):
@@ -363,8 +363,8 @@ class TestAgentConfigPresetsUnchanged:
         assert c.max_revisions_per_cycle == 5
         assert c.confidence_threshold == 0.95
         assert c.extended_thinking is True
-        assert c.thinking_budget == 15000
-        assert c.max_tokens == 32768
+        assert c.thinking_budget == 30000
+        assert c.max_tokens == 65536
         assert c.best_of_n == 3
 
     def test_extreme_preset(self):
@@ -373,8 +373,8 @@ class TestAgentConfigPresetsUnchanged:
         assert c.max_revisions_per_cycle == 5
         assert c.confidence_threshold == 0.97
         assert c.extended_thinking is True
-        assert c.thinking_budget == 40000
-        assert c.max_tokens == 65536
+        assert c.thinking_budget == 60000
+        assert c.max_tokens == 128000
         assert c.best_of_n == 5
 
     def test_exactly_four_presets(self):

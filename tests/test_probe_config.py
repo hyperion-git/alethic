@@ -340,7 +340,7 @@ class TestE2CLIOverridePrecedence:
         assert cfg.max_revisions_per_cycle == 5
         assert cfg.confidence_threshold == 0.95
         assert cfg.extended_thinking is True
-        assert cfg.thinking_budget == 15000
+        assert cfg.thinking_budget == 30000
         assert cfg.best_of_n == 3
         assert cfg.stall_window == 3
         assert cfg.stall_epsilon == 0.02

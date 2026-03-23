@@ -235,8 +235,8 @@ class TestPresets:
         assert config.max_revisions_per_cycle == 5
         assert config.confidence_threshold == 0.95
         assert config.extended_thinking is True
-        assert config.thinking_budget == 15000
-        assert config.max_tokens == 32768
+        assert config.thinking_budget == 30000
+        assert config.max_tokens == 65536
         assert config.best_of_n == 3
 
     def test_preset_from_preset_with_overrides(self):
@@ -1169,8 +1169,8 @@ class TestThinkingTokenBump:
         parser = build_parser()
         args = parser.parse_args(["--preset", "thorough", "test"])
         config = _build_config(args)
-        # thorough: max_tokens=32768, thinking_budget=15000 → min=23192
-        assert config.max_tokens == 32768  # unchanged
+        # thorough: max_tokens=65536, thinking_budget=30000 → min=38192
+        assert config.max_tokens == 65536  # unchanged
 
 
 # ── Variant B A/B generation tests ───────────────────────────────────

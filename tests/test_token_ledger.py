@@ -65,8 +65,8 @@ class TestTokenLedger:
 
 class TestModelContextLimits:
     def test_known_models(self):
-        assert MODEL_CONTEXT_LIMITS["claude-opus-4-6"] == 200_000
-        assert MODEL_CONTEXT_LIMITS["claude-sonnet-4-6"] == 200_000
+        assert MODEL_CONTEXT_LIMITS["claude-opus-4-6"] == 1_000_000
+        assert MODEL_CONTEXT_LIMITS["claude-sonnet-4-6"] == 1_000_000
         assert MODEL_CONTEXT_LIMITS["claude-haiku-4-5-20251001"] == 200_000
 
     def test_default_fallback(self):

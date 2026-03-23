@@ -11,8 +11,8 @@ from typing import Any, ClassVar
 VALID_TOOL_GUIDANCE: frozenset[str] = frozenset({"sympy", "numpy", "scipy", "matplotlib"})
 
 MODEL_CONTEXT_LIMITS: dict[str, int] = {
-    "claude-opus-4-6": 200_000,
-    "claude-sonnet-4-6": 200_000,
+    "claude-opus-4-6": 1_000_000,
+    "claude-sonnet-4-6": 1_000_000,
     "claude-haiku-4-5-20251001": 200_000,
 }
 
@@ -275,7 +275,7 @@ class AgentConfig:
             "max_revisions_per_cycle": 1,
             "confidence_threshold": 0.85,
             "extended_thinking": False,
-            "max_tokens": 16384,
+            "max_tokens": 32768,
             "best_of_n": 1,
             "stall_reset": False,
             "reset_n_boost": 0,
@@ -286,7 +286,7 @@ class AgentConfig:
             "max_revisions_per_cycle": 3,
             "confidence_threshold": 0.90,
             "extended_thinking": False,
-            "max_tokens": 16384,
+            "max_tokens": 32768,
             "best_of_n": 2,
             "stall_window": 2,
             "stall_epsilon": 0.03,
@@ -300,8 +300,8 @@ class AgentConfig:
             "max_revisions_per_cycle": 5,
             "confidence_threshold": 0.95,
             "extended_thinking": True,
-            "thinking_budget": 15000,
-            "max_tokens": 32768,
+            "thinking_budget": 30000,
+            "max_tokens": 65536,
             "best_of_n": 3,
             "stall_window": 3,
             "stall_epsilon": 0.02,
@@ -320,8 +320,8 @@ class AgentConfig:
             "max_revisions_per_cycle": 5,
             "confidence_threshold": 0.97,
             "extended_thinking": True,
-            "thinking_budget": 40000,
-            "max_tokens": 65536,
+            "thinking_budget": 60000,
+            "max_tokens": 128000,
             "best_of_n": 5,
             "stall_window": 3,
             "stall_epsilon": 0.02,
