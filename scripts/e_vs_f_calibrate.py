@@ -208,6 +208,7 @@ def _run_problem(
     api_key: str,
     preset: str,
     model: str | None,
+    openrouter: bool = False,
 ) -> dict:
     """Run a single calibration problem and return results.
 
@@ -226,6 +227,10 @@ def _run_problem(
     overrides: dict = {"max_iterations": max_iters}
     if model is not None:
         overrides["model"] = model
+    if openrouter:
+        overrides["extended_thinking"] = False
+        overrides["variant_b"] = None
+        overrides["adversarial_breaker"] = False
     config = AgentConfig.from_preset(preset, **overrides)
 
     agent_cls = PhysicsAgent if domain == "physics" else MathAgent
@@ -253,7 +258,7 @@ def _run_problem(
 
     traces: list[dict] = []
     raw: dict[str, list] = defaultdict(list)
-    _extract_measurements(result, pid, archetype, domain, traces, raw)
+    _extract_measurements(result, pid, archetype, domain, traces, raw, model=config.model)
 
     if result.token_ledger is not None:
         total = result.token_ledger.input_tokens + result.token_ledger.output_tokens
@@ -291,6 +296,7 @@ def _extract_measurements(
     domain: str,
     traces: list,
     raw_measurements: dict,
+    model: str = "",
 ) -> None:
     """Extract per-iteration measurements from AgentResult events.
 
@@ -378,6 +384,7 @@ def _extract_measurements(
                     "atom_count": atom_count,
                     "approach_key": approach_key,
                     "tokens_used": tokens_so_far,
+                    "model": model,
                 }
                 traces.append(trace_line)
 
@@ -503,6 +510,8 @@ def calibrate(
     model: str | None = None,
     resume: bool = False,
     workers: int = 3,
+    openrouter: bool = False,
+    force: bool = False,
 ) -> CalibratedDistributions | None:
     """Run Phase 1 calibration.
 
@@ -564,6 +573,33 @@ def calibrate(
             existing_raw = _reconstruct_raw(traces_path)
             for k, v in existing_raw.items():
                 raw_measurements[k].extend(v)
+
+        # Model mismatch detection: compare existing trace models vs current run
+        if os.path.exists(traces_path):
+            traces_for_check: list[dict] = []
+            with open(traces_path) as _f:
+                for _line in _f:
+                    _line = _line.strip()
+                    if not _line:
+                        continue
+                    try:
+                        traces_for_check.append(json.loads(_line))
+                    except json.JSONDecodeError:
+                        continue
+            existing_models = {t.get("model") for t in traces_for_check if "model" in t}
+            if existing_models:
+                current_model = AgentConfig.from_preset(
+                    preset, **({} if model is None else {"model": model})
+                ).model
+                if current_model not in existing_models:
+                    print(
+                        f"WARNING: Existing traces use model(s) {existing_models} "
+                        f"but current run uses '{current_model}'.",
+                        file=sys.stderr,
+                    )
+                    if not force:
+                        print("Use --force to mix models (not recommended).", file=sys.stderr)
+                        sys.exit(1)
     else:
         # Fresh run: truncate existing traces
         if os.path.exists(traces_path):
@@ -598,7 +634,7 @@ def calibrate(
         with ThreadPoolExecutor(max_workers=effective_workers) as pool:
             futures = {
                 pool.submit(
-                    _run_problem, pid, data, api_key, preset, model,
+                    _run_problem, pid, data, api_key, preset, model, openrouter,
                 ): pid
                 for pid, data in remaining.items()
             }
@@ -717,9 +753,30 @@ def main() -> None:
         default=os.environ.get("ANTHROPIC_API_KEY"),
         help="Anthropic API key (default: ANTHROPIC_API_KEY env var)",
     )
+    parser.add_argument(
+        "--openrouter",
+        action="store_true",
+        help="Use OpenRouter API instead of Anthropic. Requires OPENROUTER_API_KEY env var.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force resume even with model mismatch.",
+    )
     args = parser.parse_args()
 
-    if not args.api_key:
+    if args.openrouter:
+        from alethic.client_factory import set_client_factory
+        from alethic.openrouter import OpenRouterClient
+
+        or_key = os.environ.get("OPENROUTER_API_KEY")
+        if not or_key:
+            print("ERROR: --openrouter requires OPENROUTER_API_KEY environment variable", file=sys.stderr)
+            sys.exit(1)
+        model = args.model or "nvidia/nemotron-3-nano-30b-a3b:free"
+        set_client_factory(lambda api_key: OpenRouterClient(api_key=or_key, model=model))
+        print(f"Using OpenRouter: {model}")
+    elif not args.api_key:
         print("ERROR: ANTHROPIC_API_KEY not set", file=sys.stderr)
         sys.exit(1)
 
@@ -730,6 +787,8 @@ def main() -> None:
         model=args.model,
         resume=args.resume,
         workers=args.workers,
+        openrouter=args.openrouter,
+        force=args.force,
     )
 
     if dists is not None:
