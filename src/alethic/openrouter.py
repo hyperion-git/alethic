@@ -314,6 +314,14 @@ class _MessagesAPI:
             openai_response = self._client.chat.completions.create(**openai_kwargs)
         except Exception as e:
             sanitized = _sanitize_error(e)
+            # Fail fast on auth errors — don't let the agent retry 12 iterations
+            err_str = str(e).lower()
+            if "401" in err_str or "unauthorized" in err_str or "user not found" in err_str:
+                logger.error("Authentication failed (sanitized): %s", sanitized)
+                raise SystemExit(
+                    f"OpenRouter authentication failed: {sanitized}\n"
+                    "Check your OPENROUTER_API_KEY — it may have expired."
+                ) from e
             logger.error("OpenRouter API error (sanitized): %s", sanitized)
             raise
         return translate_response(openai_response)
