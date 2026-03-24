@@ -32,19 +32,10 @@ from alethic.experiment.validate import check_validation_criteria
 # Constants
 # ---------------------------------------------------------------------------
 
-# IDs of calibration problems (Phase 1) — excluded from held-out set
-CALIBRATION_PROBLEM_IDS: set[str] = {
-    "prime-17",
-    "geometric-series",
-    "simple-pendulum-period",
-    "gauss-law-from-coulomb",
-    "sqrt2-irrational",
-    "cantor-diagonal",
-    "qho-energy-levels",
-    "lorentz-transformation",
-    "false-claim-even-odd",
-    "false-drude-lorenz-number",
-}
+# IDs of calibration problems (Phase 1) — excluded from held-out set.
+# When calibration uses all 20 problems, validation re-probes a subset
+# of the same problems (cross-validation style) rather than held-out.
+CALIBRATION_PROBLEM_IDS: set[str] = set()  # Empty = no exclusion; validate on same problems
 
 # Default paths
 DEFAULT_BENCH = "data/benchmarks/gate-v38.json"
@@ -98,6 +89,8 @@ def _run_probes(
     api_key: str,
     preset: str,
     n_probes: int,
+    openrouter: bool = False,
+    model: str | None = None,
 ) -> dict[str, dict]:
     """Run n_probes single-iteration probes for each problem.
 
@@ -115,8 +108,14 @@ def _run_probes(
         errors = 0
 
         for probe_idx in range(n_probes):
-            # max_iterations=1: single-pass probe (no revision cycle)
-            config = AgentConfig.from_preset(preset, max_iterations=1)
+            overrides: dict = {"max_iterations": 1, "verbose": False}
+            if model is not None:
+                overrides["model"] = model
+            if openrouter:
+                overrides["variant_b"] = None
+                overrides["adversarial_breaker"] = False
+                overrides["best_of_n"] = 1
+            config = AgentConfig.from_preset(preset, **overrides)
             agent_cls = PhysicsAgent if domain == "physics" else MathAgent
             agent = agent_cls(api_key=api_key, config=config)
 
@@ -165,6 +164,8 @@ def validate(
     n_probes_per_problem: int = 5,
     n_problems: int = 10,
     preset: str = "thorough",
+    openrouter: bool = False,
+    model: str | None = None,
 ) -> dict:
     """Phase 3: Validate simulation predictions against real probes.
 
@@ -201,7 +202,8 @@ def validate(
 
     # Run probes
     t0 = time.time()
-    per_problem = _run_probes(held_out, api_key, preset, n_probes_per_problem)
+    per_problem = _run_probes(held_out, api_key, preset, n_probes_per_problem,
+                              openrouter=openrouter, model=model)
     elapsed = time.time() - t0
 
     # Extract simulation predictions.
@@ -297,9 +299,31 @@ def main() -> None:
         default=os.environ.get("ANTHROPIC_API_KEY"),
         help="Anthropic API key (default: ANTHROPIC_API_KEY env var)",
     )
+    parser.add_argument(
+        "--openrouter",
+        action="store_true",
+        help="Use OpenRouter API instead of Anthropic. Requires OPENROUTER_API_KEY env var.",
+    )
+    parser.add_argument(
+        "--model",
+        "-m",
+        default=None,
+        help="Override model (e.g. nvidia/nemotron-3-nano-30b-a3b:free)",
+    )
     args = parser.parse_args()
 
-    if not args.api_key:
+    if args.openrouter:
+        from alethic.client_factory import set_client_factory
+        from alethic.openrouter import OpenRouterClient
+
+        or_key = os.environ.get("OPENROUTER_API_KEY")
+        if not or_key:
+            print("ERROR: --openrouter requires OPENROUTER_API_KEY environment variable", file=sys.stderr)
+            sys.exit(1)
+        model = args.model or "nvidia/nemotron-3-nano-30b-a3b:free"
+        set_client_factory(lambda api_key: OpenRouterClient(api_key=or_key, model=model))
+        print(f"Using OpenRouter: {model}")
+    elif not args.api_key:
         print("ERROR: ANTHROPIC_API_KEY not set", file=sys.stderr)
         sys.exit(1)
 
@@ -318,6 +342,8 @@ def main() -> None:
         n_probes_per_problem=args.n_probes,
         n_problems=args.n_problems,
         preset=args.preset,
+        openrouter=args.openrouter,
+        model=args.model,
     )
 
     crit = report["criteria"]
