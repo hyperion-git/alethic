@@ -40,6 +40,8 @@ from alethic.eval.harness import load_benchmark
 from alethic.experiment.distributions import (
     ARCHETYPES,
     ERROR_CATS,
+    ITER_BUCKETS,
+    VERDICTS,
     CalibratedDistributions,
     check_quality_gate,
     classify_approach,
