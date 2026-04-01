@@ -243,22 +243,27 @@ def translate_kwargs(anthropic_kwargs: dict) -> dict:
     if tools:
         kw["tools"] = translate_tools(tools)
 
-    # Translate Anthropic extended thinking → Nemotron reasoning mode.
-    # Nemotron Super/Nano support native reasoning via enable_thinking + reasoning_budget.
-    # Claude's thinking.budget_tokens maps to Nemotron's reasoning_budget.
-    # Temperature=1.0 is CORRECT for Nemotron reasoning (required, same as Claude).
+    # Model-aware thinking translation.
+    # Nemotron models support native reasoning via chat_template_kwargs.
+    # Other models (Qwen, etc.) don't — just strip the thinking param.
+    model = kw.get("model", "")
+    is_nemotron = "nemotron" in model.lower()
+
     if "thinking" in kw:
         thinking = kw.pop("thinking")
-        budget = thinking.get("budget_tokens", 10000) if isinstance(thinking, dict) else 10000
-        extra_body = kw.get("extra_body", {})
-        extra_body.setdefault("chat_template_kwargs", {})["enable_thinking"] = True
-        extra_body["chat_template_kwargs"]["force_nonempty_content"] = True
-        extra_body["reasoning_budget"] = budget
-        kw["extra_body"] = extra_body
-        # Keep temperature=1.0 — both Claude and Nemotron require it for reasoning
-        logger.info("Mapped Anthropic thinking (budget=%d) → Nemotron reasoning mode", budget)
-    else:
-        # No thinking requested — still set force_nonempty_content to avoid null responses
+        if is_nemotron:
+            budget = thinking.get("budget_tokens", 10000) if isinstance(thinking, dict) else 10000
+            extra_body = kw.get("extra_body", {})
+            extra_body.setdefault("chat_template_kwargs", {})["enable_thinking"] = True
+            extra_body["chat_template_kwargs"]["force_nonempty_content"] = True
+            extra_body["reasoning_budget"] = budget
+            kw["extra_body"] = extra_body
+            logger.info("Mapped Anthropic thinking (budget=%d) → Nemotron reasoning mode", budget)
+        else:
+            # Non-Nemotron model — strip thinking param, let model use default behavior
+            logger.info("Stripped thinking param for model %s (not Nemotron)", model)
+    elif is_nemotron:
+        # No thinking requested but Nemotron — still set force_nonempty_content
         extra_body = kw.get("extra_body", {})
         extra_body.setdefault("chat_template_kwargs", {})["force_nonempty_content"] = True
         kw["extra_body"] = extra_body

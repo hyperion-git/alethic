@@ -441,11 +441,16 @@ def _extract_measurements(
 # ---------------------------------------------------------------------------
 
 
-def _fit_distributions(raw: dict) -> CalibratedDistributions:
-    """Fit parametric distributions from raw measurements.
+def _fit_distributions(
+    raw: dict, traces: list[dict] | None = None,
+) -> CalibratedDistributions:
+    """Fit parametric distributions from raw measurements and trace data.
 
     Starts from ``CalibratedDistributions.default()`` (safe prior) and
     overrides individual parameters when we have sufficient real data.
+
+    ``traces`` is a list of per-candidate trace dicts (no summary lines)
+    used to fit verdict_dist and error_cat_dist by archetype/bucket.
     """
     dists = CalibratedDistributions.default()
 
@@ -515,6 +520,50 @@ def _fit_distributions(raw: dict) -> CalibratedDistributions:
     total_tokens = sum(raw.get("total_tokens", [0]))
     if total_calls > 0 and total_tokens > 0:
         dists.mean_tokens_per_call = total_tokens / total_calls
+
+    # --- Verdict distributions per (archetype, bucket) ---
+    # Group trace lines by archetype × bucket and normalize verdict counts.
+    # Uses Laplace smoothing (alpha=0.5) to avoid zero probabilities.
+    if traces:
+        from collections import Counter
+
+        _VERDICT_ALIAS = {"unsolved": "major_flaw"}  # Map agent-level verdict to per-candidate
+        _MIN_SAMPLES = 3  # Require at least 3 traces to override default
+
+        for arch in ARCHETYPES:
+            for bucket in ITER_BUCKETS:
+                counts: Counter[str] = Counter()
+                for t in traces:
+                    if t.get("archetype") != arch or t.get("bucket") != bucket:
+                        continue
+                    v = t.get("verdict", "")
+                    v = _VERDICT_ALIAS.get(v, v)
+                    if v in VERDICTS:
+                        counts[v] += 1
+                total = sum(counts.values())
+                if total >= _MIN_SAMPLES:
+                    alpha = 0.5
+                    denom = total + alpha * len(VERDICTS)
+                    dists.verdict_dist[arch][bucket] = {
+                        v: (counts[v] + alpha) / denom for v in VERDICTS
+                    }
+
+        # --- Error category distributions per archetype ---
+        for arch in ARCHETYPES:
+            counts_ec: Counter[str] = Counter()
+            for t in traces:
+                if t.get("archetype") != arch:
+                    continue
+                cat = t.get("error_category", "general")
+                if cat in ERROR_CATS:
+                    counts_ec[cat] += 1
+            total_ec = sum(counts_ec.values())
+            if total_ec >= _MIN_SAMPLES:
+                alpha = 0.5
+                denom = total_ec + alpha * len(ERROR_CATS)
+                dists.error_cat_dist[arch] = {
+                    c: (counts_ec[c] + alpha) / denom for c in ERROR_CATS
+                }
 
     return dists
 
@@ -690,9 +739,26 @@ def calibrate(
         print("ERROR: No measurements collected (all problems failed?)", file=sys.stderr)
         return None
 
-    # Fit distributions from pooled raw measurements
-    print(f"\nFitting distributions from {len(raw_measurements.get('confidences', []))} verify events...")
-    dists = _fit_distributions(dict(raw_measurements))
+    # Read all per-candidate traces from file for distribution fitting.
+    # Summary lines (with best_candidate key) are excluded.
+    all_traces: list[dict] = []
+    if os.path.exists(traces_path):
+        with open(traces_path) as tf:
+            for tl in tf:
+                tl = tl.strip()
+                if not tl:
+                    continue
+                try:
+                    obj = json.loads(tl)
+                    if "best_candidate" not in obj:
+                        all_traces.append(obj)
+                except json.JSONDecodeError:
+                    continue
+
+    # Fit distributions from pooled raw measurements + per-trace data
+    n_verify = len(raw_measurements.get("confidences", []))
+    print(f"\nFitting distributions from {n_verify} verify events, {len(all_traces)} trace lines...")
+    dists = _fit_distributions(dict(raw_measurements), traces=all_traces)
 
     # Quality gate: CV < 0.5 on key metrics
     gate_input = {

@@ -208,7 +208,7 @@ class TestTranslateKwargs:
 
     def test_thinking_mapped_to_nemotron_reasoning(self):
         """Anthropic thinking → Nemotron enable_thinking + reasoning_budget."""
-        kw = {"model": "test", "messages": [], "thinking": {"type": "enabled", "budget_tokens": 15000}, "temperature": 1}
+        kw = {"model": "nvidia/nemotron-3-nano-30b-a3b:free", "messages": [], "thinking": {"type": "enabled", "budget_tokens": 15000}, "temperature": 1}
         result = translate_kwargs(kw)
         assert "thinking" not in result
         assert result["temperature"] == 1  # Keep 1.0 — required for Nemotron reasoning
@@ -216,12 +216,25 @@ class TestTranslateKwargs:
         assert result["extra_body"]["chat_template_kwargs"]["enable_thinking"] is True
         assert result["extra_body"]["chat_template_kwargs"]["force_nonempty_content"] is True
 
-    def test_no_thinking_still_forces_nonempty(self):
-        """force_nonempty_content set even without thinking mode."""
-        kw = {"model": "test", "messages": [], "temperature": 0.5}
+    def test_thinking_stripped_for_non_nemotron(self):
+        """Non-Nemotron models: thinking param is stripped, no Nemotron-specific extras."""
+        kw = {"model": "qwen/qwen3.6-plus-preview:free", "messages": [], "thinking": {"type": "enabled", "budget_tokens": 15000}, "temperature": 1}
+        result = translate_kwargs(kw)
+        assert "thinking" not in result
+        assert "extra_body" not in result or "reasoning_budget" not in result.get("extra_body", {})
+
+    def test_no_thinking_nemotron_still_forces_nonempty(self):
+        """force_nonempty_content set for Nemotron even without thinking mode."""
+        kw = {"model": "nvidia/nemotron-3-nano-30b-a3b:free", "messages": [], "temperature": 0.5}
         result = translate_kwargs(kw)
         assert result["extra_body"]["chat_template_kwargs"]["force_nonempty_content"] is True
         assert "reasoning_budget" not in result
+
+    def test_no_thinking_non_nemotron_no_extras(self):
+        """Non-Nemotron models without thinking: no extra_body added."""
+        kw = {"model": "qwen/qwen3.6-plus-preview:free", "messages": [], "temperature": 0.5}
+        result = translate_kwargs(kw)
+        assert "extra_body" not in result
 
     def test_tools_translated(self):
         kw = {"model": "test", "messages": [], "tools": [{"name": "t", "input_schema": {}}]}

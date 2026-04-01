@@ -174,22 +174,25 @@ def generate_report(
                 "> **WARNING:** Tier 1 and Tier 3 disagree on winner. Conclusion is parameter-sensitive.\n"
             )
 
-    # Decision recommendation
+    # Decision recommendation — use P(F better by >1pp) as the decision threshold.
+    # P(F > E + 1pp) > 0.95 → recommend F (strong evidence F is meaningfully better).
+    # P(F > E + 1pp) < 0.05 → recommend E (strong evidence F is NOT meaningfully better).
+    # Otherwise → indecisive.
     lines.append("## Decision Recommendation\n")
-    if bay["p_f_better_3pp"] > 0.95:
+    if bay["p_f_better_1pp"] > 0.95:
         lines.append("**Recommendation: Implement Model F (PUCT + progressive widening)**")
         lines.append(
-            f"P(F better by >3pp) = {bay['p_f_better_3pp']:.4f} exceeds 0.95 threshold."
+            f"P(F better by >1pp) = {bay['p_f_better_1pp']:.4f} exceeds 0.95 threshold."
         )
-    elif 1 - bay["p_f_better_3pp"] > 0.95:
+    elif bay["p_f_better_1pp"] < 0.05:
         lines.append("**Recommendation: Keep Model E (atom-guided verification)**")
         lines.append(
-            f"P(E better) = {1 - bay['p_f_better_3pp']:.4f} exceeds 0.95 threshold."
+            f"P(F better by >1pp) = {bay['p_f_better_1pp']:.4f} — F unlikely to be meaningfully better."
         )
     else:
         lines.append("**Recommendation: Indecisive — consult per-archetype breakdown**")
         lines.append(
-            "Neither model achieves 0.95 posterior probability of >3pp advantage."
+            f"P(F better by >1pp) = {bay['p_f_better_1pp']:.4f} — insufficient evidence for either model."
         )
     lines.append("")
 
