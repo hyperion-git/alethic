@@ -9,7 +9,7 @@ echo "=== Step Flash: Calibrate → Simulate → Breadth vs Depth ==="
 
 # Stage 1: Calibrate (quality gate failure is non-fatal — distributions still written)
 /home/xeal/.local/bin/micromamba run -n alethic python scripts/e_vs_f_calibrate.py \
-  -p thorough --openrouter -m "$MODEL" -w 1 -o "$OUTDIR" \
+  -p extreme --openrouter -m "$MODEL" -w 1 -o "$OUTDIR" \
   && echo "Stage 1: PASSED" || echo "Stage 1: quality gate failed (continuing)"
 
 # Stage 2: Simulate (skip if Stage 1 produced no distributions)
