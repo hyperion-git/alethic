@@ -54,42 +54,46 @@ _SENTINEL_RE = re.compile(r"^ALETHIC_L\d+_CHECK:.*$", re.MULTILINE)
 _COLLAPSE_BLANK_RE = re.compile(r"\n{3,}")
 
 # --- Pre-compiled regexes for _parse_verification and friends ---
+# Labels may be wrapped in markdown bold (**LABEL:**) by non-Claude models.
+# _B matches 0-2 asterisks before/after the label. The colon is always required
+# to avoid matching substrings (e.g. "minor_issues" contains "ISSUES").
+_B = r"\*{0,2}"  # matches 0, 1, or 2 asterisks (plain, italic, or bold)
 _ISSUES_BLOCK_RE = re.compile(
-    r"ISSUES:\s*\n(.*?)(?=\nREASON:|\nATOM CONFIDENCES:|\nSECTION CONFIDENCES:|\Z)",
+    rf"{_B}ISSUES:{_B}\s*\n(.*?)(?=\n{_B}REASON:{_B}|\n{_B}ATOM CONFIDENCES:{_B}|\n{_B}SECTION CONFIDENCES:{_B}|\Z)",
     re.DOTALL | re.IGNORECASE,
 )
 _SEVERITY_TAG_RE = re.compile(r"\[(\w+)\]\s*(.*)")
 _SECTION_CONF_BLOCK_RE = re.compile(
-    r"SECTION CONFIDENCES:\s*\n(.*?)(?=\nREASON:|\nISSUES:|\nATOM CONFIDENCES:|\nCORRECTED SOLUTION:|\nEND CORRECTED SOLUTION:|\nVERDICT:|\Z)",
+    rf"{_B}SECTION CONFIDENCES:{_B}\s*\n(.*?)(?=\n{_B}REASON:{_B}|\n{_B}ISSUES:{_B}|\n{_B}ATOM CONFIDENCES:{_B}|\n{_B}CORRECTED SOLUTION:{_B}|\n{_B}END CORRECTED SOLUTION{_B}|\n{_B}VERDICT:{_B}|\Z)",
     re.DOTALL,
 )
 _ATOM_GUARD_RE = re.compile(r"ATOM\[\d+\]")
 _SECTION_CONF_LINE_RE = re.compile(r"(.+?):\s*([\d.]+)\s*(.*)")
 _ATOM_CONF_BLOCK_RE = re.compile(
-    r"ATOM CONFIDENCES:\s*\n(.*?)(?=\nSECTION CONFIDENCES:|\nCORRECTED SOLUTION:|\Z)",
+    rf"{_B}ATOM CONFIDENCES:{_B}\s*\n(.*?)(?=\n{_B}SECTION CONFIDENCES:{_B}|\n{_B}CORRECTED SOLUTION:{_B}|\Z)",
     re.DOTALL | re.IGNORECASE,
 )
 _ATOM_CONF_LINE_RE = re.compile(r"^ATOM\[(\d+)\]:\s+([\d.]+)(?:\s+(.+))?$")
 _VERDICT_RE = re.compile(
-    r"VERDICT:\s*(correct|minor_issues|fixable|major_flaw|unsolved)[\s.,;]*$",
+    rf"{_B}VERDICT:{_B}\s*(correct|minor_issues|fixable|major_flaw|unsolved)[\s.,;]*$",
     re.IGNORECASE | re.MULTILINE,
 )
 # Fallback: looser match for non-Claude models that deviate from format
 _VERDICT_FUZZY_RE = re.compile(
-    r"VERDICT:\s*(.+?)$", re.IGNORECASE | re.MULTILINE
+    rf"{_B}VERDICT:{_B}\s*(.+?)$", re.IGNORECASE | re.MULTILINE
 )
-_CONFIDENCE_RE = re.compile(r"CONFIDENCE:\s*([\d.]+)", re.IGNORECASE)
+_CONFIDENCE_RE = re.compile(rf"{_B}CONFIDENCE:{_B}\s*([\d.]+)", re.IGNORECASE)
 _CRITIQUE_RE = re.compile(
-    r"CRITIQUE:\s*\n(.*?)(?=\nREASON:|\nISSUES:|\nSECTION CONFIDENCES:|\Z)",
+    rf"{_B}CRITIQUE:{_B}\s*\n(.*?)(?=\n{_B}REASON:{_B}|\n{_B}ISSUES:{_B}|\n{_B}SECTION CONFIDENCES:{_B}|\Z)",
     re.DOTALL | re.IGNORECASE,
 )
-_REASON_RE = re.compile(r"REASON:\s*(.*?)(?=\nISSUES:|\Z)", re.DOTALL | re.IGNORECASE)
+_REASON_RE = re.compile(rf"{_B}REASON:{_B}\s*(.*?)(?=\n{_B}ISSUES:{_B}|\Z)", re.DOTALL | re.IGNORECASE)
 _CORRECTED_RE = re.compile(
-    r"CORRECTED SOLUTION:\s*\n(.*?)(?:\nEND CORRECTED SOLUTION|\Z)",
+    rf"{_B}CORRECTED SOLUTION:{_B}\s*\n(.*?)(?:\n{_B}END CORRECTED SOLUTION{_B}|\Z)",
     re.DOTALL | re.IGNORECASE,
 )
-_CHANGES_RE = re.compile(r"CHANGES MADE:\s*\n(.*?)(?=\nREVISED SOLUTION:|\Z)", re.DOTALL)
-_REVISED_RE = re.compile(r"REVISED SOLUTION:\s*\n(.*)", re.DOTALL)
+_CHANGES_RE = re.compile(rf"{_B}CHANGES MADE:{_B}\s*\n(.*?)(?=\n{_B}REVISED SOLUTION:{_B}|\Z)", re.DOTALL)
+_REVISED_RE = re.compile(rf"{_B}REVISED SOLUTION:{_B}\s*\n(.*)", re.DOTALL)
 
 
 def _strip_sentinels(text: str) -> str:
