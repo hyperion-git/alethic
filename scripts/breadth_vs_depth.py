@@ -272,14 +272,22 @@ def main():
     print(f"  Output: {output_path}\n")
 
     t0 = time.time()
+    depth_wins = sum(r["depth_solved"] and not r.get("breadth_any_solved", False) for r in results)
+    breadth_wins = sum(not r["depth_solved"] and r.get("breadth_any_solved", False) for r in results)
+    depth_total = sum(r["depth_solved"] for r in results)
+    breadth_total = sum(r.get("breadth_any_solved", False) for r in results)
+
     for i, (prob, rep) in enumerate(work):
         pid = prob["id"]
         domain = prob.get("domain", "math")
+        obs_num = len(done_keys) + i + 1
         elapsed = time.time() - t0
         eta = (elapsed / (i + 1)) * (total - i - 1) if i > 0 else 0
+        problem_start = time.time()
 
-        print(f"[{len(done_keys) + i + 1}/{total_all}] {pid} rep={rep} "
-              f"(elapsed: {_format_dur(elapsed)}, ETA: {_format_dur(eta)})")
+        print(f"\n{'─'*60}")
+        print(f"  Problem {obs_num}/{total_all} │ {pid} (rep {rep+1}/{args.replications}) │ "
+              f"elapsed: {_format_dur(elapsed)} │ ETA: {_format_dur(eta)}")
 
         # Depth
         print(f"  depth ({depth_iters} iters)...", end=" ", flush=True)
@@ -294,6 +302,18 @@ def main():
         n_ok = b["n_solved"]
         print(f"{b['verdict']}@{b['confidence']:.2f} "
               f"({n_ok}/{breadth_runs} solved, {time.time()-t1:.0f}s)")
+
+        # Running totals
+        depth_total += d["solved"]
+        breadth_total += b.get("any_solved", b["solved"])
+        if d["solved"] and not b.get("any_solved", b["solved"]):
+            depth_wins += 1
+        elif not d["solved"] and b.get("any_solved", b["solved"]):
+            breadth_wins += 1
+        problem_dur = time.time() - problem_start
+        print(f"  ── problem time: {_format_dur(problem_dur)} │ "
+              f"running: D={depth_total}/{obs_num} B={breadth_total}/{obs_num} │ "
+              f"discordant: D-only={depth_wins} B-only={breadth_wins}")
 
         row = {
             "problem_id": pid,
