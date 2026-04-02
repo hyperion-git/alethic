@@ -60,9 +60,9 @@ def _make_agent(domain: str, api_key: str, model: str, max_iterations: int):
 
 
 def _solve_safe(agent, problem_text: str) -> dict:
-    """Run agent.solve() with error handling."""
+    """Run agent.solve() with error handling. Sessions disabled for parallel safety."""
     try:
-        result = agent.solve(problem_text)
+        result = agent.solve(problem_text, create_session=False)
         return {
             "verdict": result.verdict.value,
             "confidence": result.confidence,

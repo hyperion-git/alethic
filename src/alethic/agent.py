@@ -648,6 +648,7 @@ class MathAgent:
         problem: str,
         balanced: bool = True,
         resume_from: str | None = None,
+        create_session: bool = True,
     ) -> AgentResult:
         """Solve a mathematical problem using the Generate → Verify → Revise loop.
 
@@ -655,6 +656,8 @@ class MathAgent:
             problem: The mathematical problem statement.
             balanced: Use balanced prompting (explore counterexamples first).
             resume_from: Path to a session directory to resume from (checkpoint).
+            create_session: Create a session directory for persistence (default True).
+                Set to False for batch experiments to avoid filesystem contention.
 
         Returns:
             AgentResult with the solution (or admitted failure).
@@ -734,7 +737,7 @@ class MathAgent:
                 f"[RESUME] Resuming from iteration {start_iteration} "
                 f"(conf: {state.best_confidence:.0%})"
             )
-        else:
+        elif create_session:
             try:
                 session_dir = create_session_dir(
                     problem=problem,
