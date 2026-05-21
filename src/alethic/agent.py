@@ -69,11 +69,14 @@ from alethic.prompts import (
     GENERATOR_SYSTEM,
     SATURATION_AWARENESS_ADDENDUM,
     STRATEGY_RESET_ADDENDUM,
+    SURVEY_GENERATOR_GUIDANCE,
+    SURVEY_VERIFIER_GUIDANCE,
     TOOL_GUIDANCE,
     VERIFIER_SYSTEM,
 )
 from alethic.session import create_session_dir, load_checkpoint, write_checkpoint
 from alethic.subagents import _strip_sentinels, generate, revise, verify
+from alethic.surveyor import SurveyResult, format_survey_block, survey
 
 logger = logging.getLogger("alethic")
 
@@ -271,6 +274,18 @@ class MathAgent:
         repeatedly. Override in subclasses for domain-specific phrasing.
         """
         return SATURATION_AWARENESS_ADDENDUM
+
+    def _survey_guidance(self, role: str) -> str:
+        """Return role-specific guidance suffix for the surveyor scaffolding.
+
+        `role` is "generator" or "verifier". Override in subclasses for
+        domain-specific phrasing.
+        """
+        if role == "generator":
+            return SURVEY_GENERATOR_GUIDANCE
+        if role == "verifier":
+            return SURVEY_VERIFIER_GUIDANCE
+        return ""
 
     def _breaker_domain(self) -> str:
         """Return the domain string for the adversarial breaker. Override in subclasses."""
@@ -708,6 +723,31 @@ class MathAgent:
         # Build verifier system prompt with tool guidance
         ver_base = prompts.get("verifier_system") or VERIFIER_SYSTEM
         prompts["verifier_system"] = self._build_system_prompt("verifier", ver_base)
+
+        # Pre-flight surveyor: one-shot pass that sees ONLY the problem statement.
+        # Output is appended to both generator and verifier system prompts.
+        # Decoupling is preserved because the surveyor never sees any solution.
+        survey_result: SurveyResult = SurveyResult()
+        if self.config.enable_surveyor:
+            self._log("[SURVEY] Running pre-flight surveyor")
+            survey_result = survey(problem, self.client, self.config)
+            if not survey_result.is_empty:
+                block = format_survey_block(survey_result, role="generator")
+                prompts["generator_system"] = (
+                    prompts["generator_system"] + block + self._survey_guidance("generator")
+                )
+                prompts["verifier_system"] = (
+                    prompts["verifier_system"]
+                    + format_survey_block(survey_result, role="verifier")
+                    + self._survey_guidance("verifier")
+                )
+                self._log(
+                    f"[SURVEY] {len(survey_result.pitfalls)} pitfalls, "
+                    f"{len(survey_result.methods)} methods, "
+                    f"{len(survey_result.sanity_checks)} sanity-check candidates"
+                )
+            else:
+                self._log("[SURVEY] Empty result — no scaffolding injected")
 
         # Initialize token ledger and context tracking
         ledger = TokenLedger()

@@ -215,6 +215,7 @@ class AgentConfig:
     breaker_temperature: float = 0.8        # higher than verifier — want creative attacks
     apply_calibration: bool = False         # apply confidence calibration before accept gate
     calibration_store: str | None = None    # path to calibration JSONL store (default: ~/.alethic/calibration.jsonl)
+    enable_surveyor: bool = False           # run pre-flight pitfall surveyor once before the GVR loop
 
     def __post_init__(self) -> None:
         if self.best_of_n < 1:
@@ -314,6 +315,7 @@ class AgentConfig:
             "adversarial_breaker": True,
             "breaker_model": "claude-sonnet-4-6",
             "apply_calibration": True,
+            "enable_surveyor": True,
         },
         "extreme": {
             "max_iterations": 12,
@@ -334,6 +336,7 @@ class AgentConfig:
             "adversarial_breaker": True,
             "breaker_model": "claude-sonnet-4-6",
             "apply_calibration": True,
+            "enable_surveyor": True,
         },
     }
 

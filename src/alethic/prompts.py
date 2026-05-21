@@ -375,6 +375,29 @@ If you find evidence the claim is false, present a clear disproof:
 """
 
 # ---------------------------------------------------------------------------
+# Surveyor scaffolding guidance — role-specific suffixes appended after the
+# survey data block (produced by surveyor.format_survey_block).
+# ---------------------------------------------------------------------------
+
+SURVEY_GENERATOR_GUIDANCE = """
+When using the surveyor scaffolding above:
+- Treat KNOWN_PITFALLS as adversarial — your solution should explicitly avoid \
+or refute each one.
+- Treat CANONICAL_METHODS as a prior, not a constraint — use one of them if \
+it fits, but justify departing if you do not.
+"""
+
+SURVEY_VERIFIER_GUIDANCE = """
+When using the surveyor scaffolding above:
+- Add each SANITY_CHECK_CANDIDATE to your CHECKS PERFORMED list, marked with \
+the surveyor's suggested type. Mark outcome PASS only if you verified it; \
+N/A is acceptable if not applicable to the candidate; FAIL is a [MAJOR] \
+issue at minimum.
+- For each KNOWN_PITFALLS entry, explicitly check whether the candidate fell \
+into it. Record this as a constraint check named `pitfall:{short-name}`.
+"""
+
+# ---------------------------------------------------------------------------
 # Saturation awareness (appended to verifier extra_system when a critique
 # category has fired repeatedly across iterations). Category labels only —
 # never critique text or generator content — to preserve decoupling.
