@@ -67,6 +67,7 @@ from alethic.prompts import (
     ADVERSARIAL_VERIFIER_ADDENDUM,
     DISPROOF_STRATEGY_ADDENDUM,
     GENERATOR_SYSTEM,
+    SATURATION_AWARENESS_ADDENDUM,
     STRATEGY_RESET_ADDENDUM,
     TOOL_GUIDANCE,
     VERIFIER_SYSTEM,
@@ -106,6 +107,11 @@ class RunState:
     atom_history: list[list[AtomAnnotation]] = field(default_factory=list)
     confidence_history: list[float] = field(default_factory=list)
     breaker_falsified: bool = False
+    # Saturation tracking: (iteration_index, error_category) per iteration.
+    # Only category labels (e.g. "algebra", "interpretation") are recorded —
+    # never critique text — so this can safely cross into the verifier without
+    # breaking decoupling.
+    critique_category_history: list[tuple[int, str]] = field(default_factory=list)
 
     @property
     def best_solution_text(self) -> str | None:
@@ -194,6 +200,7 @@ class MathAgent:
             adversarial_addendum_fn=self._adversarial_addendum,
             reset_addendum_fn=self._reset_addendum,
             disproof_addendum_fn=self._disproof_addendum,
+            saturation_addendum_fn=self._saturation_addendum,
         )
         self._setup_logging()
 
@@ -256,6 +263,14 @@ class MathAgent:
         warranted. Override in subclasses for domain-specific disproof prompts.
         """
         return DISPROOF_STRATEGY_ADDENDUM
+
+    def _saturation_addendum(self) -> str:
+        """Return the saturation-awareness overlay for this domain.
+
+        Appended to verifier extra_system when a critique category has fired
+        repeatedly. Override in subclasses for domain-specific phrasing.
+        """
+        return SATURATION_AWARENESS_ADDENDUM
 
     def _breaker_domain(self) -> str:
         """Return the domain string for the adversarial breaker. Override in subclasses."""
@@ -921,6 +936,7 @@ class MathAgent:
 
                 # Update EvidenceState for adaptive compute (next iter) and revision budget
                 error_cat = classify_errors(verification.critique)
+                state.critique_category_history.append((iteration, error_cat))
                 evidence_conf_history.append(state.best_confidence)
                 evidence_state = EvidenceState(
                     iteration=iteration,

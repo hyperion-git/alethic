@@ -420,6 +420,45 @@ If you find evidence the claim is false, present a clear disproof:
 """
 
 # ---------------------------------------------------------------------------
+# Saturation awareness (appended to verifier extra_system when a critique
+# category has fired repeatedly across iterations). Category labels only —
+# never critique text or generator content — to preserve decoupling.
+# ---------------------------------------------------------------------------
+
+PHYSICS_SATURATION_AWARENESS_ADDENDUM = """
+
+## Loop Saturation Awareness
+
+The orchestrator has observed the following pattern of critique categories \
+across prior iterations of this problem (category labels only — you have NOT \
+seen any prior derivations or critique text):
+
+<critique-category-history>
+{category_history}
+</critique-category-history>
+
+If a category has fired three or more times, the loop is saturating on that \
+failure mode. When evaluating the current candidate, you MUST do one of:
+
+1. **Confirm resolution.** If the candidate clearly addresses the saturated \
+   category, say so explicitly in CRITIQUE and add a constraint check named \
+   `saturation_resolution:{top_category}` with outcome PASS.
+2. **Escalate to a structural objection.** If the candidate still fails the \
+   saturated category, do NOT file another routine instance of the same \
+   category — that perpetuates the loop. Instead, raise the level of \
+   abstraction: flag a strategic mismatch, a wrong choice of derivation \
+   method, or a problem-statement reinterpretation issue. Tag the issue \
+   [CRITICAL].
+3. **Recommend termination-as-best-effort.** If neither holds and the \
+   candidate is the strongest seen, return verdict `minor_issues` with a \
+   note `saturation_termination: best available given loop saturation on \
+   {top_category}`. The orchestrator will treat this as a strategic accept.
+
+Filing yet another routine [MAJOR] in a saturated category is the failure \
+mode this section exists to prevent.
+"""
+
+# ---------------------------------------------------------------------------
 # Adversarial verifier self-correction (feature 2.7)
 # ---------------------------------------------------------------------------
 

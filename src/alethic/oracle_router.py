@@ -84,13 +84,30 @@ class OracleRouter:
         adversarial_addendum_fn: Callable[[], str | None],
         reset_addendum_fn: Callable[[], str],
         disproof_addendum_fn: Callable[[], str] | None = None,
+        saturation_addendum_fn: Callable[[], str] | None = None,
     ):
         self._config = config
         self._domain = domain
         self._adversarial_addendum_fn = adversarial_addendum_fn
         self._reset_addendum_fn = reset_addendum_fn
         self._disproof_addendum_fn = disproof_addendum_fn
+        self._saturation_addendum_fn = saturation_addendum_fn
         self._confidence_floor = config.confidence_threshold * 0.85
+
+    SATURATION_TRIGGER_COUNT = 2  # category fires >=2 times -> inject awareness
+
+    def saturation_signal(self, state) -> dict[str, int]:
+        """Counts of each critique category across all prior iterations.
+
+        Only category labels and counts cross from prior iterations into the
+        verifier — never critique text or generator content. Preserves
+        decoupling: the verifier sees how the loop is behaving, not what was
+        previously said.
+        """
+        counts: dict[str, int] = {}
+        for _, cat in getattr(state, "critique_category_history", []):
+            counts[cat] = counts.get(cat, 0) + 1
+        return counts
 
     # --- Pre-iteration bundle ---
 
@@ -168,9 +185,12 @@ class OracleRouter:
         )
 
     def build_verifier_extra_system(self, state) -> str | None:
-        """Build extra_system for verify calls: adversarial addendum + atom focus.
+        """Build extra_system for verify calls: adversarial addendum + atom focus + saturation.
 
-        Moved from MathAgent._build_verifier_extra_system().
+        Moved from MathAgent._build_verifier_extra_system(). Now also appends a
+        saturation-awareness block (category counts only — no critique text)
+        when any prior critique category has fired SATURATION_TRIGGER_COUNT
+        times or more.
         """
         if state.atom_history:
             stability = classify_atom_stability(
@@ -181,7 +201,23 @@ class OracleRouter:
             directive = build_atom_focus_directive(state.atom_history[-1], stability)
         else:
             directive = None
-        return combine(self._adversarial_addendum_fn(), directive)
+        saturation = self._build_saturation_block(state)
+        return combine(combine(self._adversarial_addendum_fn(), directive), saturation)
+
+    def _build_saturation_block(self, state) -> str | None:
+        if self._saturation_addendum_fn is None:
+            return None
+        counts = self.saturation_signal(state)
+        if not counts or max(counts.values()) < self.SATURATION_TRIGGER_COUNT:
+            return None
+        ordered = sorted(counts.items(), key=lambda kv: -kv[1])
+        history_block = "\n".join(f"- {cat}: {n} occurrence(s)" for cat, n in ordered)
+        top_category = ordered[0][0]
+        return (
+            self._saturation_addendum_fn()
+            .replace("{category_history}", history_block)
+            .replace("{top_category}", top_category)
+        )
 
     def build_reset_context(
         self, state, evidence: EvidenceState | None = None
