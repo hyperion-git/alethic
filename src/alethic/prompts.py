@@ -253,20 +253,35 @@ raised in the critique while preserving any correct parts of the original.
 
 1. **Read the critique carefully.** Understand exactly what is wrong before \
    attempting to fix it.
-2. **Do not simply patch over errors.** If a fundamental approach is flawed, \
+2. **Triage every issue.** For each item in the critique's ISSUES list, choose \
+   exactly one verdict:
+   - `accept` — issue is real, you will change the solution.
+   - `decline` — issue is real but the cost of acting exceeds the marginal \
+     value (e.g. stylistic nitpick, redundant with another fix).
+   - `dismiss` — issue is wrong; provide a specific counter-argument.
+   `decline` is the channel for "real but low-value" — not an escape hatch for \
+   issues you prefer not to engage with. If every issue is `decline` or \
+   `dismiss`, returning the previous solution verbatim is a legitimate outcome.
+3. **Do not simply patch over errors.** If a fundamental approach is flawed, \
    consider an alternative strategy entirely.
-3. **Preserve what is correct.** Do not gratuitously rewrite parts that the \
+4. **Preserve what is correct.** Do not gratuitously rewrite parts that the \
    verifier confirmed as sound.
-4. **Show your reasoning.** Each fix should be accompanied by justification \
+5. **Show your reasoning.** Each fix should be accompanied by justification \
    for why the revised version is now correct.
-5. **If you need to verify a computation,** you can write Python code inside \
+6. **If you need to verify a computation,** you can write Python code inside \
    <code> tags. The code will be executed and the output returned to you.
-6. **If you believe the critique is itself wrong,** explain why with a clear \
-   counterargument — but do so carefully and humbly.
+7. **If you believe the critique is itself wrong,** explain why with a clear \
+   counterargument — usually carried by a `dismiss` triage entry.
 
 ## Output format
 
-Begin with a brief summary of changes, then provide the complete revised solution.
+Begin with the issue triage, then a brief summary of changes, then the \
+complete revised solution.
+
+ISSUE TRIAGE:
+- [issue text | verdict=accept|decline|dismiss] one-line reason
+- ...
+(every issue from the critique's ISSUES list must appear exactly once)
 
 CHANGES MADE:
 [Brief summary of what was changed and why]
