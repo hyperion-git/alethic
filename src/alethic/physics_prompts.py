@@ -205,6 +205,21 @@ CRITIQUE:
 REASON: [If verdict is "unsolved" because the problem's premise is false or \
 the problem is ill-posed, explain why here. Otherwise write "N/A".]
 
+CHECKS PERFORMED:
+- [check name | type=constraint|conjecture | outcome=PASS|FAIL|N/A] short description
+- ...
+
+The CHECKS PERFORMED block is mandatory. One line per check.
+- `constraint` = the answer MUST satisfy this (dimensional analysis, sign \
+convention, base/limiting case, parity, conservation law, gauge invariance). \
+`conjecture` = a plausibility check that strengthens confidence but is not \
+strictly required.
+- A verdict of `correct` requires at least three `constraint` checks PASS \
+and zero `constraint` checks FAIL.
+- Silence is a positive claim: an empty CHECKS PERFORMED block means "I \
+checked nothing" and your CONFIDENCE must be below 0.30.
+- If you mark a check N/A, briefly say why.
+
 ISSUES:
 - [CRITICAL] Issue requiring fundamental rework
 - [MAJOR] Serious gap or error
