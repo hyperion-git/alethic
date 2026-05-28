@@ -216,6 +216,7 @@ class AgentConfig:
     apply_calibration: bool = False         # apply confidence calibration before accept gate
     calibration_store: str | None = None    # path to calibration JSONL store (default: ~/.alethic/calibration.jsonl)
     enable_surveyor: bool = False           # run pre-flight pitfall surveyor once before the GVR loop
+    enforce_checks_floor: bool = False      # patch #1 PR9: floor confidence at 0.30 if CHECKS PERFORMED block has <3 constraint PASS
 
     def __post_init__(self) -> None:
         if self.best_of_n < 1:
@@ -281,6 +282,7 @@ class AgentConfig:
             "stall_reset": False,
             "reset_n_boost": 0,
             "context_threshold": 0.85,
+            "enforce_checks_floor": True,
         },
         "default": {
             "max_iterations": 5,
@@ -295,6 +297,7 @@ class AgentConfig:
             "reset_n_boost": 1,
             "context_threshold": 0.8,
             "adaptive_revision_budget": True,
+            "enforce_checks_floor": True,
         },
         "thorough": {
             "max_iterations": 8,
@@ -316,6 +319,7 @@ class AgentConfig:
             "breaker_model": "claude-sonnet-4-6",
             "apply_calibration": True,
             "enable_surveyor": True,
+            "enforce_checks_floor": True,
         },
         "extreme": {
             "max_iterations": 12,
@@ -337,6 +341,7 @@ class AgentConfig:
             "breaker_model": "claude-sonnet-4-6",
             "apply_calibration": True,
             "enable_surveyor": True,
+            "enforce_checks_floor": True,
         },
     }
 
