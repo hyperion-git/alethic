@@ -78,6 +78,7 @@ class EventType(enum.Enum):
     BREAKER_FLAW_FOUND = "breaker_flaw_found"
     BREAKER_SUSPECTED = "breaker_suspected"
     BREAKER_SURVIVED = "breaker_survived"
+    REVISER_ALL_DECLINED = "reviser_all_declined"
 
 
 class OracleType(enum.Enum):
@@ -464,12 +465,16 @@ class VerifierConfig:
 
 @dataclass
 class Solution:
-    """A candidate solution produced by the Generator."""
+    """A candidate solution produced by the Generator or Reviser."""
 
     problem: str
     solution_text: str
     iteration: int
     timestamp: float = field(default_factory=time.time)
+    # Populated when the Solution comes from a Reviser; counts ISSUE TRIAGE
+    # verdicts (accept/decline/dismiss) so the orchestrator can detect the
+    # all_declined no-op pattern from patch #2 (PR #9). None for generator output.
+    triage_summary: dict[str, int] | None = None
 
     def __str__(self) -> str:
         return self.solution_text

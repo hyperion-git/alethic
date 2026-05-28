@@ -108,6 +108,16 @@ _CHECKS_ENTRY_RE = re.compile(
 )
 _CHECKS_FLOOR_CONFIDENCE = 0.30
 _CHECKS_FLOOR_MIN_CONSTRAINT_PASS = 3
+# ISSUE TRIAGE block (patch #2 from PR #9): terminates on the next section
+# heading. Order in reviser prompt: ISSUE TRIAGE -> CHANGES MADE -> REVISED SOLUTION.
+_TRIAGE_BLOCK_RE = re.compile(
+    rf"{_B}ISSUE TRIAGE:?{_B}\s*\n(.*?)(?=\n{_B}CHANGES MADE:{_B}|\n{_B}REVISED SOLUTION:{_B}|\Z)",
+    re.DOTALL | re.IGNORECASE,
+)
+# Entry verdict pattern: - [<issue text> | verdict=accept|decline|dismiss] reason
+_TRIAGE_VERDICT_RE = re.compile(
+    r"\|\s*verdict\s*=\s*(accept|decline|dismiss)\s*\]", re.IGNORECASE
+)
 
 
 def _parse_checks_performed(text: str) -> tuple[int, int, int]:
@@ -133,6 +143,24 @@ def _parse_checks_performed(text: str) -> tuple[int, int, int]:
             elif outcome == "FAIL":
                 n_fail += 1
     return (n_pass, n_fail, n_total)
+
+
+def _parse_triage_verdicts(text: str) -> dict[str, int]:
+    """Parse the reviser's ISSUE TRIAGE block (patch #2 from PR #9).
+
+    Returns counts keyed by verdict label: {"accept": N, "decline": N, "dismiss": N}.
+    Returns {} if no ISSUE TRIAGE block is present. The caller can detect the
+    all-declined pattern as: counts.get("accept", 0) == 0 and sum(counts.values()) > 0.
+    """
+    block_match = _TRIAGE_BLOCK_RE.search(text)
+    if not block_match:
+        return {}
+    block = block_match.group(1)
+    counts: dict[str, int] = {}
+    for m in _TRIAGE_VERDICT_RE.finditer(block):
+        verdict = m.group(1).lower()
+        counts[verdict] = counts.get(verdict, 0) + 1
+    return counts
 
 
 def _apply_checks_floor(result: VerificationResult, text: str) -> VerificationResult:
@@ -816,10 +844,17 @@ def revise(
     )
 
     revision = _parse_revision(text, revision_number, verification.critique)
+    triage_counts = _parse_triage_verdicts(text)
+    if triage_counts and triage_counts.get("accept", 0) == 0 and sum(triage_counts.values()) > 0:
+        logger.info(
+            "Reviser: all_declined revision (verdicts=%s) — solution returned likely unchanged",
+            triage_counts,
+        )
 
     # Return as a new Solution
     return Solution(
         problem=problem,
         solution_text=revision.revised_solution,
         iteration=solution.iteration,
+        triage_summary=triage_counts or None,
     )

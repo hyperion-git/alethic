@@ -108,7 +108,7 @@ class TestEventType:
         assert EventType.STALL_RESET.value == "stall_reset"
 
     def test_member_count(self):
-        assert len(EventType) == 10
+        assert len(EventType) == 11  # +REVISER_ALL_DECLINED (PR #9 patch #2 observability)
 
 
 # ── Stall Reset Config ─────────────────────────────────────────────

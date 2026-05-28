@@ -596,6 +596,18 @@ class MathAgent:
                 revision=rev_num,
             )
 
+            # Patch #2 (PR #9) observability: emit event when reviser declined/dismissed
+            # every issue. Solution is effectively unchanged; the orchestrator continues
+            # without special handling (respects decoupled-verification invariant).
+            triage = current_solution.triage_summary or {}
+            if triage and triage.get("accept", 0) == 0 and sum(triage.values()) > 0:
+                log.emit(
+                    EventType.REVISER_ALL_DECLINED,
+                    iteration,
+                    revision=rev_num,
+                    triage_summary=dict(triage),
+                )
+
             # Re-verify the revision
             self._log(f"[VERIFY] Re-verifying revision {rev_num}...")
             verification = verify(
