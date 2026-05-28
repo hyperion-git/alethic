@@ -108,7 +108,9 @@ class TestEventType:
         assert EventType.STALL_RESET.value == "stall_reset"
 
     def test_member_count(self):
-        assert len(EventType) == 10
+        # Updated for v3.8: BRIDGE_GENERATED, GAP_FILLED, GAP_FAILED,
+        # GAP_SUBDIVIDED, RE_BRIDGE_TRIGGERED added (was 10 in v3.7).
+        assert len(EventType) == 15
 
 
 # ── Stall Reset Config ─────────────────────────────────────────────

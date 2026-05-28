@@ -78,6 +78,12 @@ class EventType(enum.Enum):
     BREAKER_FLAW_FOUND = "breaker_flaw_found"
     BREAKER_SUSPECTED = "breaker_suspected"
     BREAKER_SURVIVED = "breaker_survived"
+    # v3.8 hierarchical proof search events (emitted only by search.py)
+    BRIDGE_GENERATED = "bridge_generated"
+    GAP_FILLED = "gap_filled"
+    GAP_FAILED = "gap_failed"
+    GAP_SUBDIVIDED = "gap_subdivided"
+    RE_BRIDGE_TRIGGERED = "re_bridge_triggered"
 
 
 class OracleType(enum.Enum):
