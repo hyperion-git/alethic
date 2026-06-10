@@ -105,9 +105,9 @@ class OracleRouter:
         is_reset = self.check_stall(state)
 
         if evidence is not None:
-            # NOTE: evidence.error_category is already classified (e.g., "algebra").
-            # We look up the routing table directly, NOT call classify_errors_routed()
-            # which expects raw critique text. See error_taxonomy.py:_ORACLE_ROUTING.
+            # NOTE: evidence.error_category is already classified (e.g., "algebra"),
+            # so we look up the routing table directly rather than re-classifying
+            # raw critique text. See error_taxonomy.py:_ORACLE_ROUTING.
             next_oracle, force_adversarial = _ORACLE_ROUTING.get(
                 evidence.error_category, (OracleType.LAYER3_LLM, False)
             )

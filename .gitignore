@@ -32,6 +32,12 @@ htmlcov/
 # Session directories (runtime artifacts)
 .alethic/
 
+# Experiment / eval artifacts (generated outputs, not source)
+data/calibration/
+docs/results/
+scenario/
+.planning/
+
 # Worktrees
 .worktrees/
 
