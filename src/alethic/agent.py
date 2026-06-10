@@ -48,7 +48,7 @@ from alethic.atoms import (
 )
 from alethic.breaker import BreakerResult, run_breaker
 from alethic.error_taxonomy import classify_errors, classify_inconsistency, get_revision_addendum
-from alethic.exceptions import ContextExhaustedError, TruncatedResponseError
+from alethic.exceptions import CheckpointError, ContextExhaustedError, TruncatedResponseError
 from alethic.models import (
     MODEL_CONTEXT_LIMITS,
     AgentConfig,
@@ -57,6 +57,7 @@ from alethic.models import (
     BreakerVerdict,
     EventType,
     EvidenceState,
+    SearchConfig,
     Solution,
     TokenLedger,
     Verdict,
@@ -71,7 +72,12 @@ from alethic.prompts import (
     TOOL_GUIDANCE,
     VERIFIER_SYSTEM,
 )
-from alethic.session import create_session_dir, load_checkpoint, write_checkpoint
+from alethic.session import (
+    create_session_dir,
+    load_checkpoint,
+    write_checkpoint,
+    write_tree_checkpoint,
+)
 from alethic.subagents import _strip_sentinels, generate, revise, verify
 
 logger = logging.getLogger("alethic")
@@ -662,6 +668,14 @@ class MathAgent:
         Returns:
             AgentResult with the solution (or admitted failure).
         """
+        if self.config.search_mode == "tree":
+            return self._solve_tree(
+                problem,
+                balanced=balanced,
+                resume_from=resume_from,
+                create_session=create_session,
+            )
+
         state = RunState()
         log = EventLog()
         raw_threshold = self.config.confidence_threshold
@@ -702,6 +716,11 @@ class MathAgent:
         start_iteration = 1
         session_dir: str | None = None
         if resume_from:
+            if os.path.exists(os.path.join(resume_from, "tree_state.json")):
+                raise CheckpointError(
+                    f"Session at {resume_from} is a tree-mode checkpoint "
+                    "(tree_state.json present). Resume it with search_mode='tree'."
+                )
             checkpoint = load_checkpoint(resume_from)
             saved_problem = checkpoint.get("problem", "")
             if saved_problem and problem != saved_problem:
@@ -1274,6 +1293,79 @@ class MathAgent:
             except Exception:
                 pass  # calibration write failure is non-fatal
 
+        return result
+
+    def _solve_tree(
+        self,
+        problem: str,
+        *,
+        balanced: bool,
+        resume_from: str | None,
+        create_session: bool,
+    ) -> AgentResult:
+        """v3.8 tree-search dispatch: delegate to ``search.solve()``.
+
+        Mirrors the flat path's session handling: a session directory is
+        created (or reused on resume), ``search.solve`` self-checkpoints on
+        context exhaustion, and the final status is recorded via
+        ``write_tree_checkpoint``.
+        """
+        from alethic import search as proof_search
+
+        start_time = time.time()
+        ledger = TokenLedger()
+
+        session_dir: str | None = None
+        if resume_from is not None:
+            if not os.path.exists(os.path.join(resume_from, "tree_state.json")):
+                raise CheckpointError(
+                    f"Session at {resume_from} has no tree_state.json — it is a "
+                    "flat-mode checkpoint. Resume it with search_mode='flat'."
+                )
+            session_dir = resume_from
+        elif create_session:
+            try:
+                session_dir = create_session_dir(
+                    problem=problem,
+                    domain=self._domain(),
+                    config=self.config,
+                )
+            except OSError as exc:
+                logger.warning("Could not create session directory: %s", exc)
+
+        result = proof_search.solve(
+            problem,
+            config=self.config,
+            search_config=self.config.search or SearchConfig(),
+            domain=self._domain(),
+            client=self.client,
+            ledger=ledger,
+            balanced=balanced,
+            session_dir=session_dir,
+            resume_from=resume_from,
+        )
+        result.elapsed_seconds = time.time() - start_time
+        result.session_dir = session_dir
+
+        # Record final status unless search already checkpointed (exhaustion).
+        if session_dir is not None and result.checkpoint_path is None:
+            try:
+                write_tree_checkpoint(
+                    session_dir,
+                    graph_dict=None,
+                    bridge_index=result.iterations_used,
+                    bridge_confidence=result.confidence,
+                    failed_bridges=result.failed_approaches,
+                    gap_states={},
+                    atom_confs={},
+                    best_confidence=result.confidence,
+                    best_solution_text=result.solution,
+                    token_ledger=ledger,
+                    total_revisions=result.total_revisions,
+                    status="solved" if result.solved else "unsolved",
+                )
+            except CheckpointError as exc:
+                logger.warning("Could not write final tree state: %s", exc)
         return result
 
     def _log(self, message: str) -> None:
