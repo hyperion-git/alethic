@@ -81,6 +81,30 @@ class TestTreeDispatch:
         assert session["status"] == "solved"
         assert session["mode"] == "tree"
 
+    def test_unsolved_result_finalizes_status_unsolved(self, tree_config, tmp_path):
+        agent = MathAgent(config=tree_config, api_key="test-key")
+        unsolved = _tree_result(
+            solution=None, verdict=Verdict.UNSOLVED, confidence=0.4,
+            admitted_failure=True,
+        )
+        with mock.patch("alethic.search.solve", return_value=unsolved), \
+             mock.patch("alethic.agent.create_session_dir", return_value=str(tmp_path)):
+            (tmp_path / "session.json").write_text(json.dumps({"status": "running"}))
+            agent.solve("p")
+        session = json.loads((tmp_path / "session.json").read_text())
+        assert session["status"] == "unsolved"
+
+    def test_finalization_skipped_when_search_already_checkpointed(
+        self, tree_config, tmp_path,
+    ):
+        agent = MathAgent(config=tree_config, api_key="test-key")
+        already = _tree_result(checkpoint_path=str(tmp_path / "tree_state.json"))
+        with mock.patch("alethic.search.solve", return_value=already), \
+             mock.patch("alethic.agent.create_session_dir", return_value=str(tmp_path)), \
+             mock.patch("alethic.agent.write_tree_checkpoint") as wtc:
+            agent.solve("p")
+        wtc.assert_not_called()
+
 
 class TestResumeModeGuards:
     def test_tree_resume_of_flat_checkpoint_raises(self, tree_config, tmp_path):
@@ -95,3 +119,12 @@ class TestResumeModeGuards:
         agent = MathAgent(config=AgentConfig(verbose=False), api_key="test-key")
         with pytest.raises(CheckpointError, match="tree-mode"):
             agent.solve("p", resume_from=str(tmp_path))
+
+    def test_tree_resume_forwards_session_dir_and_resume_from(self, tree_config, tmp_path):
+        (tmp_path / "session.json").write_text(json.dumps({"status": "checkpoint"}))
+        (tmp_path / "tree_state.json").write_text("{}")
+        agent = MathAgent(config=tree_config, api_key="test-key")
+        with mock.patch("alethic.search.solve", return_value=_tree_result()) as spy:
+            agent.solve("p", resume_from=str(tmp_path))
+        assert spy.call_args.kwargs["session_dir"] == str(tmp_path)
+        assert spy.call_args.kwargs["resume_from"] == str(tmp_path)

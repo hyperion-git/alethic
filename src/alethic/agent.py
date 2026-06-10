@@ -1309,6 +1309,26 @@ class MathAgent:
         created (or reused on resume), ``search.solve`` self-checkpoints on
         context exhaustion, and the final status is recorded via
         ``write_tree_checkpoint``.
+
+        Design notes:
+
+        * **Exhaustion divergence**: when *session_dir* is ``None`` (e.g.
+          ``create_session=False``), context-exhaustion errors
+          (``ContextExhaustedError``, ``TruncatedResponseError``) propagate
+          directly to the caller.  The flat path catches them and returns a
+          partial UNSOLVED result; the tree path does not.  This is deliberate:
+          library callers that opt out of session creation receive the raw
+          exception so they can handle it themselves.
+
+        * **Token-ledger restart on resume**: a fresh ``TokenLedger`` is
+          created for every call.  The checkpoint's accumulated ledger is not
+          merged, so cost accounting restarts per process rather than
+          accumulating across resumptions.
+
+        * **Flat-only features**: confidence calibration (``apply_calibration``)
+          and the autopsy-on-UNSOLVED report are not run on the tree path.
+          Both require flat-path ``RunState`` internals that have no equivalent
+          in the tree search.
         """
         from alethic import search as proof_search
 
@@ -1353,6 +1373,9 @@ class MathAgent:
                 write_tree_checkpoint(
                     session_dir,
                     graph_dict=None,
+                    # bridge_index doubles as a "bridges used" count here;
+                    # its "resume-at" meaning is moot — completed sessions
+                    # refuse resume regardless of this value.
                     bridge_index=result.iterations_used,
                     bridge_confidence=result.confidence,
                     failed_bridges=result.failed_approaches,
