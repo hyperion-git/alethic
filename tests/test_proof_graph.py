@@ -556,3 +556,10 @@ class TestSerialization:
         assert list(d["atoms"].keys()) == ["5"]
         restored = ProofGraph.from_dict(d)
         assert 5 in restored.atoms
+
+    def test_to_dict_covers_all_dataclass_fields(self):
+        """A field added to AtomNode without updating to_dict would silently
+        lose search state on checkpoint resume — fail loudly here instead."""
+        from dataclasses import fields
+
+        assert set(self._make_node().to_dict()) == {f.name for f in fields(AtomNode)}
