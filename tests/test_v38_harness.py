@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from unittest import mock
 
+import pytest
+
 from alethic.models import AgentEvent, AgentResult, EventType, Verdict
 
 
@@ -59,5 +61,22 @@ class TestRunBenchmarkSearchMode:
         config = agent_cls.call_args.kwargs["config"]
         assert config.search_mode == "flat"
         assert report["search_mode"] == "flat"
+        assert report["results"][0]["bridges_used"] is None
+        assert report["results"][0]["gaps_filled"] is None
+
+    def test_invalid_search_mode_raises(self, tmp_path):
+        from alethic.eval.harness import run_benchmark
+
+        with pytest.raises(ValueError, match="search_mode"):
+            run_benchmark(_bench_file(tmp_path), api_key="k", search_mode="treee")
+
+    def test_exception_branch_reports_null_tree_metrics(self, tmp_path):
+        from alethic.eval.harness import run_benchmark
+
+        with mock.patch("alethic.eval.harness.MathAgent") as agent_cls:
+            agent_cls.return_value.solve.side_effect = RuntimeError("boom")
+            report = run_benchmark(
+                _bench_file(tmp_path), api_key="k", search_mode="tree",
+            )
         assert report["results"][0]["bridges_used"] is None
         assert report["results"][0]["gaps_filled"] is None

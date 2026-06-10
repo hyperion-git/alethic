@@ -210,6 +210,10 @@ def run_benchmark(
         Dict with: name, preset, total, solved, solve_rate, avg_confidence,
                    avg_iterations, elapsed_seconds, results (list per problem).
     """
+    if search_mode not in ("flat", "tree"):
+        raise ValueError(
+            f"search_mode must be 'flat' or 'tree', got {search_mode!r}"
+        )
     benchmark = load_benchmark(path)
     config_overrides: dict[str, Any] = {"verbose": verbose}
     if search_mode == "tree":
@@ -258,6 +262,8 @@ def run_benchmark(
             puct_metrics = compute_puct_comparison(result.events)
             outcome["puct_divergence"] = puct_metrics
             if search_mode == "tree":
+                # NOTE: these counts are event-derived and may undercount if events
+                # were truncated (e.g. checkpoint-resume discards prior-segment events).
                 outcome["bridges_used"] = sum(
                     1 for e in result.events if e.type == EventType.BRIDGE_GENERATED
                 )
