@@ -197,6 +197,116 @@ def load_checkpoint(session_dir: str) -> dict[str, Any]:
     }
 
 
+def write_tree_checkpoint(
+    session_dir: str,
+    *,
+    graph_dict: dict[str, Any] | None,
+    bridge_index: int,
+    bridge_confidence: float,
+    failed_bridges: list[str],
+    gap_states: dict[int, dict[str, Any]],
+    atom_confs: dict[int, float],
+    best_confidence: float,
+    best_solution_text: str | None,
+    token_ledger: TokenLedger | None,
+    status: str = "checkpoint",
+) -> str:
+    """Persist v3.8 tree-search state to ``tree_state.json``.
+
+    ``graph_dict`` is the pre-serialized ``ProofGraph.to_dict()`` output (or
+    None when exhaustion hit before the first bridge was decomposed — resume
+    then restarts that bridge fresh). Also updates ``session.json`` with the
+    given status and writes ``worklog/best_solution.md``.
+
+    Returns the absolute path to ``tree_state.json``.
+
+    Raises:
+        CheckpointError: If writing fails.
+    """
+    from alethic import __version__
+
+    try:
+        session_path = Path(session_dir)
+        state = {
+            "mode": "tree",
+            "version": __version__,
+            "bridge_index": bridge_index,
+            "bridge_confidence": bridge_confidence,
+            "failed_bridges": failed_bridges,
+            "graph": graph_dict,
+            "gap_states": {str(k): v for k, v in gap_states.items()},
+            "atom_confs": {str(k): v for k, v in atom_confs.items()},
+            "best_confidence": best_confidence,
+            "token_ledger": token_ledger.to_dict() if token_ledger else {},
+            "checkpointed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        tree_state_path = session_path / "tree_state.json"
+        tree_state_path.write_text(json.dumps(state, indent=2))
+
+        session_json_path = session_path / "session.json"
+        data = json.loads(session_json_path.read_text()) if session_json_path.exists() else {}
+        data["status"] = status
+        data["mode"] = "tree"
+        data["best_confidence"] = best_confidence
+        data["checkpointed_at"] = state["checkpointed_at"]
+        session_json_path.write_text(json.dumps(data, indent=2))
+
+        if best_solution_text is not None:
+            worklog = session_path / "worklog"
+            worklog.mkdir(parents=True, exist_ok=True)
+            (worklog / "best_solution.md").write_text(best_solution_text)
+
+        logger.info(
+            "Tree checkpoint written: bridge=%d conf=%.2f status=%s",
+            bridge_index, best_confidence, status,
+        )
+        return str(tree_state_path)
+
+    except OSError as exc:
+        raise CheckpointError(f"Failed to write tree checkpoint: {exc}") from exc
+
+
+def load_tree_checkpoint(session_dir: str) -> dict[str, Any]:
+    """Load v3.8 tree-search state from a session directory.
+
+    Returns a dict with keys: bridge_index, bridge_confidence, failed_bridges,
+    graph (dict or None), gap_states (int keys), atom_confs (int keys),
+    best_confidence, best_solution_text, token_ledger.
+
+    Raises:
+        CheckpointError: ``tree_state.json`` missing (e.g. a flat-mode
+            checkpoint) or unreadable.
+    """
+    session_path = Path(session_dir)
+    tree_state_path = session_path / "tree_state.json"
+    if not tree_state_path.exists():
+        raise CheckpointError(
+            f"No tree_state.json in {session_dir} — this looks like a flat-mode "
+            "checkpoint. Resume it without search_mode='tree'."
+        )
+    try:
+        state = json.loads(tree_state_path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        raise CheckpointError(f"Unreadable tree_state.json: {exc}") from exc
+
+    best_solution_path = session_path / "worklog" / "best_solution.md"
+    best_solution_text = (
+        best_solution_path.read_text() if best_solution_path.exists() else None
+    )
+
+    return {
+        "bridge_index": state.get("bridge_index", 0),
+        "bridge_confidence": state.get("bridge_confidence", 0.0),
+        "failed_bridges": state.get("failed_bridges", []),
+        "graph": state.get("graph"),
+        "gap_states": {int(k): v for k, v in state.get("gap_states", {}).items()},
+        "atom_confs": {int(k): v for k, v in state.get("atom_confs", {}).items()},
+        "best_confidence": state.get("best_confidence", 0.0),
+        "best_solution_text": best_solution_text,
+        "token_ledger": state.get("token_ledger", {}),
+    }
+
+
 def scan_incomplete_sessions(alethic_dir: str) -> list[dict[str, Any]]:
     """Scan for incomplete sessions in a .alethic directory.
 
