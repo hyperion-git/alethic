@@ -26,6 +26,7 @@ The user's input is: $ARGUMENTS
 | agent_title | Mathematical Reasoning |
 | session_skill | alethic-solve |
 | strategy_reset_addendum | (from "Strategy Reset Addendum" section below) |
+| disproof_addendum | (from "Disproof Escalation Addendum" section below) |
 | adversarial_verifier | true for thorough/extreme presets; false otherwise — enables 5-round adversarial self-correction in all verifier Task calls |
 | adversarial_breaker | true for thorough/extreme presets; false otherwise — enables adversarial breaker probe on CORRECT verdicts |
 
@@ -52,6 +53,27 @@ Reflect on your approach — if it resembles any of the above, choose a differen
 You MUST use a categorically different proof technique.
 Start from a completely different mathematical foundation.
 Consider approaches from a different branch of mathematics entirely.
+
+## Disproof Escalation Addendum
+
+> Appended to the reset context by the orchestrator when accumulated evidence suggests the claim may be false (error category `false_premise`/`interpretation`/`counterexample`, or two consecutive UNSOLVED verdicts).
+
+## DISPROOF ESCALATION — Consider that the claim may be false
+
+Previous iterations have repeatedly failed to prove this statement. Based on accumulated evidence, there is a meaningful probability that the claim is FALSE.
+
+In addition to exploring categorically different proof techniques, you MUST also:
+
+1. **Systematically search for counterexamples**: Test small cases exhaustively (n=0,1,2,3,...). For claims about real numbers, test rationals, irrationals (sqrt(2), pi, e), negative numbers, zero, and boundary cases. Use Python/SymPy to automate the search.
+
+2. **Identify necessary conditions**: What would NEED to be true for the claim to hold? Can you show one of those necessary conditions fails?
+
+3. **Check known results**: Does this claim conflict with known theorems? Would it imply something known to be false?
+
+If you find evidence the claim is false, present a clear disproof:
+- State the counterexample or contradiction explicitly
+- Verify it computationally using Python code
+- Explain why it violates the original claim
 
 ## Examples
 

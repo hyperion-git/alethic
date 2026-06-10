@@ -194,7 +194,7 @@ The `verify` and `check` commands use `VerifierConfig` presets controlling verif
 
 | Skill file | Purpose |
 |------------|---------|
-| `skills/alethic-common/orchestrator.md` | Shared GVR loop orchestrator (~805 lines) — parameterized by domain, reads prompts from references/*.md, handles session management, dashboard, textbook pipeline, event logging, stall detection with strategy reset, and all CLI flags |
+| `skills/alethic-common/orchestrator.md` | Shared GVR loop orchestrator (~805 lines) — parameterized by domain, reads prompts from references/*.md, handles session management, dashboard, textbook pipeline, event logging, stall detection with strategy reset + disproof escalation, verdict-aware candidate selection, 9-category hierarchical error classification, and all CLI flags |
 | `skills/alethic-solve/SKILL.md` | `/alethic-solve` thin configurator — sets math domain variables, balanced approach addendum, strategy reset addendum, loads shared orchestrator |
 | `skills/alethic-derive/SKILL.md` | `/alethic-derive` thin configurator — sets physics domain variables, balanced approach addendum, strategy reset addendum, loads shared orchestrator |
 | `skills/alethic-verify/SKILL.md` | `/alethic-verify` thin configurator — sets mode=verify, requires_problem=true, loads shared verify-orchestrator |

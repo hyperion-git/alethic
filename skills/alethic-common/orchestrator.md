@@ -19,6 +19,7 @@ The following variables are defined by the thin SKILL.md that loaded this file. 
 | `{references_dir}` | Absolute path to skill's `references/` directory | (resolved at runtime) | (resolved at runtime) |
 | `{balanced_addendum}` | Domain-specific balanced approach text | (from thin SKILL.md) | (from thin SKILL.md) |
 | `{strategy_reset_addendum}` | Domain-specific strategy reset text | (from thin SKILL.md) | (from thin SKILL.md) |
+| `{disproof_addendum}` | Domain-specific disproof escalation text | (from thin SKILL.md) | (from thin SKILL.md) |
 
 **Note on filenames**: Worklog files use fixed names (`solution.md`, `best_solution.md`, `best_solution_path`) regardless of domain. Only user-facing text and sub-agent instructions use `{noun}`.
 
@@ -328,9 +329,13 @@ Before generating candidates, check whether a stall-triggered strategy reset sho
    - Set `n_this_iter = best_of_n + reset_n_boost` (override candidate count for this iteration)
    - Set `max_revisions_this_iter = 1` (cap revisions to minimize wasted budget)
    - Build `reset_context`: format the `{strategy_reset_addendum}` text, replacing `{failed_approaches}` with the last 5 entries from the `failed_approaches` list (formatted as bullet points: `- Iter {N}: {strategy} -> {verdict} ({confidence}): {top_issue}`). If fewer than 5 entries exist, use all available. If none, use `- (none recorded)`.
+   - **Disproof escalation check** — either signal fires it:
+     - Signal 1: the previous iteration's `error_category` (the selected best candidate's classification from Step 2b; `general` if this is iteration 1) is `false_premise`, `interpretation`, or `counterexample` — direct evidence of premise doubt. If the category is not in context (e.g. first iteration after `--resume`), classify the most recent `verification.md` with the Step 2-pre-b keyword classifier.
+     - Signal 2: `iteration_final_verdicts` contains 2 entries and both are `"unsolved"` — repeated failure suggests low solvability.
+     - If either signal fires: append the `{disproof_addendum}` text to `reset_context` (separated by a blank line) and set `disproof = true`. Otherwise set `disproof = false`.
    - Increment `resets_used`, set `reset_cooldown_remaining = 1`
-   - **Log event**: `{"type":"stall_reset","iteration":{N},"reason":"{reason}","n_override":{n_this_iter},"resets_used":{resets_used},"stall_counter":{iterations_since_meaningful_improvement},"timestamp":"..."}`
-   - Print: `[STALL RESET] Triggered (reason: {reason}) — N={n_this_iter}, max_revisions=1`
+   - **Log event**: `{"type":"stall_reset","iteration":{N},"reason":"{reason}","disproof":{true|false},"n_override":{n_this_iter},"resets_used":{resets_used},"stall_counter":{iterations_since_meaningful_improvement},"timestamp":"..."}`
+   - Print: `[STALL RESET] Triggered (reason: {reason}) — N={n_this_iter}, max_revisions=1` (append ` + DISPROOF` after `[STALL RESET` when `disproof` is true, i.e. `[STALL RESET + DISPROOF]`)
 
 5. **If NOT triggered**: Set `n_this_iter = best_of_n`, `max_revisions_this_iter = max_revisions`, `reset_context = null`. If `reset_cooldown_remaining > 0`, decrement it.
 
@@ -340,14 +345,16 @@ This step runs **only when NOT a stall reset** (i.e., step 2-pre did not trigger
 
 **Error category classification** (apply to the previous iteration's verifier critique text, or "general" for iteration 1):
 
-Apply keyword matching in priority order — first match wins:
-- `algebra`: sign error, wrong sign, arithmetic, calculation error, simplif, expand, factor, distribut, algebraic error, incorrect step, wrong value, computation error
-- `logic`: does not follow, non sequitur, circular, logical gap, invalid inference, unjustified, not proven, assumption not established
-- `citation`: citation, cite, well known, standard result, it can be shown, no source, no reference, vague appeal
-- `interpretation`: misinterpret, misread, premise, wrong problem, reinterpret, different question, weaker problem
-- `units`: unit, dimension, dimensional, si unit, conversion, does not balance, inconsistent units
+Apply keyword matching in priority order — first match wins. The order is hierarchical: problem-level categories (is the claim even true?) are checked before approach-level (is the method right?), which are checked before execution-level (was it carried out correctly?):
+- `false_premise`: false premise, false claim, claim is false, statement is false, does not hold, no valid solution, no solution exists, unsolvable, cannot be proved, impossible to prove, contradicts known, violates known
 - `counterexample`: counterexample, flaw found, breaker found, regime failure, falsif
-- `missing_case`: missing case, edge case, special case, boundary case, not handled, case analysis
+- `wrong_method`: wrong approach, different method, different approach, not suitable, inapplicable, should use, consider using, try instead, does not apply here, not the right
+- `missing_case`: missing case, edge case, special case, boundary case, boundary condition, not handled, case analysis, degenerate, not considered, overlooked, omitted
+- `logic`: does not follow, non sequitur, circular, logical gap, invalid inference, unjustified, not proven, assumption not established, fallacy, unsound, does not prove, fails to show
+- `algebra`: sign error, wrong sign, arithmetic, calculation error, simplif, expand, factor, distribut, algebraic error, incorrect step, wrong value, computation error, miscalculation
+- `units`: dimension, dimensional, si unit, inconsistent units, dimensionless, dimensional mismatch
+- `interpretation`: misinterpret, misread, wrong problem, reinterpret, different question, weaker problem, specification gaming
+- `citation`: citation, cite, well known, standard result, it can be shown, it is known, no source, no reference, no proof given, vague appeal
 - `general`: (fallback — no keyword matched)
 
 **Note**: If the previous iteration's solution contained `ALETHIC_L0_CHECK: FAILURE` or `ALETHIC_L1_CHECK: FAILURE`, treat the error category as `units` (physics) or `logic` (math) respectively, regardless of the critique text — these are structural failures requiring a fundamentally different approach.
@@ -356,7 +363,7 @@ Apply keyword matching in priority order — first match wins:
 
 | Error category | Action |
 |---------------|--------|
-| `logic`, `missing_case`, `counterexample`, `interpretation`, `units` | Set `n_this_iter = best_of_n` (full escalation — need diverse approaches) |
+| `logic`, `missing_case`, `counterexample`, `interpretation`, `units`, `false_premise` | Set `n_this_iter = best_of_n` (full escalation — need diverse approaches) |
 | `algebra`, `citation` | Set `n_this_iter = 1` (revise-first — fixable in place) |
 | any, if `best_confidence < confidence_threshold * 0.75` | Set `n_this_iter = best_of_n` (hard problem regardless of category) |
 | otherwise | Set `n_this_iter = 1` |
@@ -439,7 +446,7 @@ For iteration 1, always use `n_this_iter = 1` (probe pass) when `adaptive_comput
    - If that fails, Read the verification file and extract the same fields.
    - If both fail, use `verdict = "unsolved"`, `confidence = 0.0`.
    - Clamp confidence to [0.0, 1.0].
-   - **Classify error category** from the verification critique text (same keyword classifier as Step 2-adaptive, Classifier 1): apply keyword matching in priority order to the critique text → set `error_category` to the first match, or `"general"` if none.
+   - **Classify error category** from the verification critique text (same keyword classifier as Step 2-pre-b): apply keyword matching in priority order to the critique text → set `error_category` to the first match, or `"general"` if none.
 
    **Log event**: `{"type":"verify","iteration":{N},"candidate":{C},"verdict":"{verdict}","confidence":{confidence},"has_critical":{true|false},"error_category":"{error_category}","timestamp":"..."}`
 
@@ -588,17 +595,21 @@ For revision M = 1 to `max_revisions_this_iter` (which equals `max_revisions` no
    - If M == 1: solution = `worklog/iter{N}/solution.md`, verification = `worklog/iter{N}/verification.md`
    - If M > 1: solution = `worklog/iter{N}/revision_{M-1}.md`, verification = `worklog/iter{N}/verification_rev{M-1}.md`
 
-1b. **Error category classification** (keyword match — no extra API call): Read the verification file at `{verification_path}` (from step 1). Apply keyword classification to its content (case-insensitive), checking in this priority order:
-    - If text contains any of: "sign error", "wrong sign", "arithmetic", "calculation error", "simplif", "factor", "distribut", "algebraic error", "coefficient" → `algebra`
-    - If text contains any of: "does not follow", "circular", "implication", "gap in", "logical gap", "invalid inference", "unjustified" → `logic`
-    - If text contains any of: "citation", "cite", "well known", "standard result", "it can be shown", "no source", "vague appeal" → `citation`
-    - If text contains any of: "misinterpret", "misread", "premise", "reinterpret", "weaker problem", "specification" → `interpretation`
-    - If text contains any of: "unit", "dimension", "dimensional", "conversion", "does not balance" → `units`
+1b. **Error category classification** (keyword match — no extra API call): Read the verification file at `{verification_path}` (from step 1). Apply keyword classification to its content (case-insensitive), checking in this priority order (problem-level before approach-level before execution-level — same hierarchy as Step 2-pre-b):
+    - If text contains any of: "false premise", "false claim", "claim is false", "statement is false", "does not hold", "no valid solution", "no solution exists", "unsolvable", "cannot be proved", "impossible to prove", "contradicts known", "violates known" → `false_premise`
     - If text contains any of: "counterexample", "flaw found", "breaker found", "regime failure", "falsif" → `counterexample`
+    - If text contains any of: "wrong approach", "different method", "different approach", "not suitable", "inapplicable", "should use", "consider using", "try instead", "does not apply here", "not the right" → `wrong_method`
     - If text contains any of: "missing case", "edge case", "boundary case", "case analysis", "exhaustive", "not handled" → `missing_case`
+    - If text contains any of: "does not follow", "circular", "implication", "gap in", "logical gap", "invalid inference", "unjustified" → `logic`
+    - If text contains any of: "sign error", "wrong sign", "arithmetic", "calculation error", "simplif", "factor", "distribut", "algebraic error", "coefficient" → `algebra`
+    - If text contains any of: "dimension", "dimensional", "si unit", "inconsistent units", "dimensionless" → `units`
+    - If text contains any of: "misinterpret", "misread", "reinterpret", "weaker problem", "specification" → `interpretation`
+    - If text contains any of: "citation", "cite", "well known", "standard result", "it can be shown", "no source", "vague appeal" → `citation`
     - Default: `general`
 
     Set `revision_strategy` to the corresponding addendum string:
+    - `false_premise`: `"**Revision focus — questioning the premise**: Accumulated evidence suggests the problem's claim may be FALSE. Before attempting another proof, systematically search for counterexamples: test small cases exhaustively (n=0,1,2,3), and for real-valued claims try rationals, irrationals, negatives, zero, and boundary values. Automate the search with Python/SymPy. If you find a counterexample, present it clearly with computational verification."`
+    - `wrong_method`: `"**Revision focus — change of approach**: The current method appears fundamentally unsuitable for this problem. Do NOT revise within the current approach — choose a categorically different method. Consider what mathematical/physical structure the problem has (symmetry, recursion, conservation law, etc.) and pick a technique that exploits that structure directly."`
     - `algebra`: `"**Revision focus — algebraic correctness**: Re-derive each algebraic step from scratch; do not copy expressions from the previous attempt. Verify each result numerically. Check every sign, exponent, and distribution."`
     - `logic`: `"**Revision focus — logical rigor**: For every inference, write explicit justification: 'This follows because…'. Do not skip steps. If you cannot rigorously justify an inference, treat it as an open sub-problem and solve it first."`
     - `citation`: `"**Revision focus — citation accuracy**: For every theorem or known result invoked: either (a) prove it inline, or (b) cite it by its exact conventional name. Remove all 'it is well known' and 'by a standard result' phrasing."`
