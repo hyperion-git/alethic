@@ -443,7 +443,7 @@ For iteration 1, always use `n_this_iter = 1` (probe pass) when `adaptive_comput
 
    **Log event**: `{"type":"verify","iteration":{N},"candidate":{C},"verdict":"{verdict}","confidence":{confidence},"has_critical":{true|false},"error_category":"{error_category}","timestamp":"..."}`
 
-3. After all candidates are verified, **select the best candidate** — the one with the highest confidence. Copy the best candidate's files to the standard locations:
+3. After all candidates are verified, **select the best candidate** using verdict-aware ranking: rank verdicts CORRECT < MINOR_ISSUES < FIXABLE < MAJOR_FLAW < UNSOLVED (lower is better); the candidate with the best verdict tier wins, and confidence breaks ties within the same tier. A CORRECT candidate at 0.85 beats an UNSOLVED candidate at 1.00. Copy the best candidate's files to the standard locations:
    - When `best_of_n > 1`: Copy `candidate_{best_C}.md` -> `solution.md` and `verification_c{best_C}.md` -> `verification.md` in the iteration directory.
    - When `best_of_n == 1`: Files are already at `solution.md` / `verification.md`.
 
