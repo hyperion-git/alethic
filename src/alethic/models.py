@@ -167,6 +167,100 @@ class TokenLedger:
 
 
 @dataclass(frozen=True)
+class SearchConfig:
+    """v3.8 tree-search configuration.
+
+    Lives in ``models.py`` (not ``search.py``) so ``AgentConfig`` can hold a
+    ``SearchConfig`` field without a circular import; ``search.py`` re-exports
+    it for backward compatibility. Mirrors the spec preset table (§Presets,
+    lines 295-302 of 2026-04-11-v3.8-tree-search-design.md). Callers pass
+    ``SearchConfig`` to ``search.solve()``; ``AgentConfig`` continues to drive
+    the per-call knobs the underlying GVR machinery already understands
+    (model, confidence_threshold, temperature, etc.).
+
+    Attributes:
+        max_bridges: Max number of fresh full-solution generations. The
+            first bridge is bridge #0; each re-bridge increments. Hitting
+            ``max_bridges`` without completion returns UNSOLVED.
+        max_depth: Maximum subdivision depth. A gap at this depth cannot
+            be subdivided further; persistent failures terminate that
+            gap instead of recursing.
+        c_puct: PUCT exploration constant (default 1.414 ≈ √2 per the
+            spec). Higher = more exploration, lower = more exploitation.
+        technique_budget: Max number of technique attempts a single gap
+            may consume before being treated as exhausted (and skipped
+            in subsequent gap selections).
+        atom_revisions: ``max_revisions`` passed to ``gvr_microkernel``
+            for each gap-filling attempt.
+        failure_subdivision_threshold: Number of microkernel ``failed``
+            returns on the same gap that triggers auto-subdivision (in
+            addition to the verifier-detected ``too_large`` signal the
+            microkernel returns explicitly). Default K=3 per spec.
+        n_subdivide: Number of children created when a gap is subdivided.
+            Default 2 (binary subdivision).
+    """
+
+    max_bridges: int = 2
+    max_depth: int = 2
+    c_puct: float = 1.414
+    technique_budget: int = 3
+    atom_revisions: int = 2
+    failure_subdivision_threshold: int = 3
+    n_subdivide: int = 2
+
+    def __post_init__(self) -> None:
+        if self.max_bridges < 1:
+            raise ValueError(f"max_bridges must be >= 1, got {self.max_bridges}")
+        if self.max_depth < 0:
+            raise ValueError(f"max_depth must be >= 0, got {self.max_depth}")
+        if self.c_puct < 0:
+            raise ValueError(f"c_puct must be >= 0, got {self.c_puct}")
+        if self.technique_budget < 1:
+            raise ValueError(
+                f"technique_budget must be >= 1, got {self.technique_budget}"
+            )
+        if self.atom_revisions < 0:
+            raise ValueError(
+                f"atom_revisions must be >= 0, got {self.atom_revisions}"
+            )
+        if self.failure_subdivision_threshold < 1:
+            raise ValueError(
+                "failure_subdivision_threshold must be >= 1, "
+                f"got {self.failure_subdivision_threshold}"
+            )
+        if self.n_subdivide < 2:
+            raise ValueError(
+                f"n_subdivide must be >= 2 (binary or wider), got {self.n_subdivide}"
+            )
+
+    PRESETS: ClassVar[dict[str, dict[str, Any]]] = {
+        "default": {
+            "max_bridges": 2, "max_depth": 2, "c_puct": 1.414,
+            "technique_budget": 3, "atom_revisions": 2,
+        },
+        "thorough": {
+            "max_bridges": 3, "max_depth": 3, "c_puct": 1.414,
+            "technique_budget": 5, "atom_revisions": 3,
+        },
+        "extreme": {
+            "max_bridges": 5, "max_depth": 3, "c_puct": 1.414,
+            "technique_budget": 8, "atom_revisions": 5,
+        },
+    }
+
+    @classmethod
+    def from_preset(cls, name: str, **overrides: Any) -> SearchConfig:
+        """Build a ``SearchConfig`` from a named preset with optional overrides."""
+        if name not in cls.PRESETS:
+            raise ValueError(
+                f"Unknown preset '{name}'. Available: {', '.join(cls.PRESETS)}"
+            )
+        params = dict(cls.PRESETS[name])
+        params.update(overrides)
+        return cls(**params)
+
+
+@dataclass(frozen=True)
 class AgentConfig:
     """Configuration for the Alethic agent.
 
@@ -221,6 +315,8 @@ class AgentConfig:
     breaker_temperature: float = 0.8        # higher than verifier — want creative attacks
     apply_calibration: bool = False         # apply confidence calibration before accept gate
     calibration_store: str | None = None    # path to calibration JSONL store (default: ~/.alethic/calibration.jsonl)
+    search_mode: str = "flat"               # "flat" = classic GVR loop; "tree" = v3.8 proof search
+    search: SearchConfig | None = None      # tree-search knobs; None -> SearchConfig() at dispatch
 
     def __post_init__(self) -> None:
         if self.best_of_n < 1:
@@ -274,6 +370,10 @@ class AgentConfig:
                     f"variant_b contains unknown keys: {invalid_keys}. "
                     f"Valid keys: {sorted(valid_field_names)}"
                 )
+        if self.search_mode not in ("flat", "tree"):
+            raise ValueError(
+                f'search_mode must be "flat" or "tree", got {self.search_mode!r}'
+            )
 
     PRESETS: ClassVar[dict[str, dict[str, Any]]] = {
         "quick": {
