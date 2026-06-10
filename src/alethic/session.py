@@ -209,6 +209,7 @@ def write_tree_checkpoint(
     best_confidence: float,
     best_solution_text: str | None,
     token_ledger: TokenLedger | None,
+    total_revisions: int = 0,
     status: str = "checkpoint",
 ) -> str:
     """Persist v3.8 tree-search state to ``tree_state.json``.
@@ -220,6 +221,9 @@ def write_tree_checkpoint(
 
     ``gap_states`` values are opaque to this layer — produced and consumed as
     _GapState dicts by search.py.
+
+    ``total_revisions`` is the cumulative microkernel revision count so far;
+    persisted so a resumed run can continue the tally rather than restarting.
 
     Returns the absolute path to ``tree_state.json``.
 
@@ -240,6 +244,7 @@ def write_tree_checkpoint(
             "gap_states": {str(k): v for k, v in gap_states.items()},
             "atom_confs": {str(k): v for k, v in atom_confs.items()},
             "best_confidence": best_confidence,
+            "total_revisions": total_revisions,
             "token_ledger": token_ledger.to_dict() if token_ledger else {},
             "checkpointed_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -322,6 +327,7 @@ def load_tree_checkpoint(session_dir: str) -> dict[str, Any]:
         "atom_confs": {int(k): v for k, v in state.get("atom_confs", {}).items()},
         "best_confidence": state.get("best_confidence", 0.0),
         "best_solution_text": best_solution_text,
+        "total_revisions": state.get("total_revisions", 0),
         "token_ledger": state.get("token_ledger", {}),
     }
 

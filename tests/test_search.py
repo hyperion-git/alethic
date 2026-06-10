@@ -987,3 +987,75 @@ class TestResumeAndCheckpoint:
         rewritten = json.loads((tmp_path / "tree_state.json").read_text())
         assert rewritten["graph"]["atoms"]["2"]["visit_count"] == 3
         assert result.checkpoint_path is not None
+
+    def test_exhaustion_on_later_bridge_checkpoints_null_graph(self, tmp_path):
+        """Exhaustion in Phase 1 of bridge N>=1 must not checkpoint bridge
+        N-1's exhausted graph under bridge N's index (stale-graph bug)."""
+        import json
+
+        from alethic.exceptions import ContextExhaustedError
+        from alethic.models import AgentConfig
+        from alethic.search import SearchConfig, solve
+
+        (tmp_path / "session.json").write_text(json.dumps({"status": "running"}))
+        state = self._restored_state()
+        state["gap_states"] = {str(k): v for k, v in state["gap_states"].items()}
+        state["atom_confs"] = {str(k): v for k, v in state["atom_confs"].items()}
+        (tmp_path / "tree_state.json").write_text(json.dumps(state))
+
+        technique = mock.MagicMock()
+        technique.name = "telescoping"
+        # Resume bridge 0 with its single gap; the gap exhausts its technique
+        # budget (microkernel keeps failing), Phase 4 re-bridges, and bridge 1's
+        # generate() raises ContextExhaustedError.
+        from alethic.microkernel import MicrokernelResult
+
+        failed = MicrokernelResult(
+            status="failed", replacement_content="", confidence=0.2,
+            critique="no", error_category="logic", revisions_used=1,
+        )
+        with mock.patch(
+            "alethic.search.generate", side_effect=ContextExhaustedError("ctx"),
+        ), mock.patch(
+            "alethic.search.enumerate_techniques", return_value=[technique],
+        ), mock.patch("alethic.search.gvr_microkernel", return_value=failed):
+            result = solve(
+                "problem",
+                config=AgentConfig(),
+                search_config=SearchConfig(technique_budget=1, max_bridges=2),
+                client=mock.MagicMock(),
+                resume_from=str(tmp_path),
+            )
+        rewritten = json.loads((tmp_path / "tree_state.json").read_text())
+        assert rewritten["bridge_index"] == 1
+        assert rewritten["graph"] is None        # NOT bridge 0's stale graph
+        assert result.checkpoint_path is not None
+
+    def test_resume_from_null_graph_checkpoint_regenerates(self, tmp_path):
+        """A null-graph checkpoint (exhaustion before decomposition) restarts
+        the checkpointed bridge with a fresh generation."""
+        import json
+
+        from alethic.models import AgentConfig, Verdict
+        from alethic.search import solve
+
+        (tmp_path / "session.json").write_text(json.dumps({"status": "checkpoint"}))
+        state = {
+            "mode": "tree", "bridge_index": 0, "bridge_confidence": 0.0,
+            "failed_bridges": [], "graph": None, "gap_states": {},
+            "atom_confs": {}, "best_confidence": 0.0,
+        }
+        (tmp_path / "tree_state.json").write_text(json.dumps(state))
+
+        solution = _solution_with_atoms(1)
+        verification = _verification(verdict=Verdict.CORRECT, confidence=0.99)
+        with mock.patch("alethic.search.generate", return_value=solution) as gen, \
+             mock.patch("alethic.search.verify", return_value=verification):
+            result = solve(
+                "problem",
+                config=AgentConfig(),
+                client=mock.MagicMock(),
+                resume_from=str(tmp_path),
+            )
+        gen.assert_called_once()
+        assert result.verdict == Verdict.CORRECT

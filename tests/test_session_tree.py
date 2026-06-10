@@ -101,7 +101,7 @@ class TestWriteTreeCheckpoint:
 
 class TestLoadTreeCheckpoint:
     def test_roundtrip(self, tmp_path):
-        session_dir = _write(tmp_path)
+        session_dir = _write(tmp_path, total_revisions=5)
         loaded = load_tree_checkpoint(session_dir)
         assert loaded["bridge_index"] == 1
         assert loaded["bridge_confidence"] == 0.7
@@ -110,6 +110,7 @@ class TestLoadTreeCheckpoint:
         assert loaded["atom_confs"][1] == 0.95                   # int keys restored
         assert loaded["best_solution_text"] == "partial proof"
         assert loaded["graph"]["next_id"] == 1000000
+        assert loaded["total_revisions"] == 5
 
     def test_missing_tree_state_raises_checkpoint_error(self, tmp_path):
         (tmp_path / "session.json").write_text(json.dumps({"status": "checkpoint"}))

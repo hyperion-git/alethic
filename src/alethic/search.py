@@ -447,7 +447,11 @@ def solve(
         resume_from: Session directory containing a ``tree_state.json`` to
             resume from. The checkpointed bridge's graph and PUCT state are
             restored and the search re-enters gap-filling; defaults
-            ``session_dir`` to the same directory.
+            ``session_dir`` to the same directory. Not persisted across
+            resume: the events list — a resumed run's events cover only the
+            current process. The restored token_ledger from the checkpoint is
+            currently not merged (cost accounting restarts; see agent-level
+            integration).
 
     Returns:
         An ``AgentResult`` with ``solved=True`` and ``verdict=CORRECT``
@@ -470,6 +474,7 @@ def solve(
         failed_bridges = list(restored["failed_bridges"])
         best_confidence = restored["best_confidence"]
         best_solution_text = restored["best_solution_text"]
+        total_revisions = restored["total_revisions"]
         if session_dir is None:
             session_dir = resume_from
         logger.info(
@@ -478,7 +483,7 @@ def solve(
         )
 
     # Pre-initialized so the except-path checkpoint can always read them,
-    # even when exhaustion hits during Phase 1 of the first bridge.
+    # even when exhaustion hits during Phase 1 of each bridge.
     graph: ProofGraph | None = None
     gap_states: dict[int, _GapState] = {}
     atom_confs: dict[int, float] = {}
@@ -518,6 +523,14 @@ def solve(
                 )
             else:
                 restored = None  # a null-graph checkpoint restarts the bridge fresh
+                # Reset cross-bridge locals BEFORE the new generation: if
+                # exhaustion hits during this bridge's Phase 1, the checkpoint
+                # must not capture the previous bridge's exhausted graph under
+                # this bridge's index.
+                graph = None
+                gap_states = {}
+                atom_confs = {}
+                bridge_confidence = 0.0
 
                 # ── Phase 1: Bridge ─────────────────────────────────────────
                 bridge_solution = generate(
@@ -791,6 +804,7 @@ def solve(
             best_confidence=best_confidence,
             best_solution_text=best_solution_text,
             token_ledger=ledger,
+            total_revisions=total_revisions,
         )
         logger.warning("Search: context exhausted — checkpoint at %s", ckpt_path)
         result = _make_result(
