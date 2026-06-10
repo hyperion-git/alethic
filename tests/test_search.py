@@ -1059,3 +1059,62 @@ class TestResumeAndCheckpoint:
             )
         gen.assert_called_once()
         assert result.verdict == Verdict.CORRECT
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Oracle retry wiring
+# ──────────────────────────────────────────────────────────────────────────
+
+
+class TestOracleRetryWiring:
+    def test_retry_after_logic_failure_sets_adversarial_task(self, tmp_path):
+        """Second attempt at a gap whose last failure was 'logic' must carry
+        the _ORACLE_ROUTING verdict: LAYER3_LLM_ADVERSARIAL + force_adversarial."""
+        import json
+
+        from alethic.microkernel import MicrokernelResult
+        from alethic.models import AgentConfig, OracleType
+        from alethic.search import solve
+
+        (tmp_path / "session.json").write_text(json.dumps({"status": "checkpoint"}))
+        # Restored single-gap graph whose last_error_category is already 'logic'
+        state = {
+            "mode": "tree", "bridge_index": 0, "bridge_confidence": 0.6,
+            "failed_bridges": [],
+            "graph": {
+                "atoms": {
+                    "1": {"id": 1, "deps": [], "oracle": "layer3_llm",
+                          "content": "A", "synthetic": False, "status": "anchored",
+                          "level": 0, "parent_id": None, "child_ids": [],
+                          "visit_count": 0, "total_value": 0.0,
+                          "techniques_tried": []},
+                    "2": {"id": 2, "deps": [1], "oracle": "layer3_llm",
+                          "content": "", "synthetic": False, "status": "failed",
+                          "level": 0, "parent_id": None, "child_ids": [],
+                          "visit_count": 1, "total_value": 0.3,
+                          "techniques_tried": ["induction"]},
+                },
+                "next_id": 1000000,
+            },
+            "gap_states": {"2": {"failures": 1, "last_error_category": "logic",
+                                  "technique_attempts": {"induction": 1}}},
+            "atom_confs": {"1": 0.9},
+            "best_confidence": 0.5,
+        }
+        (tmp_path / "tree_state.json").write_text(json.dumps(state))
+
+        technique = mock.MagicMock()
+        technique.name = "telescoping"
+        filled = MicrokernelResult(
+            status="filled", replacement_content="ok", confidence=0.95,
+            critique="", error_category="general", revisions_used=0,
+        )
+        with mock.patch("alethic.search.enumerate_techniques", return_value=[technique]), \
+             mock.patch("alethic.search.gvr_microkernel", return_value=filled) as mk:
+            solve(
+                "problem", config=AgentConfig(), client=mock.MagicMock(),
+                resume_from=str(tmp_path),
+            )
+        task = mk.call_args.args[0]
+        assert task.force_adversarial is True
+        assert task.oracle == OracleType.LAYER3_LLM_ADVERSARIAL

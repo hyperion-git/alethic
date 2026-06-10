@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
@@ -564,3 +565,81 @@ class TestGvrMicrokernel:
 
         assert result.status == "filled"
         assert result.revisions_used == 1
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Oracle routing consumption
+# ──────────────────────────────────────────────────────────────────────────
+
+
+class TestOracleRoutingConsumption:
+    """v3.8 integration: force_adversarial injects the adversarial addendum."""
+
+    def _acceptable_verification(self):
+        from alethic.models import Verdict, VerificationResult
+
+        return VerificationResult(
+            verdict=Verdict.CORRECT, confidence=0.99, critique="fine", issues=[],
+        )
+
+    def _task(self, **overrides):
+        from alethic.microkernel import MicrokernelTask
+
+        kwargs = dict(
+            gap_id=1, left_anchor="L", right_anchor="R",
+            technique="induction", problem_context="prove it", max_revisions=1,
+        )
+        kwargs.update(overrides)
+        return MicrokernelTask(**kwargs)
+
+    def test_task_defaults_keep_existing_shape(self):
+        task = self._task()
+        assert task.oracle is None
+        assert task.force_adversarial is False
+
+    def test_force_adversarial_passes_extra_system_math(self):
+        from alethic.microkernel import gvr_microkernel
+        from alethic.models import AgentConfig
+        from alethic.prompts import ADVERSARIAL_VERIFIER_ADDENDUM
+
+        with mock.patch("alethic.microkernel.generate") as gen, \
+             mock.patch("alethic.microkernel.verify") as ver:
+            gen.return_value = mock.MagicMock(solution_text="ATOM[GAP] content")
+            ver.return_value = self._acceptable_verification()
+            gvr_microkernel(
+                self._task(force_adversarial=True),
+                config=AgentConfig(), domain="math", client=mock.MagicMock(),
+            )
+        assert ver.call_args.kwargs["extra_system"] == ADVERSARIAL_VERIFIER_ADDENDUM
+
+    def test_force_adversarial_passes_physics_addendum(self):
+        from alethic.microkernel import gvr_microkernel
+        from alethic.models import AgentConfig
+        from alethic.physics_prompts import PHYSICS_ADVERSARIAL_VERIFIER_ADDENDUM
+
+        with mock.patch("alethic.microkernel.generate") as gen, \
+             mock.patch("alethic.microkernel.verify") as ver:
+            gen.return_value = mock.MagicMock(solution_text="ATOM[GAP] content")
+            ver.return_value = self._acceptable_verification()
+            gvr_microkernel(
+                self._task(force_adversarial=True),
+                config=AgentConfig(), domain="physics", client=mock.MagicMock(),
+            )
+        assert (
+            ver.call_args.kwargs["extra_system"]
+            == PHYSICS_ADVERSARIAL_VERIFIER_ADDENDUM
+        )
+
+    def test_default_task_passes_no_extra_system(self):
+        from alethic.microkernel import gvr_microkernel
+        from alethic.models import AgentConfig
+
+        with mock.patch("alethic.microkernel.generate") as gen, \
+             mock.patch("alethic.microkernel.verify") as ver:
+            gen.return_value = mock.MagicMock(solution_text="ATOM[GAP] content")
+            ver.return_value = self._acceptable_verification()
+            gvr_microkernel(
+                self._task(),
+                config=AgentConfig(), domain="math", client=mock.MagicMock(),
+            )
+        assert ver.call_args.kwargs["extra_system"] is None

@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from alethic.atoms import parse_atoms
+from alethic.error_taxonomy import _ORACLE_ROUTING
 from alethic.exceptions import (
     CheckpointError,
     ContextExhaustedError,
@@ -646,6 +647,12 @@ def solve(
                     state.technique_attempts["__exhausted__"] = cfg.technique_budget
                     continue
 
+                oracle = None
+                force_adversarial = False
+                if state.last_error_category is not None:
+                    oracle, force_adversarial = _ORACLE_ROUTING.get(
+                        state.last_error_category, (None, False)
+                    )
                 task = MicrokernelTask(
                     gap_id=gap.id,
                     left_anchor=left_text,
@@ -653,6 +660,8 @@ def solve(
                     technique=technique.name,
                     problem_context=problem,
                     max_revisions=cfg.atom_revisions,
+                    oracle=oracle,
+                    force_adversarial=force_adversarial,
                 )
                 mk_result = gvr_microkernel(
                     task,
@@ -681,6 +690,8 @@ def solve(
                             "gap_id": gap.id,
                             "technique": technique.name,
                             "confidence": mk_result.confidence,
+                            "oracle": oracle.value if oracle else None,
+                            "force_adversarial": force_adversarial,
                         },
                     ))
                 elif mk_result.status == "too_large":
@@ -711,6 +722,8 @@ def solve(
                                 "confidence": mk_result.confidence,
                                 "error_category": mk_result.error_category,
                                 "reason": "too_large_at_max_depth",
+                                "oracle": oracle.value if oracle else None,
+                                "force_adversarial": force_adversarial,
                             },
                         ))
                 else:  # mk_result.status == "failed"
@@ -724,6 +737,8 @@ def solve(
                             "technique": technique.name,
                             "confidence": mk_result.confidence,
                             "error_category": mk_result.error_category,
+                            "oracle": oracle.value if oracle else None,
+                            "force_adversarial": force_adversarial,
                         },
                     ))
                     if (

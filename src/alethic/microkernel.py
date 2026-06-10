@@ -50,10 +50,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from alethic.error_taxonomy import classify_errors
+from alethic.physics_prompts import PHYSICS_ADVERSARIAL_VERIFIER_ADDENDUM
+from alethic.prompts import ADVERSARIAL_VERIFIER_ADDENDUM
 from alethic.subagents import _safe_format, generate, revise, verify
 
 if TYPE_CHECKING:
-    from alethic.models import AgentConfig, TokenLedger
+    from alethic.models import AgentConfig, OracleType, TokenLedger
 
 logger = logging.getLogger("alethic")
 
@@ -240,6 +242,8 @@ class MicrokernelTask:
     technique: str
     problem_context: str
     max_revisions: int
+    oracle: OracleType | None = None        # advisory routing target from _ORACLE_ROUTING; logged only
+    force_adversarial: bool = False         # inject adversarial verifier addendum into verify calls
 
 
 @dataclass(frozen=True)
@@ -386,6 +390,14 @@ def gvr_microkernel(
     """
     gen_system, ver_system, rev_system = _select_system_prompts(domain)
 
+    extra_system: str | None = None
+    if task.force_adversarial:
+        extra_system = (
+            PHYSICS_ADVERSARIAL_VERIFIER_ADDENDUM
+            if domain == "physics"
+            else ADVERSARIAL_VERIFIER_ADDENDUM
+        )
+
     gen_user = _render_atom_template(
         ATOM_GENERATOR_USER,
         left_anchor=task.left_anchor,
@@ -442,6 +454,7 @@ def gvr_microkernel(
         system_prompt=ver_system,
         user_template=ver_user,
         ledger=ledger,
+        extra_system=extra_system,
     )
 
     if result.is_acceptable(config.confidence_threshold):
@@ -505,6 +518,7 @@ def gvr_microkernel(
             system_prompt=ver_system,
             user_template=ver_user,
             ledger=ledger,
+            extra_system=extra_system,
         )
 
         if result.is_acceptable(config.confidence_threshold):

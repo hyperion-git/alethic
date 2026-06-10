@@ -64,8 +64,8 @@ class RoutingDecision:
 
     # Verification
     verifier_extra_system: str | None
-    next_oracle: OracleType  # v3.8 scaffolding: populated via _ORACLE_ROUTING but not yet consumed by agent
-    force_adversarial: bool  # v3.8 scaffolding: will override adversarial addendum in tree-search mode
+    next_oracle: OracleType  # flat-path scaffolding; the tree path consumes _ORACLE_ROUTING directly (search.py)
+    force_adversarial: bool  # flat-path scaffolding; consumed by the v3.8 microkernel via MicrokernelTask
 
 
 # --- OracleRouter ---
