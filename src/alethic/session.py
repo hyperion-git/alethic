@@ -218,6 +218,9 @@ def write_tree_checkpoint(
     then restarts that bridge fresh). Also updates ``session.json`` with the
     given status and writes ``worklog/best_solution.md``.
 
+    ``gap_states`` values are opaque to this layer — produced and consumed as
+    _GapState dicts by search.py.
+
     Returns the absolute path to ``tree_state.json``.
 
     Raises:
@@ -273,9 +276,13 @@ def load_tree_checkpoint(session_dir: str) -> dict[str, Any]:
     graph (dict or None), gap_states (int keys), atom_confs (int keys),
     best_confidence, best_solution_text, token_ledger.
 
+    ``gap_states`` values are opaque to this layer — produced and consumed as
+    _GapState dicts by search.py.
+
     Raises:
         CheckpointError: ``tree_state.json`` missing (e.g. a flat-mode
-            checkpoint) or unreadable.
+            checkpoint) or unreadable; or the session is already completed
+            (status ``"solved"`` or ``"unsolved"``).
     """
     session_path = Path(session_dir)
     tree_state_path = session_path / "tree_state.json"
@@ -284,6 +291,18 @@ def load_tree_checkpoint(session_dir: str) -> dict[str, Any]:
             f"No tree_state.json in {session_dir} — this looks like a flat-mode "
             "checkpoint. Resume it without search_mode='tree'."
         )
+
+    session_json_path = session_path / "session.json"
+    if session_json_path.exists():
+        try:
+            session_status = json.loads(session_json_path.read_text()).get("status")
+        except (json.JSONDecodeError, OSError):
+            session_status = None
+        if session_status in ("solved", "unsolved"):
+            raise CheckpointError(
+                f"Session already completed with status '{session_status}'"
+            )
+
     try:
         state = json.loads(tree_state_path.read_text())
     except (json.JSONDecodeError, OSError) as exc:

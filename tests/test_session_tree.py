@@ -74,9 +74,29 @@ class TestWriteTreeCheckpoint:
 
     def test_null_graph_allowed(self, tmp_path):
         """Exhaustion during Phase 1 of bridge 0: no graph yet."""
-        _write(tmp_path, graph_dict=None, best_solution_text=None)
+        _write(tmp_path, graph_dict=None, best_solution_text=None, token_ledger=None)
         state = json.loads((tmp_path / "tree_state.json").read_text())
         assert state["graph"] is None
+        loaded = load_tree_checkpoint(str(tmp_path))
+        assert loaded["graph"] is None
+        assert loaded["best_solution_text"] is None
+        assert loaded["token_ledger"] == {}
+
+    def test_write_failure_raises_checkpoint_error(self, tmp_path):
+        """OSError (e.g. nonexistent dir) must surface as CheckpointError."""
+        with pytest.raises(CheckpointError, match="Failed to write tree checkpoint"):
+            write_tree_checkpoint(
+                str(tmp_path / "does-not-exist"),
+                graph_dict=_graph_dict(),
+                bridge_index=1,
+                bridge_confidence=0.7,
+                failed_bridges=[],
+                gap_states={},
+                atom_confs={},
+                best_confidence=0.0,
+                best_solution_text=None,
+                token_ledger=None,
+            )
 
 
 class TestLoadTreeCheckpoint:
@@ -99,4 +119,10 @@ class TestLoadTreeCheckpoint:
     def test_corrupt_tree_state_raises_checkpoint_error(self, tmp_path):
         (tmp_path / "tree_state.json").write_text("{not json")
         with pytest.raises(CheckpointError):
+            load_tree_checkpoint(str(tmp_path))
+
+    def test_completed_session_raises_checkpoint_error(self, tmp_path):
+        """A finalized tree session (status solved/unsolved) must not silently resume."""
+        _write(tmp_path, status="solved")
+        with pytest.raises(CheckpointError, match="already completed"):
             load_tree_checkpoint(str(tmp_path))
