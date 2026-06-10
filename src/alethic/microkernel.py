@@ -234,6 +234,11 @@ class MicrokernelTask:
     Frozen so the search layer can safely keep references and the
     microkernel cannot mutate its input. ``gap_id`` is the ``AtomNode.id``
     of the failed atom in the search layer's ``ProofGraph``.
+
+    ``oracle``/``force_adversarial`` carry the ``_ORACLE_ROUTING`` verdict for
+    retry attempts (v3.8 integration). Only ``force_adversarial`` is
+    actionable here — the verification-ladder layers L0–L2 are embedded
+    checks the microkernel cannot toggle per call.
     """
 
     gap_id: int
