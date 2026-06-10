@@ -20,13 +20,14 @@ from __future__ import annotations
 import bisect
 import enum
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+from alethic.models import OracleType
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from alethic.atoms import AtomAnnotation
-    from alethic.models import OracleType
 
 # Subdivision IDs start above the typical atom-ID space so newly created
 # child atoms can never collide with IDs the generator originally emitted.
@@ -109,6 +110,41 @@ class AtomNode:
             status=effective_status,
         )
 
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-safe snapshot for tree-mode checkpointing."""
+        return {
+            "id": self.id,
+            "deps": list(self.deps),
+            "oracle": self.oracle.value,
+            "content": self.content,
+            "synthetic": self.synthetic,
+            "status": self.status.value,
+            "level": self.level,
+            "parent_id": self.parent_id,
+            "child_ids": list(self.child_ids),
+            "visit_count": self.visit_count,
+            "total_value": self.total_value,
+            "techniques_tried": list(self.techniques_tried),
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> AtomNode:
+        """Inverse of ``to_dict``."""
+        return cls(
+            id=d["id"],
+            deps=tuple(d["deps"]),
+            oracle=OracleType(d["oracle"]),
+            content=d["content"],
+            synthetic=d["synthetic"],
+            status=AtomStatus(d["status"]),
+            level=d["level"],
+            parent_id=d["parent_id"],
+            child_ids=list(d["child_ids"]),
+            visit_count=d["visit_count"],
+            total_value=d["total_value"],
+            techniques_tried=list(d["techniques_tried"]),
+        )
+
 
 @dataclass
 class ProofGraph:
@@ -129,6 +165,19 @@ class ProofGraph:
                 max_id = node.id
         next_id = max(max_id + 1, _SUBDIVISION_ID_FLOOR)
         return cls(atoms=atoms, next_id=next_id)
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-safe snapshot (atom IDs become string keys)."""
+        return {
+            "atoms": {str(aid): node.to_dict() for aid, node in self.atoms.items()},
+            "next_id": self.next_id,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> ProofGraph:
+        """Inverse of ``to_dict`` (string keys back to int)."""
+        atoms = {int(aid): AtomNode.from_dict(nd) for aid, nd in d["atoms"].items()}
+        return cls(atoms=atoms, next_id=d["next_id"])
 
     # ── Status views ─────────────────────────────────────────────────────
 

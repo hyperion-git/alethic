@@ -489,3 +489,70 @@ class TestAssembleSolution:
         for n in graph.atoms.values():
             n.status = AtomStatus.ANCHORED
         assert graph.assemble_solution() == "A"
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Serialization (to_dict / from_dict)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+class TestSerialization:
+    """to_dict/from_dict round-trips for tree-mode checkpointing."""
+
+    def _make_node(self) -> AtomNode:
+        return AtomNode(
+            id=3,
+            deps=(1, 2),
+            oracle=OracleType.LAYER3_LLM,
+            content="Step three",
+            synthetic=False,
+            status=AtomStatus.FAILED,
+            level=1,
+            parent_id=7,
+            child_ids=[1000000, 1000001],
+            visit_count=4,
+            total_value=2.5,
+            techniques_tried=["induction", "telescoping"],
+        )
+
+    def test_atomnode_roundtrip(self):
+        node = self._make_node()
+        restored = AtomNode.from_dict(node.to_dict())
+        assert restored == node
+
+    def test_atomnode_to_dict_is_json_safe(self):
+        import json
+
+        node = self._make_node()
+        text = json.dumps(node.to_dict())
+        assert "layer3_llm" in text
+        assert "failed" in text
+
+    def test_proofgraph_roundtrip_preserves_topology_and_puct(self):
+        g = ProofGraph()
+        g.atoms[1] = AtomNode(
+            id=1, deps=(), oracle=OracleType.LAYER3_LLM,
+            content="A", status=AtomStatus.ANCHORED,
+        )
+        g.atoms[2] = AtomNode(
+            id=2, deps=(1,), oracle=OracleType.LAYER1_BEHAVIORAL,
+            content="B", status=AtomStatus.FAILED, visit_count=2, total_value=0.9,
+        )
+        g.subdivide(2, n_children=2)
+
+        restored = ProofGraph.from_dict(g.to_dict())
+        assert restored.next_id == g.next_id
+        assert set(restored.atoms) == set(g.atoms)
+        assert restored.atoms[2].status == AtomStatus.SUBDIVIDED
+        assert restored.atoms[2].child_ids == g.atoms[2].child_ids
+        assert restored.atoms[2].visit_count == 2
+        assert restored._topo_order() == g._topo_order()
+
+    def test_proofgraph_dict_keys_are_strings(self):
+        """JSON object keys must be strings; from_dict converts back to int."""
+        g = ProofGraph()
+        g.atoms[5] = AtomNode(id=5, deps=(), oracle=OracleType.LAYER3_LLM, content="x")
+        d = g.to_dict()
+        assert list(d["atoms"].keys()) == ["5"]
+        restored = ProofGraph.from_dict(d)
+        assert 5 in restored.atoms
