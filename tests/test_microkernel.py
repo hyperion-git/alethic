@@ -643,3 +643,27 @@ class TestOracleRoutingConsumption:
                 config=AgentConfig(), domain="math", client=mock.MagicMock(),
             )
         assert ver.call_args.kwargs["extra_system"] is None
+
+    def test_force_adversarial_persists_through_revision_loop(self):
+        from alethic.microkernel import gvr_microkernel
+        from alethic.models import AgentConfig, Verdict, VerificationResult
+        from alethic.prompts import ADVERSARIAL_VERIFIER_ADDENDUM
+
+        rejected = VerificationResult(
+            verdict=Verdict.MAJOR_FLAW, confidence=0.3,
+            critique="off-by-one in the inductive step", issues=[],
+        )
+        with mock.patch("alethic.microkernel.generate") as gen, \
+             mock.patch("alethic.microkernel.verify") as ver, \
+             mock.patch("alethic.microkernel.revise") as rev:
+            gen.return_value = mock.MagicMock(solution_text="ATOM[GAP] content")
+            rev.return_value = mock.MagicMock(solution_text="ATOM[GAP] revised")
+            ver.side_effect = [rejected, self._acceptable_verification()]
+            gvr_microkernel(
+                self._task(force_adversarial=True, max_revisions=2),
+                config=AgentConfig(), domain="math", client=mock.MagicMock(),
+            )
+        # Both the Phase-2 verify AND the revision-loop verify must carry the addendum
+        assert len(ver.call_args_list) == 2
+        for call in ver.call_args_list:
+            assert call.kwargs["extra_system"] == ADVERSARIAL_VERIFIER_ADDENDUM
