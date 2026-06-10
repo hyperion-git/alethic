@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
@@ -858,3 +859,131 @@ class TestSolveTechniqueBudgetExhausted:
         # Microkernel was called exactly technique_budget times
         assert mk.call_count == 3
         assert not result.solved
+
+
+class TestResumeAndCheckpoint:
+    """Tree-mode self-checkpoint + resume (v3.8 integration)."""
+
+    def _restored_state(self) -> dict:
+        from alethic.models import OracleType
+        from alethic.proof_graph import AtomNode, AtomStatus, ProofGraph
+
+        g = ProofGraph()
+        g.atoms[1] = AtomNode(
+            id=1, deps=(), oracle=OracleType.LAYER3_LLM,
+            content="anchored step", status=AtomStatus.ANCHORED,
+        )
+        g.atoms[2] = AtomNode(
+            id=2, deps=(1,), oracle=OracleType.LAYER3_LLM,
+            content="", status=AtomStatus.FAILED,
+        )
+        return {
+            "graph": g.to_dict(),
+            "bridge_index": 0,
+            "bridge_confidence": 0.6,
+            "failed_bridges": [],
+            "gap_states": {2: {"failures": 0, "last_error_category": None,
+                               "technique_attempts": {}}},
+            "atom_confs": {1: 0.9},
+            "best_confidence": 0.5,
+            "best_solution_text": "old best",
+            "token_ledger": {},
+        }
+
+    def test_exhaustion_with_session_dir_checkpoints(self, tmp_path):
+        import json
+
+        from alethic.exceptions import ContextExhaustedError
+        from alethic.models import AgentConfig, Verdict
+        from alethic.search import solve
+
+        (tmp_path / "session.json").write_text(json.dumps({"status": "running"}))
+        with mock.patch(
+            "alethic.search.generate", side_effect=ContextExhaustedError("ctx full")
+        ):
+            result = solve(
+                "problem",
+                config=AgentConfig(),
+                client=mock.MagicMock(),
+                session_dir=str(tmp_path),
+            )
+        assert result.verdict == Verdict.UNSOLVED
+        assert result.checkpoint_path == str(tmp_path / "tree_state.json")
+        assert result.session_dir == str(tmp_path)
+        assert (tmp_path / "tree_state.json").exists()
+
+    def test_exhaustion_without_session_dir_propagates(self):
+        from alethic.exceptions import ContextExhaustedError
+        from alethic.models import AgentConfig
+        from alethic.search import solve
+
+        with mock.patch(
+            "alethic.search.generate", side_effect=ContextExhaustedError("ctx full")
+        ), pytest.raises(ContextExhaustedError):
+            solve("problem", config=AgentConfig(), client=mock.MagicMock())
+
+    def test_resume_skips_bridge_generation_and_fills_gap(self, tmp_path):
+        import json
+
+        from alethic.microkernel import MicrokernelResult
+        from alethic.models import AgentConfig, Verdict
+        from alethic.search import solve
+
+        (tmp_path / "session.json").write_text(json.dumps({"status": "checkpoint"}))
+        state = self._restored_state()
+        state["gap_states"] = {str(k): v for k, v in state["gap_states"].items()}
+        state["atom_confs"] = {str(k): v for k, v in state["atom_confs"].items()}
+        state["mode"] = "tree"
+        (tmp_path / "tree_state.json").write_text(json.dumps(state))
+
+        technique = mock.MagicMock()
+        technique.name = "telescoping"
+        filled = MicrokernelResult(
+            status="filled", replacement_content="bridged step",
+            confidence=0.95, critique="", error_category="general",
+            revisions_used=0,
+        )
+        with mock.patch("alethic.search.generate") as gen, \
+             mock.patch("alethic.search.enumerate_techniques", return_value=[technique]), \
+             mock.patch("alethic.search.gvr_microkernel", return_value=filled):
+            result = solve(
+                "problem",
+                config=AgentConfig(),
+                client=mock.MagicMock(),
+                resume_from=str(tmp_path),
+            )
+
+        gen.assert_not_called()          # bridge was restored, not regenerated
+        assert result.verdict == Verdict.CORRECT
+        assert "bridged step" in result.solution
+
+    def test_resume_restores_visit_counts(self, tmp_path):
+        """PUCT state survives the round-trip: a restored gap keeps its history."""
+        import json
+
+        from alethic.exceptions import ContextExhaustedError
+        from alethic.models import AgentConfig
+        from alethic.search import solve
+
+        (tmp_path / "session.json").write_text(json.dumps({"status": "checkpoint"}))
+        state = self._restored_state()
+        state["graph"]["atoms"]["2"]["visit_count"] = 3
+        state["graph"]["atoms"]["2"]["total_value"] = 1.2
+        state["gap_states"] = {str(k): v for k, v in state["gap_states"].items()}
+        state["atom_confs"] = {str(k): v for k, v in state["atom_confs"].items()}
+        (tmp_path / "tree_state.json").write_text(json.dumps(state))
+
+        # Exhaust immediately in the explorer; re-checkpoint must preserve counts.
+        with mock.patch(
+            "alethic.search.enumerate_techniques",
+            side_effect=ContextExhaustedError("ctx full"),
+        ):
+            result = solve(
+                "problem",
+                config=AgentConfig(),
+                client=mock.MagicMock(),
+                resume_from=str(tmp_path),
+            )
+        rewritten = json.loads((tmp_path / "tree_state.json").read_text())
+        assert rewritten["graph"]["atoms"]["2"]["visit_count"] == 3
+        assert result.checkpoint_path is not None

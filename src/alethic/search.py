@@ -32,6 +32,11 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from alethic.atoms import parse_atoms
+from alethic.exceptions import (
+    CheckpointError,
+    ContextExhaustedError,
+    TruncatedResponseError,
+)
 from alethic.explorer import Technique, enumerate_techniques
 from alethic.microkernel import MicrokernelTask, gvr_microkernel
 from alethic.models import (
@@ -44,6 +49,7 @@ from alethic.models import (
     VerificationResult,
 )
 from alethic.proof_graph import AtomNode, AtomStatus, ProofGraph
+from alethic.session import load_tree_checkpoint, write_tree_checkpoint
 from alethic.subagents import generate, verify
 
 if TYPE_CHECKING:
@@ -406,6 +412,8 @@ def solve(
     client: Any,
     ledger: TokenLedger | None = None,
     balanced: bool = True,
+    session_dir: str | None = None,
+    resume_from: str | None = None,
 ) -> AgentResult:
     """v3.8 hierarchical proof search entry point.
 
@@ -432,6 +440,14 @@ def solve(
         ledger: Optional ``TokenLedger`` for cumulative token tracking.
         balanced: Whether the bridge generator uses the balanced
             counterexample-first addendum (forwarded to ``generate()``).
+        session_dir: When set, context-exhaustion errors are caught and the
+            live search state is checkpointed to ``tree_state.json`` in this
+            directory (a partial UNSOLVED result with ``checkpoint_path`` is
+            returned instead of raising). When None, those errors propagate.
+        resume_from: Session directory containing a ``tree_state.json`` to
+            resume from. The checkpointed bridge's graph and PUCT state are
+            restored and the search re-enters gap-filling; defaults
+            ``session_dir`` to the same directory.
 
     Returns:
         An ``AgentResult`` with ``solved=True`` and ``verdict=CORRECT``
@@ -446,179 +462,245 @@ def solve(
     total_revisions = 0
     bridges_used = 0
 
-    for bridge_idx in range(cfg.max_bridges):
-        bridges_used = bridge_idx + 1
+    start_bridge = 0
+    restored: dict[str, Any] | None = None
+    if resume_from is not None:
+        restored = load_tree_checkpoint(resume_from)
+        start_bridge = restored["bridge_index"]
+        failed_bridges = list(restored["failed_bridges"])
+        best_confidence = restored["best_confidence"]
+        best_solution_text = restored["best_solution_text"]
+        if session_dir is None:
+            session_dir = resume_from
         logger.info(
-            "Search: starting bridge %d/%d (failed_bridges=%d)",
-            bridge_idx, cfg.max_bridges, len(failed_bridges),
+            "Search: resuming from %s (bridge %d, best_conf=%.2f)",
+            resume_from, start_bridge, best_confidence,
         )
 
-        # ── Phase 1: Bridge ─────────────────────────────────────────────
-        bridge_solution = generate(
-            client,
-            problem=problem,
-            config=config,
-            iteration=bridge_idx,
-            balanced=balanced,
-            failed_approaches=tuple(failed_bridges),
-            ledger=ledger,
-        )
-        bridge_ver = verify(
-            client,
-            problem=problem,
-            solution=bridge_solution,
-            config=config,
-            ledger=ledger,
-        )
-        events.append(AgentEvent(
-            type=EventType.BRIDGE_GENERATED,
-            iteration=bridge_idx,
-            data={
-                "bridge_index": bridge_idx,
-                "verdict": bridge_ver.verdict.value,
-                "confidence": bridge_ver.confidence,
-            },
-        ))
+    # Pre-initialized so the except-path checkpoint can always read them,
+    # even when exhaustion hits during Phase 1 of the first bridge.
+    graph: ProofGraph | None = None
+    gap_states: dict[int, _GapState] = {}
+    atom_confs: dict[int, float] = {}
+    bridge_idx = start_bridge
+    bridge_confidence = 0.0
 
-        # Track best raw bridge as a fallback for the UNSOLVED return path
-        if bridge_ver.confidence > best_confidence:
-            best_solution_text = bridge_solution.solution_text
-            best_confidence = bridge_ver.confidence
-
-        # ── Phase 2: Atom classification ────────────────────────────────
-        annotations = parse_atoms(bridge_solution.solution_text)
-        graph = ProofGraph.from_atoms(annotations)
-        _classify_atoms_from_verification(
-            graph, bridge_ver, threshold=config.confidence_threshold,
-        )
-
-        # Per-atom confidences for final aggregation. Initially seeded from
-        # the verifier's atom_confidences; atoms anchored without explicit
-        # per-atom data fall back to the bridge's overall confidence.
-        atom_confs: dict[int, float] = {
-            ac.id: ac.confidence for ac in bridge_ver.atom_confidences
-        }
-        for node in graph.atoms.values():
-            if node.synthetic and node.id < 0:
-                continue
-            if node.status == AtomStatus.ANCHORED and node.id not in atom_confs:
-                atom_confs[node.id] = bridge_ver.confidence
-
-        gap_states: dict[int, _GapState] = {}
-
-        if graph.is_complete():
-            events.append(AgentEvent(
-                type=EventType.ACCEPT,
-                iteration=bridge_idx,
-                data={
-                    "reason": "bridge_complete",
-                    "confidence": bridge_ver.confidence,
-                    "bridge_index": bridge_idx,
-                },
-            ))
-            return _make_result(
-                problem=problem,
-                solution=bridge_solution.solution_text,
-                verdict=Verdict.CORRECT,
-                confidence=bridge_ver.confidence,
-                iterations_used=bridges_used,
-                total_revisions=total_revisions,
-                events=events,
-                failed_approaches=failed_bridges,
-                token_ledger=ledger,
+    try:
+        for bridge_idx in range(start_bridge, cfg.max_bridges):
+            bridges_used = bridge_idx + 1
+            logger.info(
+                "Search: starting bridge %d/%d (failed_bridges=%d)",
+                bridge_idx, cfg.max_bridges, len(failed_bridges),
             )
 
-        # ── Phase 3: Gap-Filling Search ─────────────────────────────────
-        while True:
-            gap = puct_select_gap(
-                graph=graph, gap_states=gap_states,
-                c_puct=cfg.c_puct,
-                technique_budget=cfg.technique_budget,
-            )
-            if gap is None:
-                break  # all gaps exhausted → Phase 4
+            if restored is not None and restored.get("graph") is not None:
+                # ── Resume path: restore Phase 1+2 outputs from checkpoint ──
+                try:
+                    graph = ProofGraph.from_dict(restored["graph"])
+                    gap_states = {
+                        gid: _GapState(
+                            failures=gs.get("failures", 0),
+                            last_error_category=gs.get("last_error_category"),
+                            technique_attempts=dict(gs.get("technique_attempts", {})),
+                        )
+                        for gid, gs in restored["gap_states"].items()
+                    }
+                except (KeyError, ValueError, TypeError) as exc:
+                    raise CheckpointError(
+                        f"Corrupt tree checkpoint state: {exc}"
+                    ) from exc
+                atom_confs = dict(restored["atom_confs"])
+                bridge_confidence = restored["bridge_confidence"]
+                restored = None
+                logger.info(
+                    "Search: bridge %d restored from checkpoint (%d gaps open)",
+                    bridge_idx, len(graph.gaps()),
+                )
+            else:
+                restored = None  # a null-graph checkpoint restarts the bridge fresh
 
-            state = gap_states.setdefault(gap.id, _GapState())
-            left, right = graph.neighbors(gap.id)
-            left_text = left.content if left is not None else "(beginning of proof)"
-            right_text = right.content if right is not None else "(end of proof)"
-
-            techniques = enumerate_techniques(
-                left_anchor=left_text,
-                right_anchor=right_text,
-                tried_techniques=list(state.technique_attempts),
-                problem_context=problem,
-                config=config,
-                domain=domain,
-                client=client,
-                ledger=ledger,
-            )
-
-            technique = puct_select_technique(
-                techniques=techniques, gap_state=state, c_puct=cfg.c_puct,
-            )
-
-            if technique is None:
-                # Explorer returned no novel candidates. Mark this gap as
-                # exhausted (visit-budget hit) so the next puct_select_gap
-                # call skips it instead of looping forever.
-                state.technique_attempts["__exhausted__"] = cfg.technique_budget
-                continue
-
-            task = MicrokernelTask(
-                gap_id=gap.id,
-                left_anchor=left_text,
-                right_anchor=right_text,
-                technique=technique.name,
-                problem_context=problem,
-                max_revisions=cfg.atom_revisions,
-            )
-            mk_result = gvr_microkernel(
-                task,
-                config=config,
-                domain=domain,
-                client=client,
-                ledger=ledger,
-            )
-            total_revisions += mk_result.revisions_used
-
-            _record_gap_attempt(
-                gap, state,
-                technique_name=technique.name,
-                confidence=mk_result.confidence,
-            )
-
-            if mk_result.status == "filled":
-                gap.content = mk_result.replacement_content
-                gap.status = AtomStatus.ANCHORED
-                atom_confs[gap.id] = mk_result.confidence
-                state.last_error_category = None
+                # ── Phase 1: Bridge ─────────────────────────────────────────
+                bridge_solution = generate(
+                    client,
+                    problem=problem,
+                    config=config,
+                    iteration=bridge_idx,
+                    balanced=balanced,
+                    failed_approaches=tuple(failed_bridges),
+                    ledger=ledger,
+                )
+                bridge_ver = verify(
+                    client,
+                    problem=problem,
+                    solution=bridge_solution,
+                    config=config,
+                    ledger=ledger,
+                )
                 events.append(AgentEvent(
-                    type=EventType.GAP_FILLED,
+                    type=EventType.BRIDGE_GENERATED,
                     iteration=bridge_idx,
                     data={
-                        "gap_id": gap.id,
-                        "technique": technique.name,
-                        "confidence": mk_result.confidence,
+                        "bridge_index": bridge_idx,
+                        "verdict": bridge_ver.verdict.value,
+                        "confidence": bridge_ver.confidence,
                     },
                 ))
-            elif mk_result.status == "too_large":
-                if gap.level < cfg.max_depth:
-                    new_ids = graph.subdivide(gap.id, n_children=cfg.n_subdivide)
-                    _mark_children_as_gaps(graph, new_ids)
+
+                # Track best raw bridge as a fallback for the UNSOLVED return
+                if bridge_ver.confidence > best_confidence:
+                    best_solution_text = bridge_solution.solution_text
+                    best_confidence = bridge_ver.confidence
+
+                # ── Phase 2: Atom classification ────────────────────────────
+                annotations = parse_atoms(bridge_solution.solution_text)
+                graph = ProofGraph.from_atoms(annotations)
+                _classify_atoms_from_verification(
+                    graph, bridge_ver, threshold=config.confidence_threshold,
+                )
+
+                # Per-atom confidences for final aggregation. Initially seeded
+                # from the verifier's atom_confidences; atoms anchored without
+                # explicit per-atom data fall back to the bridge's overall
+                # confidence.
+                atom_confs = {
+                    ac.id: ac.confidence for ac in bridge_ver.atom_confidences
+                }
+                for node in graph.atoms.values():
+                    if node.synthetic and node.id < 0:
+                        continue
+                    if node.status == AtomStatus.ANCHORED and node.id not in atom_confs:
+                        atom_confs[node.id] = bridge_ver.confidence
+
+                gap_states = {}
+                bridge_confidence = bridge_ver.confidence
+
+            if graph.is_complete():
+                events.append(AgentEvent(
+                    type=EventType.ACCEPT,
+                    iteration=bridge_idx,
+                    data={
+                        "reason": "bridge_complete",
+                        "confidence": bridge_confidence,
+                        "bridge_index": bridge_idx,
+                    },
+                ))
+                return _make_result(
+                    problem=problem,
+                    solution=graph.assemble_solution(),
+                    verdict=Verdict.CORRECT,
+                    confidence=bridge_confidence,
+                    iterations_used=bridges_used,
+                    total_revisions=total_revisions,
+                    events=events,
+                    failed_approaches=failed_bridges,
+                    token_ledger=ledger,
+                )
+
+            # ── Phase 3: Gap-Filling Search ─────────────────────────────────
+            while True:
+                gap = puct_select_gap(
+                    graph=graph, gap_states=gap_states,
+                    c_puct=cfg.c_puct,
+                    technique_budget=cfg.technique_budget,
+                )
+                if gap is None:
+                    break  # all gaps exhausted → Phase 4
+
+                state = gap_states.setdefault(gap.id, _GapState())
+                left, right = graph.neighbors(gap.id)
+                left_text = left.content if left is not None else "(beginning of proof)"
+                right_text = right.content if right is not None else "(end of proof)"
+
+                techniques = enumerate_techniques(
+                    left_anchor=left_text,
+                    right_anchor=right_text,
+                    tried_techniques=list(state.technique_attempts),
+                    problem_context=problem,
+                    config=config,
+                    domain=domain,
+                    client=client,
+                    ledger=ledger,
+                )
+
+                technique = puct_select_technique(
+                    techniques=techniques, gap_state=state, c_puct=cfg.c_puct,
+                )
+
+                if technique is None:
+                    # Explorer returned no novel candidates. Mark this gap as
+                    # exhausted (visit-budget hit) so the next puct_select_gap
+                    # call skips it instead of looping forever.
+                    state.technique_attempts["__exhausted__"] = cfg.technique_budget
+                    continue
+
+                task = MicrokernelTask(
+                    gap_id=gap.id,
+                    left_anchor=left_text,
+                    right_anchor=right_text,
+                    technique=technique.name,
+                    problem_context=problem,
+                    max_revisions=cfg.atom_revisions,
+                )
+                mk_result = gvr_microkernel(
+                    task,
+                    config=config,
+                    domain=domain,
+                    client=client,
+                    ledger=ledger,
+                )
+                total_revisions += mk_result.revisions_used
+
+                _record_gap_attempt(
+                    gap, state,
+                    technique_name=technique.name,
+                    confidence=mk_result.confidence,
+                )
+
+                if mk_result.status == "filled":
+                    gap.content = mk_result.replacement_content
+                    gap.status = AtomStatus.ANCHORED
+                    atom_confs[gap.id] = mk_result.confidence
+                    state.last_error_category = None
                     events.append(AgentEvent(
-                        type=EventType.GAP_SUBDIVIDED,
+                        type=EventType.GAP_FILLED,
                         iteration=bridge_idx,
                         data={
                             "gap_id": gap.id,
-                            "children": new_ids,
-                            "reason": "too_large",
+                            "technique": technique.name,
+                            "confidence": mk_result.confidence,
                         },
                     ))
-                else:
-                    # At max depth — cannot subdivide further. Counts as
-                    # a terminal failure for this gap; further selections
-                    # will keep selecting it until budget exhausts.
+                elif mk_result.status == "too_large":
+                    if gap.level < cfg.max_depth:
+                        new_ids = graph.subdivide(gap.id, n_children=cfg.n_subdivide)
+                        _mark_children_as_gaps(graph, new_ids)
+                        events.append(AgentEvent(
+                            type=EventType.GAP_SUBDIVIDED,
+                            iteration=bridge_idx,
+                            data={
+                                "gap_id": gap.id,
+                                "children": new_ids,
+                                "reason": "too_large",
+                            },
+                        ))
+                    else:
+                        # At max depth — cannot subdivide further. Counts as
+                        # a terminal failure for this gap; further selections
+                        # will keep selecting it until budget exhausts.
+                        state.failures += 1
+                        state.last_error_category = mk_result.error_category
+                        events.append(AgentEvent(
+                            type=EventType.GAP_FAILED,
+                            iteration=bridge_idx,
+                            data={
+                                "gap_id": gap.id,
+                                "technique": technique.name,
+                                "confidence": mk_result.confidence,
+                                "error_category": mk_result.error_category,
+                                "reason": "too_large_at_max_depth",
+                            },
+                        ))
+                else:  # mk_result.status == "failed"
                     state.failures += 1
                     state.last_error_category = mk_result.error_category
                     events.append(AgentEvent(
@@ -629,78 +711,103 @@ def solve(
                             "technique": technique.name,
                             "confidence": mk_result.confidence,
                             "error_category": mk_result.error_category,
-                            "reason": "too_large_at_max_depth",
                         },
                     ))
-            else:  # mk_result.status == "failed"
-                state.failures += 1
-                state.last_error_category = mk_result.error_category
-                events.append(AgentEvent(
-                    type=EventType.GAP_FAILED,
-                    iteration=bridge_idx,
-                    data={
-                        "gap_id": gap.id,
-                        "technique": technique.name,
-                        "confidence": mk_result.confidence,
-                        "error_category": mk_result.error_category,
-                    },
-                ))
-                if (
-                    state.failures >= cfg.failure_subdivision_threshold
-                    and gap.level < cfg.max_depth
-                ):
-                    new_ids = graph.subdivide(gap.id, n_children=cfg.n_subdivide)
-                    _mark_children_as_gaps(graph, new_ids)
+                    if (
+                        state.failures >= cfg.failure_subdivision_threshold
+                        and gap.level < cfg.max_depth
+                    ):
+                        new_ids = graph.subdivide(gap.id, n_children=cfg.n_subdivide)
+                        _mark_children_as_gaps(graph, new_ids)
+                        events.append(AgentEvent(
+                            type=EventType.GAP_SUBDIVIDED,
+                            iteration=bridge_idx,
+                            data={
+                                "gap_id": gap.id,
+                                "children": new_ids,
+                                "reason": "failure_count",
+                            },
+                        ))
+
+                if graph.is_complete():
+                    final_text = graph.assemble_solution()
+                    final_conf = min(atom_confs.values()) if atom_confs else bridge_confidence
                     events.append(AgentEvent(
-                        type=EventType.GAP_SUBDIVIDED,
+                        type=EventType.ACCEPT,
                         iteration=bridge_idx,
                         data={
-                            "gap_id": gap.id,
-                            "children": new_ids,
-                            "reason": "failure_count",
+                            "reason": "gaps_filled",
+                            "confidence": final_conf,
+                            "atoms_anchored": len(graph.anchors()),
                         },
                     ))
+                    if final_conf > best_confidence:
+                        best_solution_text = final_text
+                        best_confidence = final_conf
+                    return _make_result(
+                        problem=problem,
+                        solution=final_text,
+                        verdict=Verdict.CORRECT,
+                        confidence=final_conf,
+                        iterations_used=bridges_used,
+                        total_revisions=total_revisions,
+                        events=events,
+                        failed_approaches=failed_bridges,
+                        token_ledger=ledger,
+                    )
 
-            if graph.is_complete():
-                final_text = graph.assemble_solution()
-                final_conf = min(atom_confs.values()) if atom_confs else bridge_ver.confidence
+            # ── Phase 4: Re-bridge ──────────────────────────────────────────
+            # Only triggered when Phase 3 exits via exhaustion (gap is None).
+            if bridge_idx + 1 < cfg.max_bridges:
+                summary = summarize_failed_path(graph, gap_states)
+                failed_bridges.append(summary)
                 events.append(AgentEvent(
-                    type=EventType.ACCEPT,
+                    type=EventType.RE_BRIDGE_TRIGGERED,
                     iteration=bridge_idx,
                     data={
-                        "reason": "gaps_filled",
-                        "confidence": final_conf,
-                        "atoms_anchored": len(graph.anchors()),
+                        "summary": summary,
+                        "next_bridge_index": bridge_idx + 1,
                     },
                 ))
-                if final_conf > best_confidence:
-                    best_solution_text = final_text
-                    best_confidence = final_conf
-                return _make_result(
-                    problem=problem,
-                    solution=final_text,
-                    verdict=Verdict.CORRECT,
-                    confidence=final_conf,
-                    iterations_used=bridges_used,
-                    total_revisions=total_revisions,
-                    events=events,
-                    failed_approaches=failed_bridges,
-                    token_ledger=ledger,
-                )
 
-        # ── Phase 4: Re-bridge ──────────────────────────────────────────
-        # Only triggered when Phase 3 exits via exhaustion (gap is None).
-        if bridge_idx + 1 < cfg.max_bridges:
-            summary = summarize_failed_path(graph, gap_states)
-            failed_bridges.append(summary)
-            events.append(AgentEvent(
-                type=EventType.RE_BRIDGE_TRIGGERED,
-                iteration=bridge_idx,
-                data={
-                    "summary": summary,
-                    "next_bridge_index": bridge_idx + 1,
-                },
-            ))
+    except (ContextExhaustedError, TruncatedResponseError):
+        if session_dir is None:
+            raise
+        ckpt_path = write_tree_checkpoint(
+            session_dir,
+            graph_dict=graph.to_dict() if graph is not None else None,
+            bridge_index=bridge_idx,
+            bridge_confidence=bridge_confidence,
+            failed_bridges=failed_bridges,
+            gap_states={
+                gid: {
+                    "failures": gs.failures,
+                    "last_error_category": gs.last_error_category,
+                    "technique_attempts": dict(gs.technique_attempts),
+                }
+                for gid, gs in gap_states.items()
+            },
+            atom_confs=atom_confs,
+            best_confidence=best_confidence,
+            best_solution_text=best_solution_text,
+            token_ledger=ledger,
+        )
+        logger.warning("Search: context exhausted — checkpoint at %s", ckpt_path)
+        result = _make_result(
+            problem=problem,
+            solution=best_solution_text,
+            verdict=Verdict.UNSOLVED,
+            confidence=best_confidence,
+            iterations_used=bridges_used,
+            total_revisions=total_revisions,
+            events=events,
+            failed_approaches=failed_bridges,
+            token_ledger=ledger,
+            admitted_failure=True,
+        )
+        result.session_dir = session_dir
+        result.checkpoint_path = ckpt_path
+        return result
 
     # ── Bridges exhausted ──────────────────────────────────────────────
     return _make_result(
