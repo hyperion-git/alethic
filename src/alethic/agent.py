@@ -719,7 +719,8 @@ class MathAgent:
             if os.path.exists(os.path.join(resume_from, "tree_state.json")):
                 raise CheckpointError(
                     f"Session at {resume_from} is a tree-mode checkpoint "
-                    "(tree_state.json present). Resume it with search_mode='tree'."
+                    "(tree_state.json present). Resume it with search_mode='tree' "
+                    "(CLI: --search tree)."
                 )
             checkpoint = load_checkpoint(resume_from)
             saved_problem = checkpoint.get("problem", "")
@@ -1340,7 +1341,8 @@ class MathAgent:
             if not os.path.exists(os.path.join(resume_from, "tree_state.json")):
                 raise CheckpointError(
                     f"Session at {resume_from} has no tree_state.json — it is a "
-                    "flat-mode checkpoint. Resume it with search_mode='flat'."
+                    "flat-mode checkpoint. Resume it with search_mode='flat' "
+                    "(CLI: omit --search or use --search flat)."
                 )
             session_dir = resume_from
         elif create_session:

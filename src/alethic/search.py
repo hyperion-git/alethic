@@ -822,6 +822,7 @@ def solve(
             total_revisions=total_revisions,
         )
         logger.warning("Search: context exhausted — checkpoint at %s", ckpt_path)
+        logger.info("Resume with: --search tree --resume %s", session_dir)
         result = _make_result(
             problem=problem,
             solution=best_solution_text,

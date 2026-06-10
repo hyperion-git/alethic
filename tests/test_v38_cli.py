@@ -44,6 +44,14 @@ class TestSearchFlag:
         with pytest.raises(SystemExit):
             _parse(["--search", "puct", "some problem"])
 
+    def test_explicit_search_flat_is_noop(self):
+        """--search flat must behave identically to omitting the flag —
+        pins the default=None asymmetry and the == "tree" guard."""
+        args = _parse(["--search", "flat", "some problem"])
+        cfg = _build_config(args)
+        assert cfg.search_mode == "flat"
+        assert cfg.search is None
+
 
 class TestEvalSearchFlag:
     def test_eval_run_passes_search_mode(self, tmp_path):

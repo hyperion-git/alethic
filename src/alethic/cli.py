@@ -16,12 +16,15 @@ import os
 import sys
 from typing import TYPE_CHECKING, Any
 
+from alethic.exceptions import CheckpointError
 from alethic.models import AgentConfig, SearchConfig, Verdict, VerifierConfig
 from alethic.output import format_consensus
 from alethic.verifier_agent import CheckerAgent, VerifierAgent
 
 if TYPE_CHECKING:
     from alethic.agent import MathAgent  # noqa: TC004
+
+_SEARCH_CHOICES = ("flat", "tree")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -219,7 +222,7 @@ Examples:
     )
     parser.add_argument(
         "--search",
-        choices=["flat", "tree"],
+        choices=_SEARCH_CHOICES,
         default=None,
         help="Search strategy: flat GVR loop (default) or v3.8 hierarchical tree search",
     )
@@ -552,7 +555,7 @@ def _eval_handler(argv: list[str]) -> int:
     )
     eval_run_parser.add_argument(
         "--search",
-        choices=["flat", "tree"],
+        choices=_SEARCH_CHOICES,
         default="flat",
         help="Search strategy for all problems (default: flat)",
     )
@@ -630,6 +633,9 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("\n[Interrupted by user]")
         return 130
+    except CheckpointError as e:
+        print(f"[Error] {e}", file=sys.stderr)
+        return 1
 
     # Output
     if args.json_output:
