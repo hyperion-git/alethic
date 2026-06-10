@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from alethic.exceptions import CheckpointError
 from alethic.models import TokenLedger
@@ -48,7 +51,7 @@ def _write(tmp_path: Path, **overrides) -> str:
 
 class TestWriteTreeCheckpoint:
     def test_writes_tree_state_json(self, tmp_path):
-        session_dir = _write(tmp_path)
+        _write(tmp_path)
         state = json.loads((tmp_path / "tree_state.json").read_text())
         assert state["mode"] == "tree"
         assert state["bridge_index"] == 1
