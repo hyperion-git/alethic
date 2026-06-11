@@ -82,6 +82,16 @@ class TestWriteTreeCheckpoint:
         assert loaded["best_solution_text"] is None
         assert loaded["token_ledger"] == {}
 
+    def test_persists_max_bridges_and_problem(self, tmp_path):
+        """Resume guard + mismatch warning need these recorded at write time."""
+        _write(tmp_path, max_bridges=5, problem="prove P")
+        state = json.loads((tmp_path / "tree_state.json").read_text())
+        assert state["max_bridges"] == 5
+        assert state["problem"] == "prove P"
+        loaded = load_tree_checkpoint(str(tmp_path))
+        assert loaded["max_bridges"] == 5
+        assert loaded["problem"] == "prove P"
+
     def test_write_failure_raises_checkpoint_error(self, tmp_path):
         """OSError (e.g. nonexistent dir) must surface as CheckpointError."""
         with pytest.raises(CheckpointError, match="Failed to write tree checkpoint"):
@@ -111,6 +121,19 @@ class TestLoadTreeCheckpoint:
         assert loaded["best_solution_text"] == "partial proof"
         assert loaded["graph"]["next_id"] == 1000000
         assert loaded["total_revisions"] == 5
+
+    def test_old_format_without_max_bridges_or_problem_tolerated(self, tmp_path):
+        """Pre-fix checkpoints lack max_bridges/problem — load must not break."""
+        (tmp_path / "session.json").write_text(json.dumps({"status": "checkpoint"}))
+        state = {
+            "mode": "tree", "bridge_index": 0, "bridge_confidence": 0.0,
+            "failed_bridges": [], "graph": None, "gap_states": {},
+            "atom_confs": {}, "best_confidence": 0.0,
+        }
+        (tmp_path / "tree_state.json").write_text(json.dumps(state))
+        loaded = load_tree_checkpoint(str(tmp_path))
+        assert loaded["max_bridges"] is None
+        assert loaded["problem"] is None
 
     def test_missing_tree_state_raises_checkpoint_error(self, tmp_path):
         (tmp_path / "session.json").write_text(json.dumps({"status": "checkpoint"}))

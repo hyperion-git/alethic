@@ -911,6 +911,11 @@ class TestResumeAndCheckpoint:
         assert result.checkpoint_path == str(tmp_path / "tree_state.json")
         assert result.session_dir == str(tmp_path)
         assert (tmp_path / "tree_state.json").exists()
+        # Self-checkpoint records the run's max_bridges and problem so a
+        # later resume can detect shrunken-config / problem mismatch.
+        state = json.loads((tmp_path / "tree_state.json").read_text())
+        assert state["max_bridges"] == 2  # default SearchConfig()
+        assert state["problem"] == "problem"
 
     def test_exhaustion_without_session_dir_propagates(self):
         from alethic.exceptions import ContextExhaustedError
@@ -956,6 +961,103 @@ class TestResumeAndCheckpoint:
         gen.assert_not_called()          # bridge was restored, not regenerated
         assert result.verdict == Verdict.CORRECT
         assert "bridged step" in result.solution
+
+    def test_resume_with_shrunken_max_bridges_raises(self, tmp_path):
+        """Checkpoint at bridge 4 (extreme, max_bridges=5) resumed under the
+        default SearchConfig (max_bridges=2) would yield an EMPTY bridge range:
+        the restored graph would never be consumed and finalization would
+        destroy the checkpoint. Must fail loud BEFORE touching the file."""
+        import json
+
+        from alethic.exceptions import CheckpointError
+        from alethic.models import AgentConfig
+        from alethic.search import solve
+
+        (tmp_path / "session.json").write_text(json.dumps({"status": "checkpoint"}))
+        state = self._restored_state()
+        state["bridge_index"] = 4
+        state["max_bridges"] = 5
+        state["gap_states"] = {str(k): v for k, v in state["gap_states"].items()}
+        state["atom_confs"] = {str(k): v for k, v in state["atom_confs"].items()}
+        original = json.dumps(state)
+        (tmp_path / "tree_state.json").write_text(original)
+
+        with pytest.raises(CheckpointError, match=r"max_bridges"):
+            solve(
+                "problem",
+                config=AgentConfig(),
+                client=mock.MagicMock(),
+                resume_from=str(tmp_path),
+            )
+        # The failed resume must leave the checkpoint untouched on disk.
+        assert (tmp_path / "tree_state.json").read_text() == original
+
+    def test_resume_old_format_checkpoint_empty_range_raises(self, tmp_path):
+        """Old checkpoints (no max_bridges key) hit the same empty-range bug;
+        the guard is on start_bridge vs cfg.max_bridges, not the recorded value."""
+        import json
+
+        from alethic.exceptions import CheckpointError
+        from alethic.models import AgentConfig
+        from alethic.search import solve
+
+        (tmp_path / "session.json").write_text(json.dumps({"status": "checkpoint"}))
+        state = self._restored_state()
+        state["bridge_index"] = 4
+        state["gap_states"] = {str(k): v for k, v in state["gap_states"].items()}
+        state["atom_confs"] = {str(k): v for k, v in state["atom_confs"].items()}
+        assert "max_bridges" not in state
+        original = json.dumps(state)
+        (tmp_path / "tree_state.json").write_text(original)
+
+        with pytest.raises(CheckpointError, match=r"max_bridges"):
+            solve(
+                "problem",
+                config=AgentConfig(),
+                client=mock.MagicMock(),
+                resume_from=str(tmp_path),
+            )
+        assert (tmp_path / "tree_state.json").read_text() == original
+
+    def test_resume_problem_mismatch_warns_and_continues(self, tmp_path, caplog):
+        """Mirrors the flat path: a checkpoint recorded for a different problem
+        warns (truncated preview) but the resume still proceeds."""
+        import json
+        import logging
+
+        from alethic.microkernel import MicrokernelResult
+        from alethic.models import AgentConfig, Verdict
+        from alethic.search import solve
+
+        (tmp_path / "session.json").write_text(json.dumps({"status": "checkpoint"}))
+        state = self._restored_state()
+        state["problem"] = "original problem"
+        state["gap_states"] = {str(k): v for k, v in state["gap_states"].items()}
+        state["atom_confs"] = {str(k): v for k, v in state["atom_confs"].items()}
+        (tmp_path / "tree_state.json").write_text(json.dumps(state))
+
+        technique = mock.MagicMock()
+        technique.name = "telescoping"
+        filled = MicrokernelResult(
+            status="filled", replacement_content="bridged step",
+            confidence=0.95, critique="", error_category="general",
+            revisions_used=0,
+        )
+        with mock.patch("alethic.search.generate"), \
+             mock.patch("alethic.search.enumerate_techniques", return_value=[technique]), \
+             mock.patch("alethic.search.gvr_microkernel", return_value=filled), \
+             caplog.at_level(logging.WARNING, logger="alethic"):
+            result = solve(
+                "a different problem",
+                config=AgentConfig(),
+                client=mock.MagicMock(),
+                resume_from=str(tmp_path),
+            )
+
+        assert result.verdict == Verdict.CORRECT  # solving continued
+        assert any(
+            "problem mismatch" in rec.message.lower() for rec in caplog.records
+        )
 
     def test_resume_restores_visit_counts(self, tmp_path):
         """PUCT state survives the round-trip: a restored gap keeps its history."""

@@ -211,6 +211,8 @@ def write_tree_checkpoint(
     token_ledger: TokenLedger | None,
     total_revisions: int = 0,
     status: str = "checkpoint",
+    max_bridges: int | None = None,
+    problem: str | None = None,
 ) -> str:
     """Persist v3.8 tree-search state to ``tree_state.json``.
 
@@ -224,6 +226,12 @@ def write_tree_checkpoint(
 
     ``total_revisions`` is the cumulative microkernel revision count so far;
     persisted so a resumed run can continue the tally rather than restarting.
+
+    ``max_bridges`` records the SearchConfig the checkpoint was written under,
+    so a resume with a smaller max_bridges can fail loud instead of silently
+    skipping the restored graph. ``problem`` enables the resume-time
+    problem-mismatch warning (mirroring the flat path). Both are optional for
+    backward compatibility with existing call sites.
 
     Returns the absolute path to ``tree_state.json``.
 
@@ -245,6 +253,8 @@ def write_tree_checkpoint(
             "atom_confs": {str(k): v for k, v in atom_confs.items()},
             "best_confidence": best_confidence,
             "total_revisions": total_revisions,
+            "max_bridges": max_bridges,
+            "problem": problem,
             "token_ledger": token_ledger.to_dict() if token_ledger else {},
             "checkpointed_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -279,7 +289,9 @@ def load_tree_checkpoint(session_dir: str) -> dict[str, Any]:
 
     Returns a dict with keys: bridge_index, bridge_confidence, failed_bridges,
     graph (dict or None), gap_states (int keys), atom_confs (int keys),
-    best_confidence, best_solution_text, token_ledger.
+    best_confidence, best_solution_text, total_revisions, max_bridges
+    (None for pre-v3.8.1 checkpoints), problem (None for pre-v3.8.1
+    checkpoints), token_ledger.
 
     ``gap_states`` values are opaque to this layer — produced and consumed as
     _GapState dicts by search.py.
@@ -328,6 +340,8 @@ def load_tree_checkpoint(session_dir: str) -> dict[str, Any]:
         "best_confidence": state.get("best_confidence", 0.0),
         "best_solution_text": best_solution_text,
         "total_revisions": state.get("total_revisions", 0),
+        "max_bridges": state.get("max_bridges"),
+        "problem": state.get("problem"),
         "token_ledger": state.get("token_ledger", {}),
     }
 

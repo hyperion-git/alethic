@@ -448,7 +448,12 @@ def solve(
         resume_from: Session directory containing a ``tree_state.json`` to
             resume from. The checkpointed bridge's graph and PUCT state are
             restored and the search re-enters gap-filling; defaults
-            ``session_dir`` to the same directory. Not persisted across
+            ``session_dir`` to the same directory. Raises ``CheckpointError``
+            (before touching the checkpoint) if the checkpointed
+            ``bridge_index`` is >= this run's ``max_bridges`` — the bridge
+            range would be empty and the restored graph silently discarded.
+            Logs a warning if the checkpointed problem differs from
+            ``problem``. Not persisted across
             resume: the events list — a resumed run's events cover only the
             current process. The restored token_ledger from the checkpoint is
             currently not merged (cost accounting restarts; see agent-level
@@ -472,6 +477,30 @@ def solve(
     if resume_from is not None:
         restored = load_tree_checkpoint(resume_from)
         start_bridge = restored["bridge_index"]
+        if start_bridge >= cfg.max_bridges:
+            # An empty bridge range would silently skip the restored graph and
+            # let finalization overwrite the checkpoint (graph=None,
+            # status=unsolved) — destroying it. Fail loud before touching it.
+            recorded = restored["max_bridges"]
+            recorded_note = (
+                f"max_bridges={recorded}"
+                if recorded is not None
+                else "an unrecorded max_bridges (old checkpoint format)"
+            )
+            raise CheckpointError(
+                f"Checkpoint at {resume_from} was written at bridge "
+                f"{start_bridge} under {recorded_note}, but this run has "
+                f"max_bridges={cfg.max_bridges} — the restored graph would "
+                "never be consumed. Resume with the original preset (-p ...) "
+                f"or a SearchConfig with max_bridges > {start_bridge}."
+            )
+        saved_problem = restored["problem"]
+        if saved_problem and problem != saved_problem:
+            logger.warning(
+                "Resume problem mismatch: checkpoint was for a different "
+                "problem. Checkpoint: %s...",
+                saved_problem[:80],
+            )
         failed_bridges = list(restored["failed_bridges"])
         best_confidence = restored["best_confidence"]
         best_solution_text = restored["best_solution_text"]
@@ -820,6 +849,8 @@ def solve(
             best_solution_text=best_solution_text,
             token_ledger=ledger,
             total_revisions=total_revisions,
+            max_bridges=cfg.max_bridges,
+            problem=problem,
         )
         logger.warning("Search: context exhausted — checkpoint at %s", ckpt_path)
         logger.info("Resume with: --search tree --resume %s", session_dir)

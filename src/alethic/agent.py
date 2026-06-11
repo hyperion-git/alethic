@@ -1388,6 +1388,8 @@ class MathAgent:
                     token_ledger=ledger,
                     total_revisions=result.total_revisions,
                     status="solved" if result.solved else "unsolved",
+                    max_bridges=(self.config.search or SearchConfig()).max_bridges,
+                    problem=problem,
                 )
             except CheckpointError as exc:
                 logger.warning("Could not write final tree state: %s", exc)
