@@ -143,11 +143,64 @@ analogue of the skill's decoupled verification (no API key, no per-token cost; C
   is likeliest → the full `scripts/self_preference_probe.py` (package + OpenRouter) remains the way to
   stress that dimension.
 
-## Recommended sequence
+## Planted-flaw battery via the skill route (subscription, 2026-06-27)
 
-1. **Run the bias diagnostic** (`scripts/self_preference_probe.py -r 10 --k5 --check-arm`). Cheap,
-   measurement-only; either result is decision-relevant → produces the number that gates everything.
-2. **Ship the metric split + anchor hash** (~30 lines; the only faithfulness-passing change).
-3. **Only if the diagnostic shows FPR>1 surviving K=5:** build the heterogeneous verifier roster
-   (with the verdict-majority aggregation fix), gated on that evidence.
-4. Defer the labeled-set grader optimization behind a 20-item audit; reject auto-evolving benchmarks.
+A 10-item audit run in-session via Task sub-agents: **8 hand-authored planted flaws** (2 blatant,
+2 moderate, 4 subtle — typed by failure mode: div-by-zero, dimensional, induction-overlap,
+dropped-factor, conditional-convergence reorder, limit/integral interchange, L'Hôpital-out-of-hypotheses,
+vibrational freeze-out) + **2 correct controls** (√2 irrational; the genuine classical-Drude L=3⁄2,
+correct-but-surprising). Each item → **5 independent decoupled Opus verifiers + 1 Sonnet + 1 Haiku** (70
+agents). Verifiers saw only problem+solution, never the ground-truth key.
+
+| Metric | Result |
+|---|---|
+| Flaw catch-rate (K=5) | **8 / 8** |
+| Flaw catch-rate (K=1, single verifier) | **8 / 8** |
+| Control false-reject (K=5) | **0 / 2** |
+| Items where K=1 ≠ K=5 (consensus changed verdict) | **0 / 10** (all unanimous) |
+| Sonnet overall correct | **10 / 10** |
+| Haiku overall correct | **10 / 10** |
+| By tier (Opus / Sonnet / Haiku) | blatant 2/2, moderate 2/2, **subtle 4/4** — all three tiers |
+
+The subtle catches had correct *reasons*, e.g. F6: "∫₀¹ n xⁿ dx = n/(n+1) → 1, not 0; no integrable
+dominating function, mass concentrates near x=1"; F8: "at 300 K the vibrational mode is frozen out
+(ℏω ≫ k_BT)". Both controls accepted (C2 explicitly: "premises consistently applied for a
+Maxwell-Boltzmann gas").
+
+**Three actionable findings:**
+1. **Cheap judges suffice (token lever, the completeness-critic gap):** Haiku and Sonnet matched the
+   5×Opus panel 10/10. A single Haiku verifier would have caught every flaw at a fraction of the cost —
+   direct evidence for a cheap complementary/replacement judge, the v4.0 solve-rate-vs-token-cost lever.
+2. **K=5 never beat K=1 here:** zero verifier disagreement → on clear-cut items, consensus is wasted
+   compute. K-consensus only earns its cost when verifiers *disagree*, which this battery never produced.
+3. **The battery was too easy to find the failure boundary:** 100%/0% with cheap models matching
+   expensive ones means the test lacks discriminating power. These are *classic, in-distribution* flaws
+   (textbook fallacies a strong LLM has seen). The result says "the verifier's floor is above this
+   battery," NOT "the verifier has no ceiling." A real stress test needs **novel** flaws (not in the
+   training distribution) and/or errors **buried in long multi-step derivations** (where attention, not
+   knowledge, is the bottleneck).
+
+**Net effect on the recommendations:** two null-ish experiments (pilot + battery) now **weaken** the
+verifier-bias / heterogeneous-roster case for Alethic and **strengthen** the cheap-judge token lever.
+The genuine open question is no longer "is the verifier biased toward accepting wrong proofs?" (no
+evidence yet) but "does it hold on *novel* / *long-context* flaws?" — and "can a Haiku verifier replace
+Opus to cut verification tokens?"
+
+## Recommended sequence (revised after the pilot + battery)
+
+The two experiments shifted the evidence: no sign of verifier over-acceptance, but strong evidence
+that a *cheap* judge matches Opus. Revised priorities:
+
+1. **Probe the cheap-judge token lever (now the best-supported move).** Re-run a benchmark slice with a
+   Haiku/Sonnet verifier vs Opus and compare solve-rate + tokens. The battery says a cheap verifier
+   catches the same flaws; confirm at scale → it directly serves the v4.0 cost gate. (Package; can also
+   prototype via the skill's verify Task model.)
+2. **Ship the metric split + anchor hash** (~30 lines; the only faithfulness-passing change) — still
+   worth it so the gate can *report* `false_claim_reject_rate`, even though it's currently ~perfect.
+3. **Harden the audit before trusting the null:** extend the battery with **novel** flaws (not textbook
+   fallacies) and flaws **buried in long multi-step derivations** (attention-limited, not knowledge-
+   limited). 100%/0% on classic flaws ≠ a robust verifier on the cases that matter.
+4. **De-prioritised (was #1/#3):** the self-preference diagnostic's weak/cross-provider author arm
+   (`scripts/self_preference_probe.py`) and the heterogeneous verifier roster — two null-ish results
+   weaken the bias case; gate any roster work on the harder battery (step 3) surfacing a real miss.
+5. Defer the labeled-set grader optimization; reject auto-evolving benchmarks.
