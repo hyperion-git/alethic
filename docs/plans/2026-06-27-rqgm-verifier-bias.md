@@ -118,6 +118,31 @@ positive. The **metric split + anchor hash** (row 2) is the minimal change that 
 report the one number responding to verifier *bias*. The single-query cheap-judge lever (gap MED) is
 the token-side complement.
 
+## Pilot run via the skill route (subscription, 2026-06-27)
+
+Ran the diagnostic's faithful core **in-session via Claude Code Task sub-agents** — the subscription
+analogue of the skill's decoupled verification (no API key, no per-token cost; Claude-family only).
+
+- **Author arm:** Opus *and* Haiku, each asked to "prove" both false-claim anchors, **refused and
+  produced correct disproofs** — even Haiku caught the Drude/Lorenz subtlety (derived L=3⁄2(k_B/e)²,
+  attributed π²/3 to Sommerfeld). → Claude-family authors will not manufacture the wrong-proof inputs
+  the diagnostic needs; the weak/cross-provider author arm is genuinely **OpenRouter/package-only**.
+  Empirically confirms the capability confound.
+- **Verifier arm:** a planted trap (algebra correct, but Sommerfeld c_v=(π²/2)k_B(k_BT/E_F) and Fermi
+  velocity mislabeled as "classical Drude") was checked by **5 independent decoupled Opus verifiers →
+  5/5 INCORRECT, confidence 0.93–0.97**, all correctly flagging the quantum-inputs-under-classical-label
+  premise error. K=1 verdict = K=5 majority = INCORRECT; unanimous, so consensus added nothing (no
+  variance to reduce). **FPR = 0** on this trap.
+- **Interpretation:** a reassuring **NULL** for these anchors — Claude is robust both as author and as
+  verifier, so the "verifier accepts a wrong proof" failure does not manifest for Claude-family here.
+  This cheaply de-risks the spine's worry *for these specific cases*. The trap was caught by the
+  VERIFIER_SYSTEM false-premise (#16) and anti-spec-gaming (#17) features Alethic **already ships**.
+- **Caveats:** (1) N=1 planted trap on a textbook-known subtlety — a real audit needs a **battery of
+  subtler planted flaws** (the Deferred grader-improvement lens, doable on-subscription); (2) the skill
+  route structurally cannot run the weak/cross-provider author arm, which is where a real false positive
+  is likeliest → the full `scripts/self_preference_probe.py` (package + OpenRouter) remains the way to
+  stress that dimension.
+
 ## Recommended sequence
 
 1. **Run the bias diagnostic** (`scripts/self_preference_probe.py -r 10 --k5 --check-arm`). Cheap,
