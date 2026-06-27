@@ -167,40 +167,49 @@ dominating function, mass concentrates near x=1"; F8: "at 300 K the vibrational 
 (ℏω ≫ k_BT)". Both controls accepted (C2 explicitly: "premises consistently applied for a
 Maxwell-Boltzmann gas").
 
-**Three actionable findings:**
-1. **Cheap judges suffice (token lever, the completeness-critic gap):** Haiku and Sonnet matched the
-   5×Opus panel 10/10. A single Haiku verifier would have caught every flaw at a fraction of the cost —
-   direct evidence for a cheap complementary/replacement judge, the v4.0 solve-rate-vs-token-cost lever.
-2. **K=5 never beat K=1 here:** zero verifier disagreement → on clear-cut items, consensus is wasted
-   compute. K-consensus only earns its cost when verifiers *disagree*, which this battery never produced.
-3. **The battery was too easy to find the failure boundary:** 100%/0% with cheap models matching
-   expensive ones means the test lacks discriminating power. These are *classic, in-distribution* flaws
-   (textbook fallacies a strong LLM has seen). The result says "the verifier's floor is above this
-   battery," NOT "the verifier has no ceiling." A real stress test needs **novel** flaws (not in the
-   training distribution) and/or errors **buried in long multi-step derivations** (where attention, not
-   knowledge, is the bottleneck).
+**What a ceiling result can and cannot support.** Every item scored 100% with zero variance, so the
+battery has **no discriminating power** — which *dissolves* the tempting reads rather than supporting
+them:
+- It does **not** weaken the verifier-bias case. The instrument could not have detected bias if present
+  → *absence of evidence, not evidence of absence.* The bias question remains **untested**.
+- It does **not** show a cheap judge "matches Opus." Haiku 10/10 beside Opus 10/10 means Haiku clears
+  the *same easy bar*, not that it matches Opus at Opus's real operating difficulty. Also untested.
+- K=5 = K=1 on every item is expected when items are clear-cut (no disagreement to resolve); it says
+  nothing about consensus value on *hard* items.
 
-**Net effect on the recommendations:** two null-ish experiments (pilot + battery) now **weaken** the
-verifier-bias / heterogeneous-roster case for Alethic and **strengthen** the cheap-judge token lever.
-The genuine open question is no longer "is the verifier biased toward accepting wrong proofs?" (no
-evidence yet) but "does it hold on *novel* / *long-context* flaws?" — and "can a Haiku verifier replace
-Opus to cut verification tokens?"
+**Why both experiments missed the target (the load-bearing point).** RQGM's concern is *correlated
+blind spots* — the verifier misses an error because it shares the generator's blind spot. But you can
+only plant an error you can *see*, and a blind spot is by definition an error the model *cannot* see.
+Hand-authored flaws therefore sample the model's **articulable-error set — the complement of what we
+want to measure.** This is the same wall the package's weak-author arm hit from the other side: asking
+Claude to *generate* a wrong proof failed because it won't author errors it can see. One underlying
+reason, two dead ends.
+
+**The only valid read (kept, not inflated):** the verifier accepted both correct controls — including
+the correct-but-surprising classical-Drude C2 — and caught the *premise*-type errors (F4/F6/F7) with
+correct reasoning, not surface pattern-matching on "verify this." That is mild evidence it is **not
+trigger-happy**. It is not a quality verdict.
+
+**Consequence:** the only instrument that can test verifier blind spots is **harvested real errors with
+ground truth** — wrong solutions the model produced *unawares*, then labeled. That is exactly the
+Deferred labeled-set item (§2, row 4), now promoted: these two cheap probes do not substitute for it —
+they demonstrate *why* it is necessary.
 
 ## Recommended sequence (revised after the pilot + battery)
 
-The two experiments shifted the evidence: no sign of verifier over-acceptance, but strong evidence
-that a *cheap* judge matches Opus. Revised priorities:
+The two cheap probes were instructive but **structurally cannot test the RQGM question** — one failed
+by refusal, the other by construction. They leave the bias question *open*, not closed. Revised
+priorities:
 
-1. **Probe the cheap-judge token lever (now the best-supported move).** Re-run a benchmark slice with a
-   Haiku/Sonnet verifier vs Opus and compare solve-rate + tokens. The battery says a cheap verifier
-   catches the same flaws; confirm at scale → it directly serves the v4.0 cost gate. (Package; can also
-   prototype via the skill's verify Task model.)
-2. **Ship the metric split + anchor hash** (~30 lines; the only faithfulness-passing change) — still
-   worth it so the gate can *report* `false_claim_reject_rate`, even though it's currently ~perfect.
-3. **Harden the audit before trusting the null:** extend the battery with **novel** flaws (not textbook
-   fallacies) and flaws **buried in long multi-step derivations** (attention-limited, not knowledge-
-   limited). 100%/0% on classic flaws ≠ a robust verifier on the cases that matter.
-4. **De-prioritised (was #1/#3):** the self-preference diagnostic's weak/cross-provider author arm
-   (`scripts/self_preference_probe.py`) and the heterogeneous verifier roster — two null-ish results
-   weaken the bias case; gate any roster work on the harder battery (step 3) surfacing a real miss.
-5. Defer the labeled-set grader optimization; reject auto-evolving benchmarks.
+1. **Build a harvested real-error labeled set — the only valid test of verifier blind spots.** Collect
+   `(problem, solution, true_verdict)` triples where the model produced a wrong solution *unawares*
+   (run Alethic / raw Claude on hard problems and label outputs against known answers; or import a
+   benchmark with gold solutions). This is the Deferred grader-audit item promoted to #1: it is the
+   only design that reaches *correlated* blind spots, which planted flaws and self-generation cannot.
+2. **Ship the metric split + anchor hash** (~30 lines) so the gate can *report* a verdict-accuracy
+   number once the labeled set exists.
+3. **Treat the cheap-judge token lever AND the heterogeneous verifier roster as UNTESTED hypotheses.**
+   Gate both on the labeled set (which can finally show whether Haiku truly matches Opus at real
+   difficulty, and whether same-model bias exists). Do **not** adopt either on the current evidence —
+   the perfect battery cannot support them.
+4. Reject auto-evolving benchmarks.
