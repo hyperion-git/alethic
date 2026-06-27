@@ -14,7 +14,7 @@ from typing import Any
 
 import anthropic
 
-_RATE_LIMIT_ERRORS: tuple[type, ...] = (anthropic.RateLimitError,)
+_RATE_LIMIT_ERRORS: tuple[type[BaseException], ...] = (anthropic.RateLimitError,)
 try:
     import openai
     _RATE_LIMIT_ERRORS = (anthropic.RateLimitError, openai.RateLimitError)

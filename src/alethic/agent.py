@@ -34,7 +34,7 @@ import anthropic
 
 from alethic.client_factory import get_client
 
-_API_ERRORS: tuple[type, ...] = (anthropic.APIError,)
+_API_ERRORS: tuple[type[BaseException], ...] = (anthropic.APIError,)
 try:
     import openai
     _API_ERRORS = (anthropic.APIError, openai.APIError)
