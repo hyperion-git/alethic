@@ -180,7 +180,6 @@ def run_gate(benchmark_path: Path, *, preset: str = "default", api_key: str | No
                 "verdict": result.verdict.value,
                 "confidence": result.confidence,
                 "iterations_used": result.iterations_used,
-                "correct_prediction": result.solved == expected_solvable,
                 "error": None,
             }
             outcome["atom_metrics"] = measure_atoms(result.events, result.iterations_used)
@@ -191,7 +190,6 @@ def run_gate(benchmark_path: Path, *, preset: str = "default", api_key: str | No
                 "verdict": "error",
                 "confidence": 0.0,
                 "iterations_used": 0,
-                "correct_prediction": False,
                 "error": str(exc),
             }
             outcome["atom_metrics"] = None

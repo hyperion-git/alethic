@@ -340,7 +340,6 @@ def run_benchmark(
                 "verdict": result.verdict.value,
                 "confidence": result.confidence,
                 "iterations_used": result.iterations_used,
-                "correct_prediction": result.solved == expected_solvable,
                 "error": None,
             }
             # Atom measurement
@@ -355,7 +354,6 @@ def run_benchmark(
                 "verdict": "error",
                 "confidence": 0.0,
                 "iterations_used": 0,
-                "correct_prediction": False,
                 "error": str(exc),
             }
             outcome["atom_metrics"] = None
@@ -363,7 +361,15 @@ def run_benchmark(
 
         results.append(outcome)
         if verbose:
-            status = "OK" if outcome["correct_prediction"] else "FAIL"
+            # Population-aware: a single pass/fail boolean would mean two
+            # different things across the two populations — the conflation
+            # split_metrics() exists to remove.
+            if outcome["error"]:
+                status = "ERROR"
+            elif expected_solvable:
+                status = "SOLVED" if outcome["solved"] else "unsolved"
+            else:
+                status = "ACCEPTED(FP)" if outcome["solved"] else "rejected"
             print(f"  {status} verdict={outcome['verdict']} conf={outcome['confidence']:.2f}")
 
     elapsed = time.time() - start
