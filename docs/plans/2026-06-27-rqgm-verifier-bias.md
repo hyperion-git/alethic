@@ -33,7 +33,7 @@ Ordered by (faithfulness × value ÷ cost). "Faithfulness" = backed by a *demons
 | Change | Verdict | Why (citing skeptics) | Pkg/Skill | Cost | Prerequisite |
 |---|---|---|---|---|---|
 | **Verifier-bias FPR diagnostic** (`scripts/self_preference_probe.py`), descoped to Arm A + K=1-vs-K=5 | **Adopt** | Cheapest high-signal item; deliverable is a *number*. Faithfulness skeptic FAILED the headline (Opus-vs-other-model is intra-AI self-preference, not RQGM's AI-vs-human 1.91×) but PASSED the K=1-vs-K=5 secondary as a faithful port of the explicit "variance ≠ bias" claim. Scope-cost FAILED Arm B (matched-quality injection needs unverifiable scaffolds) → dropped. Redundancy passed. | Package | Low | OpenRouter key; reframe as "self-preference analogue," not the 1.91× |
-| **Metric split** `correct_prediction` → `solve_rate` + `false_claim_reject_rate`; freeze gate with `anchor_sha256` + `gate_epoch` | **Adopt** | **Only proposal whose faithfulness skeptic PASSED** — it *rejects* "evolve the benchmark" as anti-faithful and keeps RQGM's anchor *discipline*. ~30 lines, zero LLM circularity. The reject-rate is the only repo metric that responds to verifier *bias* not variance. | Package | Low | Human-authored false-claims to grow the (tiny) reject anchor |
+| **Metric split** `correct_prediction` → `solve_rate` + `false_claim_reject_rate`; freeze gate with `anchor_sha256` + `gate_epoch` | **Adopt — ✅ SHIPPED 2026-07-28** | **Only proposal whose faithfulness skeptic PASSED** — it *rejects* "evolve the benchmark" as anti-faithful and keeps RQGM's anchor *discipline*. ~30 lines, zero LLM circularity. The reject-rate is the only repo metric that responds to verifier *bias* not variance. | Package | Low | Human-authored false-claims to grow the (tiny) reject anchor |
 | **Heterogeneous verifier roster** (`verifier_model(s)` config; round-robin a non-Anthropic slot into K-consensus + solve-loop verify) | **Adopt-with-changes** | Structural half of the spine fix. Faithfulness FAILED: *no* RQGM result varied the evaluator's base model (main runs all GPT-5.5; Nemotron only in ablations) — merit is classic ensemble decorrelation. Scope-cost FAILED on cost-realism: mean-confidence aggregation breaks across model scales (→ more revisions, *more* tokens). | Both (skill capped to Claude-family) | Medium | Fix mean-confidence aggregation (verdict-majority path); **gate on the diagnostic** |
 | **Offline one-shot verifier-prompt selection vs planted-flaw labeled set** | **Defer** | Right ingredient (verdict-accuracy metric + ground-truth anchor = the real gap), correct RQGM result to borrow. Faithfulness FAILED: RQGM's +9% came from *co-evolution against the anchor*, which this strips; a best-of-5 sweep was never validated. Dataset is the dominant non-automatable cost. | Both | High | Build the 20-item labeled set + **run the existing breaker + a diverse verifier as an audit first** |
 | **Heterogeneous "Auditor Slot"** (cheap different-model judge on citation/spec-gaming axes) | **Defer→merge** | Faithfulness FAILED: its axes (citation #16, spec-gaming #17) are *already in* `VERIFIER_SYSTEM`, so "complementary" is illusory — it's just model diversity (the roster row). Real bug found: `set_client_factory` is process-global → "make slot 0 heterogeneous" flips *all* K slots. Subsumed by the roster. | Both | Medium | Fold model-diversity intent into the roster |
@@ -206,10 +206,54 @@ priorities:
    (run Alethic / raw Claude on hard problems and label outputs against known answers; or import a
    benchmark with gold solutions). This is the Deferred grader-audit item promoted to #1: it is the
    only design that reaches *correlated* blind spots, which planted flaws and self-generation cannot.
-2. **Ship the metric split + anchor hash** (~30 lines) so the gate can *report* a verdict-accuracy
-   number once the labeled set exists.
+2. ~~**Ship the metric split + anchor hash**~~ — **IMPLEMENTED 2026-07-28** (see below), so the gate can
+   *report* a verdict-accuracy number once the labeled set exists.
 3. **Treat the cheap-judge token lever AND the heterogeneous verifier roster as UNTESTED hypotheses.**
    Gate both on the labeled set (which can finally show whether Haiku truly matches Opus at real
    difficulty, and whether same-model bias exists). Do **not** adopt either on the current evidence —
    the perfect battery cannot support them.
 4. Reject auto-evolving benchmarks.
+
+## Implemented: metric split + anchor freeze (rec #2, 2026-07-28)
+
+Landed in `src/alethic/eval/harness.py` (shared) and consumed by both `alethic eval run` and
+`scripts/run_gate.py`, so the v3.8 gate reports it without a second copy of the aggregation.
+
+**`split_metrics(results)`** partitions the benchmark by `expected_solvable` — the two populations
+answer different questions, and the old pooled `solve_rate` (solved / *all* problems) hid both:
+
+| Key | Meaning |
+|---|---|
+| `solve_rate` | solved / **solvable** problems — capability. **Redefined**; not comparable to a pre-split number. |
+| `false_claim_accept_rate` | accepted / **scored** anchors — **the primary number.** Every "proof" of a false claim is wrong by construction, so an accept is a false positive. The only metric in the repo responding to verifier *bias* rather than *variance*. |
+| `false_claim_reject_rate` | its complement — **not** a false-premise *detection* rate (see caveat) |
+| `false_claim_verdicts` | verdict histogram over the anchors, which does separate rejection from exhaustion |
+| `n_errors`, `n_false_claim_scored` | observation accounting |
+
+**Errors are handled asymmetrically, deliberately.** A solvable problem that errored *is* a failure to
+solve and stays in the `solve_rate` denominator (dropping it would inflate the rate on a lossy run). An
+anchor that errored produced *no verdict* — a non-observation — and leaves the anchor denominator. The
+naive `not solved` test counted crashed anchors as correct rejections, biasing toward the reassuring
+answer. On a 2-solvable/2-anchor fixture with one error each, the old logic reports 50% rejection where
+the truth is that the single anchor which returned a verdict was **accepted** — 0% rejection.
+
+**Caveat kept visible in the docstring:** `AgentResult.solved` is false whenever the agent missed a
+CORRECT verdict, so "rejected" lumps genuine false-premise detection together with plain budget
+exhaustion. `false_claim_verdicts` is what distinguishes them; `AgentResult` carries no detection flag.
+
+**Anchor freeze** uses two independent keys, because either alone is insufficient:
+
+- `anchor_sha256` — SHA-256 over `(id, domain, problem, expected_solvable)` sorted by id. Invariant to
+  file ordering; changes if any problem's text, domain, or solvability flag is edited, or one is
+  added/removed. Answers *which problem set was run*. (`domain` is included: it selects the agent class.)
+- `GATE_EPOCH = 2` — a module constant, **not** a benchmark field. Answers *how outcomes were scored*.
+  A verifier-prompt or verifier-model change never touches the benchmark JSON, so only an epoch bump can
+  invalidate a comparison across one. Epoch 1 = the pooled pre-split `solve_rate`. Keeping the epoch in
+  code also means the benchmark files stay untouched — which is what anchor-freeze discipline wants.
+
+§4's extension (invalidating `calibration.py` pairs on a verifier change) is deliberately **not** in
+scope here; it becomes a bump of this same constant rather than a redesign.
+
+Tests: `tests/test_eval.py::TestAnchorHash` (5) and `::TestSplitMetrics` (6), each written to fail
+against the naive implementation — hash discrimination, the errored-anchor case, the errored-solvable
+case, and `None`-not-`0.0` when no anchors were scored.

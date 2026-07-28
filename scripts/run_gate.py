@@ -111,9 +111,12 @@ def run_gate(benchmark_path: Path, *, preset: str = "default", api_key: str | No
     try:
         from alethic import MathAgent, PhysicsAgent
         from alethic.eval.harness import (
+            GATE_EPOCH,
+            anchor_sha256,
             compute_puct_comparison,
             load_benchmark,
             measure_atoms,
+            split_metrics,
         )
         from alethic.models import AgentConfig
     except ImportError:
@@ -205,7 +208,6 @@ def run_gate(benchmark_path: Path, *, preset: str = "default", api_key: str | No
     print(f"\nCompleted {total} problems in {_format_eta(wall)}")
 
     # Aggregate metrics
-    solved_count = sum(1 for r in results if r["solved"])
     ann_rates = [
         r["atom_metrics"]["annotation_rate"]
         for r in results if r.get("atom_metrics")
@@ -222,9 +224,10 @@ def run_gate(benchmark_path: Path, *, preset: str = "default", api_key: str | No
     return {
         "benchmark": benchmark.get("name", benchmark_path.stem),
         "preset": preset,
+        "anchor_sha256": anchor_sha256(benchmark),
+        "gate_epoch": GATE_EPOCH,
         "total": total,
-        "solved": solved_count,
-        "solve_rate": solved_count / total if total else 0.0,
+        **split_metrics(results),
         "mean_annotation_rate": sum(ann_rates) / len(ann_rates) if ann_rates else 0.0,
         "mean_atom_count": sum(atom_counts) / len(atom_counts) if atom_counts else 0.0,
         "mean_puct_divergence": sum(puct_rates) / len(puct_rates) if puct_rates else 0.0,
@@ -238,12 +241,26 @@ def report(gate_data: dict) -> None:
     print("\n" + "=" * 60)
     print("GATE EXPERIMENT RESULTS")
     print("=" * 60)
+    accept = gate_data.get("false_claim_accept_rate")
+    accept_str = "n/a (no anchors scored)" if accept is None else f"{accept:.1%}"
+
     print(f"Problems:        {gate_data['total']}")
-    print(f"Solved:          {gate_data['solved']} ({gate_data['solve_rate']:.1%})")
+    print(
+        f"Solved:          {gate_data['solved']}/{gate_data['n_solvable']} solvable "
+        f"({gate_data['solve_rate']:.1%})"
+    )
+    print(
+        f"False-claim FPR: {gate_data['false_claims_accepted']}"
+        f"/{gate_data['n_false_claim_scored']} accepted ({accept_str})"
+    )
+    print(f"Anchor verdicts: {gate_data['false_claim_verdicts']}")
+    print(f"Errors:          {gate_data['n_errors']}")
     print(f"Annotation rate: {gate_data['mean_annotation_rate']:.2f}")
     print(f"Mean atom count: {gate_data['mean_atom_count']:.1f}")
     print(f"PUCT divergence: {gate_data['mean_puct_divergence']:.2f}")
     print(f"Elapsed:         {_format_eta(gate_data['elapsed_seconds'])}")
+    print(f"Anchor sha256:   {gate_data['anchor_sha256'][:16]}...")
+    print(f"Gate epoch:      {gate_data['gate_epoch']}  (reports differ across epochs)")
     print()
 
     ann = gate_data["mean_annotation_rate"]
