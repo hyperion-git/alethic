@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Tests
+        # No ANTHROPIC_API_KEY: the suite is fully mocked and must stay that way.
+        run: pytest -q
+
+      - name: Type check
+        run: mypy src/alethic
+
+      # Ruff is advisory, not a gate: main carries 111 pre-existing findings
+      # (93 in tests/, mostly unused imports and import ordering). Gating on it
+      # today would block every merge on unrelated debt. Clean those up in a
+      # dedicated pass, then promote this step by dropping continue-on-error.
+      - name: Lint (advisory)
+        run: ruff check src tests
+        continue-on-error: true
