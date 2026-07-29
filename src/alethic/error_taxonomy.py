@@ -218,16 +218,6 @@ def classify_errors(critique: str) -> str:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def get_all_categories() -> list[str]:
-    """Return all category names in severity order (most → least severe).
-
-    Includes ``"general"`` as the final entry.
-    """
-    cats = [cat for _, categories in _TREE for cat in categories]
-    cats.append("general")
-    return cats
-
-
 def get_revision_addendum(category: str) -> str:
     """Return the revision strategy addendum for the given error category.
 
@@ -328,15 +318,3 @@ _ORACLE_ROUTING: dict[str, tuple[OracleType, bool]] = {
     "wrong_method": (OracleType.LAYER3_LLM_ADVERSARIAL, True),
     "general": (OracleType.LAYER3_LLM, False),
 }
-
-
-def classify_errors_routed(critique: str) -> tuple[str, OracleType, bool]:
-    """Classify critique and return (category, next_oracle, force_adversarial).
-
-    Extends classify_errors() with routing information for the Verification Ladder.
-    The agent.py orchestrator reads next_oracle to decide verifier configuration
-    for the next iteration.
-    """
-    result = classify_inconsistency(critique)
-    oracle, force_adv = _ORACLE_ROUTING[result.primary]
-    return result.primary, oracle, force_adv

@@ -1,0 +1,397 @@
+{
+  "model": "nvidia/nemotron-3-nano-30b-a3b:free",
+  "n_observations": 28,
+  "depth_config": "1\u00d712 iters",
+  "breadth_config": "6\u00d72 iters",
+  "summary": {
+    "depth_solve_rate": 0.8571428571428571,
+    "breadth_solve_rate": 0.8928571428571429,
+    "delta": 0.03571428571428571,
+    "depth_mean_conf": 0.9971428571428572,
+    "breadth_mean_conf": 1.0
+  },
+  "mcnemar": {
+    "both": 23,
+    "depth_only": 1,
+    "breadth_only": 2,
+    "neither": 2,
+    "chi2": 0.0,
+    "discordant": 3
+  },
+  "per_problem": {
+    "prime-17": {
+      "depth_rate": 1.0,
+      "breadth_rate": 1.0,
+      "n": 5,
+      "winner": "tie"
+    },
+    "sqrt2-irrational": {
+      "depth_rate": 0.8,
+      "breadth_rate": 1.0,
+      "n": 5,
+      "winner": "breadth"
+    },
+    "sum-arithmetic": {
+      "depth_rate": 0.8,
+      "breadth_rate": 1.0,
+      "n": 5,
+      "winner": "breadth"
+    },
+    "infinite-primes": {
+      "depth_rate": 1.0,
+      "breadth_rate": 1.0,
+      "n": 5,
+      "winner": "tie"
+    },
+    "am-gm": {
+      "depth_rate": 1.0,
+      "breadth_rate": 1.0,
+      "n": 5,
+      "winner": "tie"
+    },
+    "false-claim-even-odd": {
+      "depth_rate": 0.3333333333333333,
+      "breadth_rate": 0.0,
+      "n": 3,
+      "winner": "depth"
+    }
+  },
+  "raw": [
+    {
+      "problem_id": "prime-17",
+      "domain": "math",
+      "replication": 0,
+      "depth_verdict": "correct",
+      "depth_confidence": 1.0,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 6
+    },
+    {
+      "problem_id": "prime-17",
+      "domain": "math",
+      "replication": 1,
+      "depth_verdict": "correct",
+      "depth_confidence": 0.97,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 5
+    },
+    {
+      "problem_id": "prime-17",
+      "domain": "math",
+      "replication": 2,
+      "depth_verdict": "correct",
+      "depth_confidence": 1.0,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 6
+    },
+    {
+      "problem_id": "prime-17",
+      "domain": "math",
+      "replication": 3,
+      "depth_verdict": "correct",
+      "depth_confidence": 0.99,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 5
+    },
+    {
+      "problem_id": "prime-17",
+      "domain": "math",
+      "replication": 4,
+      "depth_verdict": "correct",
+      "depth_confidence": 1.0,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 4
+    },
+    {
+      "problem_id": "sqrt2-irrational",
+      "domain": "math",
+      "replication": 0,
+      "depth_verdict": "correct",
+      "depth_confidence": 1.0,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 5
+    },
+    {
+      "problem_id": "sqrt2-irrational",
+      "domain": "math",
+      "replication": 1,
+      "depth_verdict": "correct",
+      "depth_confidence": 1.0,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 6
+    },
+    {
+      "problem_id": "sqrt2-irrational",
+      "domain": "math",
+      "replication": 2,
+      "depth_verdict": "unsolved",
+      "depth_confidence": 1.0,
+      "depth_solved": false,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 5
+    },
+    {
+      "problem_id": "sqrt2-irrational",
+      "domain": "math",
+      "replication": 3,
+      "depth_verdict": "correct",
+      "depth_confidence": 1.0,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 5
+    },
+    {
+      "problem_id": "sqrt2-irrational",
+      "domain": "math",
+      "replication": 4,
+      "depth_verdict": "correct",
+      "depth_confidence": 0.99,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 4
+    },
+    {
+      "problem_id": "sum-arithmetic",
+      "domain": "math",
+      "replication": 0,
+      "depth_verdict": "correct",
+      "depth_confidence": 0.99,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 4
+    },
+    {
+      "problem_id": "sum-arithmetic",
+      "domain": "math",
+      "replication": 1,
+      "depth_verdict": "correct",
+      "depth_confidence": 1.0,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 6
+    },
+    {
+      "problem_id": "sum-arithmetic",
+      "domain": "math",
+      "replication": 2,
+      "depth_verdict": "correct",
+      "depth_confidence": 1.0,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 6
+    },
+    {
+      "problem_id": "sum-arithmetic",
+      "domain": "math",
+      "replication": 3,
+      "depth_verdict": "correct",
+      "depth_confidence": 1.0,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 6
+    },
+    {
+      "problem_id": "sum-arithmetic",
+      "domain": "math",
+      "replication": 4,
+      "depth_verdict": "unsolved",
+      "depth_confidence": 1.0,
+      "depth_solved": false,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 5
+    },
+    {
+      "problem_id": "infinite-primes",
+      "domain": "math",
+      "replication": 0,
+      "depth_verdict": "correct",
+      "depth_confidence": 1.0,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 5
+    },
+    {
+      "problem_id": "infinite-primes",
+      "domain": "math",
+      "replication": 1,
+      "depth_verdict": "correct",
+      "depth_confidence": 1.0,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 5
+    },
+    {
+      "problem_id": "infinite-primes",
+      "domain": "math",
+      "replication": 2,
+      "depth_verdict": "correct",
+      "depth_confidence": 0.99,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 6
+    },
+    {
+      "problem_id": "infinite-primes",
+      "domain": "math",
+      "replication": 3,
+      "depth_verdict": "correct",
+      "depth_confidence": 1.0,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 6
+    },
+    {
+      "problem_id": "infinite-primes",
+      "domain": "math",
+      "replication": 4,
+      "depth_verdict": "correct",
+      "depth_confidence": 0.99,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 6
+    },
+    {
+      "problem_id": "am-gm",
+      "domain": "math",
+      "replication": 0,
+      "depth_verdict": "correct",
+      "depth_confidence": 1.0,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 5
+    },
+    {
+      "problem_id": "am-gm",
+      "domain": "math",
+      "replication": 1,
+      "depth_verdict": "correct",
+      "depth_confidence": 1.0,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 4
+    },
+    {
+      "problem_id": "am-gm",
+      "domain": "math",
+      "replication": 2,
+      "depth_verdict": "correct",
+      "depth_confidence": 1.0,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 5
+    },
+    {
+      "problem_id": "am-gm",
+      "domain": "math",
+      "replication": 3,
+      "depth_verdict": "correct",
+      "depth_confidence": 1.0,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 5
+    },
+    {
+      "problem_id": "am-gm",
+      "domain": "math",
+      "replication": 4,
+      "depth_verdict": "correct",
+      "depth_confidence": 1.0,
+      "depth_solved": true,
+      "breadth_verdict": "correct",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": true,
+      "breadth_n_solved": 3
+    },
+    {
+      "problem_id": "false-claim-even-odd",
+      "domain": "math",
+      "replication": 0,
+      "depth_verdict": "correct",
+      "depth_confidence": 1.0,
+      "depth_solved": true,
+      "breadth_verdict": "unsolved",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": false,
+      "breadth_n_solved": 0
+    },
+    {
+      "problem_id": "false-claim-even-odd",
+      "domain": "math",
+      "replication": 1,
+      "depth_verdict": "unsolved",
+      "depth_confidence": 1.0,
+      "depth_solved": false,
+      "breadth_verdict": "unsolved",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": false,
+      "breadth_n_solved": 0
+    },
+    {
+      "problem_id": "false-claim-even-odd",
+      "domain": "math",
+      "replication": 2,
+      "depth_verdict": "unsolved",
+      "depth_confidence": 1.0,
+      "depth_solved": false,
+      "breadth_verdict": "unsolved",
+      "breadth_confidence": 1.0,
+      "breadth_any_solved": false,
+      "breadth_n_solved": 0
+    }
+  ]
+}

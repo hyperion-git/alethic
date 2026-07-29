@@ -17,9 +17,7 @@ from alethic.error_taxonomy import (
     _TAXONOMY_KEYWORDS,
     _TREE,
     classify_errors,
-    classify_errors_routed,
     classify_inconsistency,
-    get_all_categories,
     get_revision_addendum,
 )
 from alethic.models import OracleType
@@ -120,15 +118,16 @@ class TestRoutingTableCompleteness:
 # ---------------------------------------------------------------------------
 
 class TestEmptyCritiqueHandling:
-    """classify_errors and classify_errors_routed must handle empty/unusual input."""
+    """classify_errors and the _ORACLE_ROUTING lookup must handle empty/unusual input."""
 
     def test_empty_string_returns_general(self):
         """Empty critique must return 'general', not crash."""
         assert classify_errors("") == "general"
 
     def test_empty_string_routed_returns_general(self):
-        """classify_errors_routed('') must not crash and must return general."""
-        category, oracle, force_adv = classify_errors_routed("")
+        """Routing an empty critique must not crash and must return general."""
+        category = classify_errors("")
+        oracle, force_adv = _ORACLE_ROUTING[category]
         assert category == "general"
         assert oracle == OracleType.LAYER3_LLM
         assert force_adv is False
@@ -445,11 +444,11 @@ class TestPhysicsErrorPatterns:
 
 
 # ---------------------------------------------------------------------------
-# Probe 1 supplement: classify_errors_routed never raises KeyError
+# Probe 1 supplement: classify_errors -> _ORACLE_ROUTING never raises KeyError
 # ---------------------------------------------------------------------------
 
 class TestRoutedNeverRaises:
-    """classify_errors_routed must never raise KeyError for any classify_errors output."""
+    """_ORACLE_ROUTING lookup must never raise KeyError for any classify_errors output."""
 
     @pytest.mark.parametrize("critique", [
         "",
@@ -467,8 +466,9 @@ class TestRoutedNeverRaises:
         "x" * 100000,
     ])
     def test_routed_never_raises(self, critique: str):
-        """classify_errors_routed should never raise for any string input."""
-        category, oracle, force_adv = classify_errors_routed(critique)
+        """Routing should never raise for any string input."""
+        category = classify_errors(critique)
+        oracle, force_adv = _ORACLE_ROUTING[category]
         assert isinstance(category, str)
         assert isinstance(oracle, OracleType)
         assert isinstance(force_adv, bool)
@@ -641,8 +641,9 @@ class TestInconsistencyResult:
         assert classify_errors("nothing here") == "general"
         assert classify_errors("wrong approach") == "wrong_method"
 
-    def test_classify_errors_routed_still_works(self):
-        cat, oracle, force = classify_errors_routed("sign error")
+    def test_oracle_routing_still_works(self):
+        cat = classify_errors("sign error")
+        oracle, force = _ORACLE_ROUTING[cat]
         assert cat == "algebra"
 
     def test_empty_critique(self):

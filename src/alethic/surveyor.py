@@ -130,9 +130,11 @@ def _parse_survey(text: str) -> SurveyResult:
     result.methods = sections.get("CANONICAL_METHODS", [])
 
     for raw in sections.get("SANITY_CHECK_CANDIDATES", []):
-        m = _SANITY_RE.match(raw)
-        if m:
-            result.sanity_checks.append((m.group(1).lower(), m.group(2)))
+        # Distinct name from the section-header `m` above: that one is a
+        # Match[str] from enumerate(), this one is Match[str] | None.
+        sanity = _SANITY_RE.match(raw)
+        if sanity:
+            result.sanity_checks.append((sanity.group(1).lower(), sanity.group(2)))
         elif raw:
             # Tolerate untyped entries — default to constraint.
             result.sanity_checks.append(("constraint", raw))

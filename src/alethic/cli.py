@@ -16,12 +16,15 @@ import os
 import sys
 from typing import TYPE_CHECKING, Any
 
-from alethic.models import AgentConfig, Verdict, VerifierConfig
+from alethic.exceptions import CheckpointError
+from alethic.models import AgentConfig, SearchConfig, Verdict, VerifierConfig
 from alethic.output import format_consensus
 from alethic.verifier_agent import CheckerAgent, VerifierAgent
 
 if TYPE_CHECKING:
     from alethic.agent import MathAgent  # noqa: TC004
+
+_SEARCH_CHOICES = ("flat", "tree")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -217,6 +220,12 @@ Examples:
         default=None,
         help="Resume from a checkpoint session directory",
     )
+    parser.add_argument(
+        "--search",
+        choices=_SEARCH_CHOICES,
+        default=None,
+        help="Search strategy: flat GVR loop (default) or v3.8 hierarchical tree search",
+    )
 
     # verify/check specific arguments
     parser.add_argument(
@@ -303,6 +312,14 @@ def _build_config(args: argparse.Namespace) -> AgentConfig:
     if breaker_model:
         overrides["breaker_model"] = breaker_model
 
+    if getattr(args, "search", None) == "tree":
+        overrides["search_mode"] = "tree"
+        overrides["search"] = (
+            SearchConfig.from_preset(args.preset)
+            if args.preset and args.preset in SearchConfig.PRESETS
+            else SearchConfig()
+        )
+
     # Auto-bump max_tokens for extended thinking when not explicitly set.
     # Resolve thinking state and budget *before* constructing the config so we
     # only build it once (AgentConfig is frozen).
@@ -346,6 +363,7 @@ _FLAGS_WITH_VALUE = frozenset(
         "--breaker-model",
         "--context-threshold",
         "--resume",
+        "--search",
         "--problem-text",
         "-P",
         "--problem-file",
@@ -535,6 +553,12 @@ def _eval_handler(argv: list[str]) -> int:
         default=None,
         help="Anthropic API key (default: ANTHROPIC_API_KEY env var)",
     )
+    eval_run_parser.add_argument(
+        "--search",
+        choices=_SEARCH_CHOICES,
+        default="flat",
+        help="Search strategy for all problems (default: flat)",
+    )
 
     args = eval_parser.parse_args(argv)
 
@@ -545,6 +569,7 @@ def _eval_handler(argv: list[str]) -> int:
         api_key=args.api_key,
         preset=args.preset,
         verbose=args.verbose,
+        search_mode=args.search,
     )
     output_json = json.dumps(report, indent=2)
     if args.output:
@@ -608,6 +633,9 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("\n[Interrupted by user]")
         return 130
+    except CheckpointError as e:
+        print(f"[Error] {e}", file=sys.stderr)
+        return 1
 
     # Output
     if args.json_output:

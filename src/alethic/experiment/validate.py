@@ -1,7 +1,7 @@
 """Validation criteria for Phase 3 of E vs F experiment."""
 from __future__ import annotations
 
-from scipy.stats import spearmanr
+from scipy.stats import spearmanr  # type: ignore[import-untyped]
 
 
 def check_validation_criteria(
