@@ -26,6 +26,7 @@ The user's input is: $ARGUMENTS
 | agent_title | Physics Derivation |
 | session_skill | alethic-derive |
 | strategy_reset_addendum | (from "Strategy Reset Addendum" section below) |
+| disproof_addendum | (from "Disproof Escalation Addendum" section below) |
 | adversarial_verifier | true for thorough/extreme presets; false otherwise — enables 5-round adversarial self-correction in all verifier Task calls |
 | adversarial_breaker | true for thorough/extreme presets; false otherwise — enables adversarial breaker probe on CORRECT verdicts |
 
@@ -54,6 +55,29 @@ Start from a completely different physical or mathematical foundation.
 Consider approaches from a different formalism entirely (e.g., if Lagrangian
 methods failed, try Hamiltonian; if perturbation theory failed, try exact
 methods or symmetry arguments).
+
+## Disproof Escalation Addendum
+
+> Appended to the reset context by the orchestrator when accumulated evidence suggests the claimed result may be incorrect (error category `false_premise`/`interpretation`/`counterexample`, or two consecutive UNSOLVED verdicts).
+
+## DISPROOF ESCALATION — Consider that the physical claim may be incorrect
+
+Previous iterations have repeatedly failed to derive this result. Based on accumulated evidence, there is a meaningful probability that the claimed result is INCORRECT.
+
+In addition to exploring categorically different derivation techniques, you MUST also:
+
+1. **Check dimensional consistency**: Does the claimed result have correct dimensions? Verify with sympy.physics.units or scipy.constants.
+
+2. **Test limiting cases**: Does the result reduce correctly in known limits? (hbar->0 for classical, c->inf for non-relativistic, T->0 for ground state, etc.)
+
+3. **Compare with established results**: Does this claim contradict known physical principles, conservation laws, or experimental data?
+
+4. **Numerical estimation**: Compute an order-of-magnitude estimate. Does the claimed value match known experimental values?
+
+If you find evidence the claim is false, present a clear disproof:
+- Identify the specific physical principle, limiting case, or data point that contradicts it
+- Verify computationally using Python code
+- Explain the correct result if you can determine it
 
 ## Examples
 

@@ -32,6 +32,17 @@ htmlcov/
 # Session directories (runtime artifacts)
 .alethic/
 
+# Scratch (genuinely transient)
+scenario/
+.planning/
+
+# NOT ignored, deliberately: data/calibration/ and docs/results/.
+# They were ignored as "generated outputs", but they hold the project's only
+# measurement record — the E-vs-F validation failure and the breadth-vs-depth
+# false-accept data — and that record sat untracked for months, one
+# `git clean -fd` from being lost. New runs now show up as untracked so you
+# decide what to keep, rather than being dropped silently.
+
 # Worktrees
 .worktrees/
 

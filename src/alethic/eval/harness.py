@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from alethic.agent import MathAgent
-from alethic.models import AgentConfig
+from alethic.models import AgentConfig, EventType, SearchConfig
 from alethic.physics_agent import PhysicsAgent
 
 _REQUIRED_PROBLEM_FIELDS = {"id", "domain", "problem", "expected_solvable"}
@@ -292,6 +292,7 @@ def run_benchmark(
     api_key: str | None = None,
     preset: str = "quick",
     verbose: bool = False,
+    search_mode: str = "flat",
 ) -> dict[str, Any]:
     """Run all problems in a benchmark file and return a score report.
 
@@ -300,6 +301,8 @@ def run_benchmark(
         api_key: Anthropic API key (default: ANTHROPIC_API_KEY env var).
         preset: AgentConfig preset to use for all problems.
         verbose: Print progress to stdout.
+        search_mode: "flat" (default) or "tree" — runs every problem through
+            the v3.8 hierarchical proof search for flat-vs-tree gate comparison.
 
     Returns:
         Dict with: benchmark, preset, anchor_sha256, gate_epoch, total,
@@ -310,8 +313,20 @@ def run_benchmark(
         ``solve_rate`` covers solvable problems only (epoch 2 semantics); it is
         not comparable to a pre-split report. See ``GATE_EPOCH``.
     """
+    if search_mode not in ("flat", "tree"):
+        raise ValueError(
+            f"search_mode must be 'flat' or 'tree', got {search_mode!r}"
+        )
     benchmark = load_benchmark(path)
-    config = AgentConfig.from_preset(preset, verbose=verbose)
+    config_overrides: dict[str, Any] = {"verbose": verbose}
+    if search_mode == "tree":
+        config_overrides["search_mode"] = "tree"
+        config_overrides["search"] = (
+            SearchConfig.from_preset(preset)
+            if preset in SearchConfig.PRESETS
+            else SearchConfig()
+        )
+    config = AgentConfig.from_preset(preset, **config_overrides)
 
     results = []
     start = time.time()
@@ -348,6 +363,18 @@ def run_benchmark(
             # PUCT divergence measurement
             puct_metrics = compute_puct_comparison(result.events)
             outcome["puct_divergence"] = puct_metrics
+            if search_mode == "tree":
+                # NOTE: these counts are event-derived and may undercount if events
+                # were truncated (e.g. checkpoint-resume discards prior-segment events).
+                outcome["bridges_used"] = sum(
+                    1 for e in result.events if e.type == EventType.BRIDGE_GENERATED
+                )
+                outcome["gaps_filled"] = sum(
+                    1 for e in result.events if e.type == EventType.GAP_FILLED
+                )
+            else:
+                outcome["bridges_used"] = None
+                outcome["gaps_filled"] = None
         except Exception as exc:  # noqa: BLE001
             outcome |= {
                 "solved": False,
@@ -358,6 +385,8 @@ def run_benchmark(
             }
             outcome["atom_metrics"] = None
             outcome["puct_divergence"] = None
+            outcome["bridges_used"] = None
+            outcome["gaps_filled"] = None
 
         results.append(outcome)
         if verbose:
@@ -390,6 +419,7 @@ def run_benchmark(
     return {
         "benchmark": benchmark.get("name", Path(path).stem),
         "preset": preset,
+        "search_mode": search_mode,
         "anchor_sha256": anchor_sha256(benchmark),
         "gate_epoch": GATE_EPOCH,
         "total": total,

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from alethic.error_taxonomy import classify_errors, classify_errors_routed
+from alethic.error_taxonomy import _ORACLE_ROUTING, classify_errors
 from alethic.models import (
     AgentConfig,
     EvidenceState,
@@ -558,23 +558,25 @@ class TestProbeA5TaxonomyUsesWinnerCritique:
         )
 
     def test_probe_a5_logic_routes_to_adversarial_oracle(self):
-        """classify_errors_routed with logic critique returns adversarial oracle."""
+        """Routing a logic critique returns the adversarial oracle."""
         from alethic.models import OracleType
 
-        cat, oracle, force_adv = classify_errors_routed(
+        cat = classify_errors(
             "The argument does not follow — there is a non sequitur."
         )
+        oracle, force_adv = _ORACLE_ROUTING[cat]
         assert cat == "logic"
         assert oracle == OracleType.LAYER3_LLM_ADVERSARIAL
         assert force_adv is True
 
     def test_probe_a5_algebra_routes_to_consistency_oracle_no_adversarial(self):
-        """classify_errors_routed with algebra critique returns consistency oracle."""
+        """Routing an algebra critique returns the consistency oracle."""
         from alethic.models import OracleType
 
-        cat, oracle, force_adv = classify_errors_routed(
+        cat = classify_errors(
             "There is a sign error in the arithmetic step."
         )
+        oracle, force_adv = _ORACLE_ROUTING[cat]
         assert cat == "algebra"
         assert oracle == OracleType.LAYER2_CONSISTENCY
         assert force_adv is False

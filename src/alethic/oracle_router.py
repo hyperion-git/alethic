@@ -64,8 +64,8 @@ class RoutingDecision:
 
     # Verification
     verifier_extra_system: str | None
-    next_oracle: OracleType  # v3.8 scaffolding: populated via _ORACLE_ROUTING but not yet consumed by agent
-    force_adversarial: bool  # v3.8 scaffolding: will override adversarial addendum in tree-search mode
+    next_oracle: OracleType  # flat-path scaffolding; the tree path consumes _ORACLE_ROUTING directly (search.py)
+    force_adversarial: bool  # flat-path scaffolding; consumed by the v3.8 microkernel via MicrokernelTask
 
 
 # --- OracleRouter ---
@@ -105,9 +105,9 @@ class OracleRouter:
         is_reset = self.check_stall(state)
 
         if evidence is not None:
-            # NOTE: evidence.error_category is already classified (e.g., "algebra").
-            # We look up the routing table directly, NOT call classify_errors_routed()
-            # which expects raw critique text. See error_taxonomy.py:_ORACLE_ROUTING.
+            # NOTE: evidence.error_category is already classified (e.g., "algebra"),
+            # so we look up the routing table directly rather than re-classifying
+            # raw critique text. See error_taxonomy.py:_ORACLE_ROUTING.
             next_oracle, force_adversarial = _ORACLE_ROUTING.get(
                 evidence.error_category, (OracleType.LAYER3_LLM, False)
             )
