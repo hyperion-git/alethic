@@ -1,0 +1,81 @@
+{
+  "per_problem": {
+    "prime-17": {
+      "solve_rate": 1.0,
+      "n_probes": 3,
+      "n_errors": 0,
+      "n_solves": 3
+    },
+    "sqrt2-irrational": {
+      "solve_rate": 1.0,
+      "n_probes": 3,
+      "n_errors": 0,
+      "n_solves": 3
+    },
+    "sum-arithmetic": {
+      "solve_rate": 1.0,
+      "n_probes": 3,
+      "n_errors": 0,
+      "n_solves": 3
+    },
+    "infinite-primes": {
+      "solve_rate": 1.0,
+      "n_probes": 3,
+      "n_errors": 0,
+      "n_solves": 3
+    },
+    "am-gm": {
+      "solve_rate": 1.0,
+      "n_probes": 3,
+      "n_errors": 0,
+      "n_solves": 3
+    },
+    "geometric-series": {
+      "solve_rate": 1.0,
+      "n_probes": 3,
+      "n_errors": 0,
+      "n_solves": 3
+    },
+    "triangle-inequality": {
+      "solve_rate": 1.0,
+      "n_probes": 3,
+      "n_errors": 0,
+      "n_solves": 3
+    },
+    "derivative-product-rule": {
+      "solve_rate": 1.0,
+      "n_probes": 3,
+      "n_errors": 0,
+      "n_solves": 3
+    },
+    "bezout-identity-small": {
+      "solve_rate": 1.0,
+      "n_probes": 3,
+      "n_errors": 0,
+      "n_solves": 3
+    },
+    "binomial-theorem": {
+      "solve_rate": 0.6666666666666666,
+      "n_probes": 3,
+      "n_errors": 0,
+      "n_solves": 2
+    }
+  },
+  "criteria": {
+    "aggregate_passed": false,
+    "aggregate_delta": 0.9354666666666666,
+    "spearman_passed": false,
+    "spearman_rho": NaN,
+    "spearman_p_value": NaN,
+    "difficulty_passed": false,
+    "easy_bin_rate": 0.9333333333333333,
+    "hard_bin_rate": 1.0,
+    "overall_passed": false
+  },
+  "n_problems": 10,
+  "n_probes_per_problem": 3,
+  "aggregate_sim": 0.0312,
+  "aggregate_real": 0.9666666666666666,
+  "elapsed_seconds": 7590.5,
+  "preset": "thorough"
+}

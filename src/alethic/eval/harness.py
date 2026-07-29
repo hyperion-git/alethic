@@ -22,6 +22,104 @@ from alethic.physics_agent import PhysicsAgent
 
 _REQUIRED_PROBLEM_FIELDS = {"id", "domain", "problem", "expected_solvable"}
 
+GATE_EPOCH = 2
+"""Scoring-semantics epoch — bump whenever the meaning of a gate metric changes.
+
+Distinct from ``anchor_sha256``: the digest says *which problem set* was run,
+this says *how the outcomes were scored*. A verifier-prompt or verifier-model
+change never touches the benchmark file, so only the epoch can invalidate a
+comparison across such a change.
+
+- Epoch 1 (implicit, pre-v3.8): ``solve_rate`` = solved / all problems, mixing
+  solvable problems and false-claim anchors into one denominator.
+- Epoch 2: metric split — ``solve_rate`` covers solvable problems only, and
+  false-claim anchors are scored separately by ``false_claim_accept_rate``.
+
+Reports from different epochs are not comparable.
+"""
+
+
+def anchor_sha256(benchmark: dict[str, Any]) -> str:
+    """Return a stable digest of a benchmark's frozen anchor set.
+
+    Hashes ``(id, domain, problem, expected_solvable)`` for every problem,
+    sorted by id — so the digest is invariant to problem ordering in the file
+    but changes if any problem's text, domain, or solvability flag is edited,
+    or if a problem is added or removed. ``domain`` is included because it
+    selects the agent class and is therefore part of what was measured.
+
+    Two benchmark reports are only comparable when both their ``anchor_sha256``
+    and their ``gate_epoch`` match.
+    """
+    payload = json.dumps(
+        [
+            [
+                p["id"],
+                p.get("domain", "math"),
+                p["problem"],
+                bool(p["expected_solvable"]),
+            ]
+            for p in sorted(benchmark.get("problems", []), key=lambda q: str(q["id"]))
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return _hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def split_metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Split benchmark outcomes into a solve rate and a false-claim accept rate.
+
+    ``expected_solvable`` partitions a benchmark into two populations that
+    answer different questions, and pooling them into one rate hides both:
+
+    - **Solvable problems** measure capability. An errored run is a failure to
+      solve, so it stays in the ``solve_rate`` denominator.
+    - **False-claim anchors** measure verifier bias. Every "proof" of a false
+      claim is wrong by construction, so a ``solved`` outcome is a false
+      positive. An errored run produced no verdict — it is a non-observation
+      and is excluded from the denominator, because counting it as a rejection
+      would bias the result toward the reassuring answer.
+
+    ``false_claim_accept_rate`` is the primary number: it is the only metric in
+    this repo that responds to verifier *bias* rather than verifier *variance*
+    (K-consensus reduces the latter, not the former).
+
+    ``false_claim_reject_rate`` is its complement and is **not** a false-premise
+    *detection* rate. ``AgentResult.solved`` is false whenever the agent failed
+    to reach a CORRECT verdict, so it lumps genuine premise rejection together
+    with plain budget exhaustion. ``false_claim_verdicts`` exposes that split.
+
+    Both anchor rates are ``None`` — not ``0.0`` — when nothing was scored, so
+    "no anchors in this benchmark" cannot be misread as "accepted nothing".
+    """
+    solvable = [r for r in results if bool(r.get("expected_solvable"))]
+    anchors = [r for r in results if not bool(r.get("expected_solvable"))]
+
+    solved = sum(1 for r in solvable if r.get("solved"))
+
+    scored = [r for r in anchors if not r.get("error")]
+    accepted = sum(1 for r in scored if r.get("solved"))
+    n_scored = len(scored)
+
+    verdicts: dict[str, int] = {}
+    for r in anchors:
+        verdict = str(r.get("verdict", "unknown"))
+        verdicts[verdict] = verdicts.get(verdict, 0) + 1
+
+    return {
+        "n_solvable": len(solvable),
+        "n_false_claim": len(anchors),
+        "n_false_claim_scored": n_scored,
+        "n_errors": sum(1 for r in results if r.get("error")),
+        "solved": solved,
+        "solve_rate": solved / len(solvable) if solvable else 0.0,
+        "false_claims_accepted": accepted,
+        "false_claim_accept_rate": (accepted / n_scored if n_scored else None),
+        "false_claim_reject_rate": ((n_scored - accepted) / n_scored if n_scored else None),
+        "false_claim_verdicts": verdicts,
+    }
+
 
 def measure_atoms(
     events: list,
@@ -207,8 +305,13 @@ def run_benchmark(
             the v3.8 hierarchical proof search for flat-vs-tree gate comparison.
 
     Returns:
-        Dict with: name, preset, total, solved, solve_rate, avg_confidence,
-                   avg_iterations, elapsed_seconds, results (list per problem).
+        Dict with: benchmark, preset, anchor_sha256, gate_epoch, total,
+                   avg_confidence, avg_iterations, elapsed_seconds, results
+                   (list per problem), plus every key from ``split_metrics``
+                   (solve_rate, false_claim_accept_rate, ...).
+
+        ``solve_rate`` covers solvable problems only (epoch 2 semantics); it is
+        not comparable to a pre-split report. See ``GATE_EPOCH``.
     """
     if search_mode not in ("flat", "tree"):
         raise ValueError(
@@ -252,7 +355,6 @@ def run_benchmark(
                 "verdict": result.verdict.value,
                 "confidence": result.confidence,
                 "iterations_used": result.iterations_used,
-                "correct_prediction": result.solved == expected_solvable,
                 "error": None,
             }
             # Atom measurement
@@ -279,7 +381,6 @@ def run_benchmark(
                 "verdict": "error",
                 "confidence": 0.0,
                 "iterations_used": 0,
-                "correct_prediction": False,
                 "error": str(exc),
             }
             outcome["atom_metrics"] = None
@@ -289,12 +390,19 @@ def run_benchmark(
 
         results.append(outcome)
         if verbose:
-            status = "OK" if outcome["correct_prediction"] else "FAIL"
+            # Population-aware: a single pass/fail boolean would mean two
+            # different things across the two populations — the conflation
+            # split_metrics() exists to remove.
+            if outcome["error"]:
+                status = "ERROR"
+            elif expected_solvable:
+                status = "SOLVED" if outcome["solved"] else "unsolved"
+            else:
+                status = "ACCEPTED(FP)" if outcome["solved"] else "rejected"
             print(f"  {status} verdict={outcome['verdict']} conf={outcome['confidence']:.2f}")
 
     elapsed = time.time() - start
     total = len(results)
-    solved_count = sum(1 for r in results if r["solved"])
 
     all_annotation_rates = [
         r["atom_metrics"]["annotation_rate"]
@@ -312,9 +420,10 @@ def run_benchmark(
         "benchmark": benchmark.get("name", Path(path).stem),
         "preset": preset,
         "search_mode": search_mode,
+        "anchor_sha256": anchor_sha256(benchmark),
+        "gate_epoch": GATE_EPOCH,
         "total": total,
-        "solved": solved_count,
-        "solve_rate": solved_count / total if total else 0.0,
+        **split_metrics(results),
         "avg_confidence": sum(r["confidence"] for r in results) / total if total else 0.0,
         "avg_iterations": sum(r["iterations_used"] for r in results) / total if total else 0.0,
         "elapsed_seconds": round(elapsed, 2),

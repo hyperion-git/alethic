@@ -7,6 +7,7 @@ PUCTWidenSimulator (Model F): to be added in Task 3.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 import numpy as np
 
@@ -118,7 +119,7 @@ class AlethicSimulator(ABC):
         cooldown_remaining = 0  # iterations until next stall check allowed
         solved = False
 
-        stall_state = {
+        stall_state: dict[str, Any] = {
             "current_approach": current_approach,
             "M": n_approaches,
             "resets_used": resets_used,
@@ -515,7 +516,7 @@ def run_paired_trials(
     Returns a report dict with per-model stats, Bayesian posterior analysis,
     McNemar's test, NNT, per-archetype breakdown, and traced diagnostics.
     """
-    from scipy.stats import chi2 as chi2_dist
+    from scipy.stats import chi2 as chi2_dist  # type: ignore[import-untyped]
 
     if archetype_weights is None:
         archetype_weights = {"smooth": 0.40, "insight": 0.50, "adversarial": 0.10}

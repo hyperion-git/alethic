@@ -85,7 +85,7 @@ class CalibratedDistributions:
 
     def to_json(self) -> str:
         """Serialize to JSON string."""
-        d = {}
+        d: dict[str, Any] = {}
         d["verdict_dist"] = self.verdict_dist
         d["confidence_dist"] = {k: v.to_dict() for k, v in self.confidence_dist.items()}
         d["revision_rates"] = self.revision_rates

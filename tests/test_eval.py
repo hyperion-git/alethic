@@ -79,6 +79,157 @@ class TestRunBenchmark:
         report = run_benchmark(path, api_key="fake-key", preset="quick")
         assert 0.0 <= report["solve_rate"] <= 1.0
 
+    @patch("alethic.eval.harness.MathAgent")
+    def test_report_carries_anchor_and_epoch(self, mock_agent):
+        """A report without both is not comparable to any other report."""
+        from alethic.eval.harness import GATE_EPOCH, anchor_sha256, load_benchmark, run_benchmark
+
+        mock_result = MagicMock()
+        mock_result.solved = True
+        mock_result.confidence = 0.9
+        mock_result.iterations_used = 1
+        mock_result.verdict.value = "correct"
+        mock_agent.return_value.solve.return_value = mock_result
+
+        path = _make_benchmark([
+            {"id": "p1", "domain": "math", "problem": "p1", "expected_solvable": True},
+            {"id": "f1", "domain": "math", "problem": "f1", "expected_solvable": False},
+        ])
+        report = run_benchmark(path, api_key="fake-key", preset="quick")
+
+        assert report["anchor_sha256"] == anchor_sha256(load_benchmark(path))
+        assert report["gate_epoch"] == GATE_EPOCH
+        # The mock "solves" everything, so the anchor is a false positive.
+        assert report["solve_rate"] == 1.0
+        assert report["false_claim_accept_rate"] == 1.0
+
+
+class TestAnchorHash:
+    """The digest must be stable against noise and sensitive to the anchor set."""
+
+    def _bench(self, problems):
+        return {"name": "b", "version": "1.0", "problems": problems}
+
+    def test_invariant_to_problem_order(self):
+        from alethic.eval.harness import anchor_sha256
+
+        a = {"id": "a", "domain": "math", "problem": "P", "expected_solvable": True}
+        b = {"id": "b", "domain": "physics", "problem": "Q", "expected_solvable": False}
+        assert anchor_sha256(self._bench([a, b])) == anchor_sha256(self._bench([b, a]))
+
+    def test_changes_when_problem_text_edited(self):
+        from alethic.eval.harness import anchor_sha256
+
+        base = [{"id": "a", "domain": "math", "problem": "P", "expected_solvable": True}]
+        edited = [{"id": "a", "domain": "math", "problem": "P!", "expected_solvable": True}]
+        assert anchor_sha256(self._bench(base)) != anchor_sha256(self._bench(edited))
+
+    def test_changes_when_solvability_flips(self):
+        """The flag partitions the two populations — flipping it must invalidate."""
+        from alethic.eval.harness import anchor_sha256
+
+        base = [{"id": "a", "domain": "math", "problem": "P", "expected_solvable": True}]
+        flipped = [{"id": "a", "domain": "math", "problem": "P", "expected_solvable": False}]
+        assert anchor_sha256(self._bench(base)) != anchor_sha256(self._bench(flipped))
+
+    def test_changes_when_problem_added(self):
+        from alethic.eval.harness import anchor_sha256
+
+        base = [{"id": "a", "domain": "math", "problem": "P", "expected_solvable": True}]
+        grown = base + [
+            {"id": "b", "domain": "math", "problem": "Q", "expected_solvable": True}
+        ]
+        assert anchor_sha256(self._bench(base)) != anchor_sha256(self._bench(grown))
+
+    def test_changes_when_domain_edited(self):
+        """Domain selects the agent class, so it is part of what was measured."""
+        from alethic.eval.harness import anchor_sha256
+
+        base = [{"id": "a", "domain": "math", "problem": "P", "expected_solvable": True}]
+        moved = [{"id": "a", "domain": "physics", "problem": "P", "expected_solvable": True}]
+        assert anchor_sha256(self._bench(base)) != anchor_sha256(self._bench(moved))
+
+
+class TestSplitMetrics:
+    """solve_rate and the false-claim rates must not share a denominator."""
+
+    def _r(self, pid, *, solvable, solved, verdict="correct", error=None):
+        return {
+            "id": pid,
+            "expected_solvable": solvable,
+            "solved": solved,
+            "verdict": verdict,
+            "error": error,
+        }
+
+    def test_solve_rate_excludes_false_claim_anchors(self):
+        """2 solvable both solved + 1 anchor rejected => 1.0, not 2/3."""
+        from alethic.eval.harness import split_metrics
+
+        m = split_metrics([
+            self._r("p1", solvable=True, solved=True),
+            self._r("p2", solvable=True, solved=True),
+            self._r("f1", solvable=False, solved=False, verdict="major_flaw"),
+        ])
+        assert m["solve_rate"] == 1.0
+        assert m["n_solvable"] == 2
+        assert m["n_false_claim"] == 1
+
+    def test_accepted_false_claim_is_a_false_positive(self):
+        from alethic.eval.harness import split_metrics
+
+        m = split_metrics([
+            self._r("f1", solvable=False, solved=True),
+            self._r("f2", solvable=False, solved=False, verdict="major_flaw"),
+        ])
+        assert m["false_claims_accepted"] == 1
+        assert m["false_claim_accept_rate"] == 0.5
+        assert m["false_claim_reject_rate"] == 0.5
+
+    def test_errored_anchor_is_not_counted_as_a_rejection(self):
+        """An error yields no verdict — it must leave the anchor denominator."""
+        from alethic.eval.harness import split_metrics
+
+        m = split_metrics([
+            self._r("f1", solvable=False, solved=True),
+            self._r("f2", solvable=False, solved=False, verdict="error", error="boom"),
+        ])
+        assert m["n_false_claim"] == 2
+        assert m["n_false_claim_scored"] == 1
+        # Naive `not solved` would report 0.5 here and flatter the verifier.
+        assert m["false_claim_accept_rate"] == 1.0
+        assert m["false_claim_reject_rate"] == 0.0
+
+    def test_errored_solvable_problem_counts_as_unsolved(self):
+        """Dropping errored solvable problems would inflate solve_rate."""
+        from alethic.eval.harness import split_metrics
+
+        m = split_metrics([
+            self._r("p1", solvable=True, solved=True),
+            self._r("p2", solvable=True, solved=False, verdict="error", error="boom"),
+        ])
+        assert m["solve_rate"] == 0.5
+        assert m["n_errors"] == 1
+
+    def test_no_anchors_gives_none_not_zero(self):
+        """0.0 would read as 'accepted nothing'; None says 'nothing measured'."""
+        from alethic.eval.harness import split_metrics
+
+        m = split_metrics([self._r("p1", solvable=True, solved=True)])
+        assert m["false_claim_accept_rate"] is None
+        assert m["false_claim_reject_rate"] is None
+
+    def test_verdict_distribution_separates_rejection_from_exhaustion(self):
+        """reject_rate alone cannot distinguish these two; the histogram can."""
+        from alethic.eval.harness import split_metrics
+
+        m = split_metrics([
+            self._r("f1", solvable=False, solved=False, verdict="major_flaw"),
+            self._r("f2", solvable=False, solved=False, verdict="unsolved"),
+        ])
+        assert m["false_claim_reject_rate"] == 1.0
+        assert m["false_claim_verdicts"] == {"major_flaw": 1, "unsolved": 1}
+
 
 class TestAtomMeasurement:
     def test_measure_atoms_returns_metrics(self):

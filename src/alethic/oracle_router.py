@@ -221,7 +221,9 @@ class OracleRouter:
         )
 
         if self._should_disproof(state, evidence):
-            return combine(base, self._disproof_addendum_fn()) or base
+            disproof_fn = self._disproof_addendum_fn
+            assert disproof_fn is not None  # guaranteed by _should_disproof
+            return combine(base, disproof_fn()) or base
 
         return base
 
