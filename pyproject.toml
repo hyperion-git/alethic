@@ -46,6 +46,10 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.8",
     "mypy>=1.13",
+    # The suite imports alethic.experiment, which needs numpy/scipy at module
+    # import time. Without this, the documented `pip install -e ".[dev]"` then
+    # `pytest` fails collection on three test modules in a clean environment.
+    "alethic[scientific]",
 ]
 scientific = [
     "numpy>=1.26",
@@ -98,13 +102,23 @@ known-first-party = ["alethic"]
 # ── Mypy ──────────────────────────────────────────────────────────────
 
 [tool.mypy]
-python_version = "3.10"
+# Static-analysis target only; the runtime support claim is requires-python
+# (">=3.10") and is unaffected. numpy >= 2.3 ships PEP 695 `type` statements in
+# its own stubs, which mypy refuses to parse below 3.12 — a parse-time failure
+# no per-module override can suppress. CI and the dev env both run 3.13.
+python_version = "3.12"
 strict = false
 warn_return_any = true
 warn_unused_configs = true
 
 [[tool.mypy.overrides]]
 module = "anthropic.*"
+ignore_missing_imports = true
+
+# openai backs the optional OpenRouter adapter and is not installed by the
+# base or dev extras, so mypy cannot resolve it in a clean environment.
+[[tool.mypy.overrides]]
+module = "openai.*"
 ignore_missing_imports = true
 
 # ── Pytest ────────────────────────────────────────────────────────────
