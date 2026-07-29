@@ -1,0 +1,169 @@
+{
+  "verdict_dist": {
+    "smooth": {
+      "early": {
+        "correct": 0.6538461538461539,
+        "minor_issues": 0.038461538461538464,
+        "fixable": 0.038461538461538464,
+        "major_flaw": 0.2692307692307692
+      },
+      "mid": {
+        "correct": 0.25,
+        "minor_issues": 0.25,
+        "fixable": 0.25,
+        "major_flaw": 0.25
+      },
+      "late": {
+        "correct": 0.25,
+        "minor_issues": 0.25,
+        "fixable": 0.25,
+        "major_flaw": 0.25
+      }
+    },
+    "insight": {
+      "early": {
+        "correct": 0.43333333333333335,
+        "minor_issues": 0.03333333333333333,
+        "fixable": 0.03333333333333333,
+        "major_flaw": 0.5
+      },
+      "mid": {
+        "correct": 0.25,
+        "minor_issues": 0.25,
+        "fixable": 0.25,
+        "major_flaw": 0.25
+      },
+      "late": {
+        "correct": 0.25,
+        "minor_issues": 0.25,
+        "fixable": 0.25,
+        "major_flaw": 0.25
+      }
+    },
+    "adversarial": {
+      "early": {
+        "correct": 0.25,
+        "minor_issues": 0.25,
+        "fixable": 0.25,
+        "major_flaw": 0.25
+      },
+      "mid": {
+        "correct": 0.25,
+        "minor_issues": 0.25,
+        "fixable": 0.25,
+        "major_flaw": 0.25
+      },
+      "late": {
+        "correct": 0.25,
+        "minor_issues": 0.25,
+        "fixable": 0.25,
+        "major_flaw": 0.25
+      }
+    }
+  },
+  "confidence_dist": {
+    "correct": {
+      "a": 29.002764716352328,
+      "b": 0.17634330499860645
+    },
+    "minor_issues": {
+      "a": 2.0,
+      "b": 2.0
+    },
+    "fixable": {
+      "a": 5.0,
+      "b": 5.0
+    },
+    "major_flaw": {
+      "a": 2.0,
+      "b": 8.0
+    }
+  },
+  "revision_rates": {
+    "false_premise": 0.0,
+    "counterexample": 0.0,
+    "wrong_method": 0.0,
+    "missing_case": 0.0,
+    "logic": 0.0,
+    "algebra": 0.0,
+    "units": 0.0,
+    "interpretation": 0.0,
+    "citation": 0.0,
+    "general": 0.0
+  },
+  "regression_rate": 0.15,
+  "fixable_rate": 0.1,
+  "fixable_success": 0.6,
+  "atom_lambda": 4.0,
+  "atom_targeting": 0.5,
+  "error_cat_dist": {
+    "smooth": {
+      "false_premise": 0.03125,
+      "counterexample": 0.03125,
+      "wrong_method": 0.03125,
+      "missing_case": 0.15625,
+      "logic": 0.21875,
+      "algebra": 0.03125,
+      "units": 0.03125,
+      "interpretation": 0.03125,
+      "citation": 0.03125,
+      "general": 0.40625
+    },
+    "insight": {
+      "false_premise": 0.027777777777777776,
+      "counterexample": 0.027777777777777776,
+      "wrong_method": 0.027777777777777776,
+      "missing_case": 0.08333333333333333,
+      "logic": 0.1388888888888889,
+      "algebra": 0.08333333333333333,
+      "units": 0.027777777777777776,
+      "interpretation": 0.027777777777777776,
+      "citation": 0.027777777777777776,
+      "general": 0.5277777777777778
+    },
+    "adversarial": {
+      "false_premise": 0.1,
+      "counterexample": 0.1,
+      "wrong_method": 0.1,
+      "missing_case": 0.1,
+      "logic": 0.1,
+      "algebra": 0.1,
+      "units": 0.1,
+      "interpretation": 0.1,
+      "citation": 0.1,
+      "general": 0.1
+    }
+  },
+  "approach_counts": {
+    "smooth": [
+      5
+    ],
+    "insight": [
+      5
+    ],
+    "adversarial": [
+      5
+    ]
+  },
+  "approach_ceiling_dist": {
+    "smooth": {
+      "a": 3.0,
+      "b": 2.0
+    },
+    "insight": {
+      "a": 3.0,
+      "b": 2.0
+    },
+    "adversarial": {
+      "a": 3.0,
+      "b": 2.0
+    }
+  },
+  "stall_rate": {
+    "early": 0.2,
+    "mid": 0.2,
+    "late": 0.2
+  },
+  "breaker_demotion": 0.0,
+  "mean_tokens_per_call": 49270.142857142855
+}

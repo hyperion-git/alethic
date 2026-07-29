@@ -1,0 +1,253 @@
+{
+  "model_e": {
+    "solve_rate": 0.0212,
+    "mean_confidence": 0.6541790127861694,
+    "mean_iterations": 7.8786,
+    "mean_cost": 4172506.976814815
+  },
+  "model_f": {
+    "solve_rate": 0.0392,
+    "mean_confidence": 0.7589712935018053,
+    "mean_iterations": 7.7994,
+    "mean_cost": 4162412.7450888883
+  },
+  "bayesian": {
+    "p_f_better_1pp": 0.99068,
+    "p_f_better_3pp": 0.00024,
+    "p_f_better_5pp": 0.0,
+    "p_f_better_10pp": 0.0,
+    "mean_delta": 0.017982598265749276,
+    "ci_95": [
+      0.011304104690248649,
+      0.024808187139295265
+    ]
+  },
+  "mcnemar": {
+    "b_e_only": 12,
+    "c_f_only": 102,
+    "discordant_pairs": 114,
+    "chi2": 69.48245614035088,
+    "p_value": 1.1102230246251565e-16
+  },
+  "nnt": {
+    "point_estimate": 55.55555555555556,
+    "ci_95": [
+      40.30927348292333,
+      88.46344115136841
+    ],
+    "winner": "F"
+  },
+  "per_archetype": {
+    "smooth": {
+      "e_rate": 0.022244191794364803,
+      "f_rate": 0.034107760751359364,
+      "n": 2023
+    },
+    "insight": {
+      "e_rate": 0.0213365539452496,
+      "f_rate": 0.0430756843800322,
+      "n": 2484
+    },
+    "adversarial": {
+      "e_rate": 0.016227180527383367,
+      "f_rate": 0.04056795131845842,
+      "n": 493
+    }
+  },
+  "n_trials": 5000,
+  "n_traced": 2000,
+  "diagnostics": {
+    "approach_discovery_rate_e": 1.353,
+    "approach_discovery_rate_f": 2.56,
+    "stall_recovery_success_e": 0.018072289156626505,
+    "wasted_iterations_e": 0.9974001268230818,
+    "wasted_iterations_f": 0.9950006409434687,
+    "cost_per_solve_e": 1053805.0280036135,
+    "cost_per_solve_f": 1300300.6818613482,
+    "candidate_diversity_e": 1.353,
+    "candidate_diversity_f": 2.56,
+    "false_acceptance_e": 0.0,
+    "false_acceptance_f": 0.0
+  },
+  "crossover": [
+    {
+      "smooth_weight": 0.0,
+      "insight_weight": 0.9,
+      "winner": "F",
+      "margin": 0.021999
+    },
+    {
+      "smooth_weight": 0.05,
+      "insight_weight": 0.85,
+      "winner": "F",
+      "margin": 0.021506
+    },
+    {
+      "smooth_weight": 0.1,
+      "insight_weight": 0.8,
+      "winner": "F",
+      "margin": 0.021012
+    },
+    {
+      "smooth_weight": 0.15,
+      "insight_weight": 0.75,
+      "winner": "F",
+      "margin": 0.020518
+    },
+    {
+      "smooth_weight": 0.2,
+      "insight_weight": 0.7,
+      "winner": "F",
+      "margin": 0.020024
+    },
+    {
+      "smooth_weight": 0.25,
+      "insight_weight": 0.65,
+      "winner": "F",
+      "margin": 0.01953
+    },
+    {
+      "smooth_weight": 0.3,
+      "insight_weight": 0.6,
+      "winner": "F",
+      "margin": 0.019037
+    },
+    {
+      "smooth_weight": 0.35,
+      "insight_weight": 0.55,
+      "winner": "F",
+      "margin": 0.018543
+    },
+    {
+      "smooth_weight": 0.4,
+      "insight_weight": 0.5,
+      "winner": "F",
+      "margin": 0.018049
+    },
+    {
+      "smooth_weight": 0.45,
+      "insight_weight": 0.45,
+      "winner": "F",
+      "margin": 0.017555
+    },
+    {
+      "smooth_weight": 0.5,
+      "insight_weight": 0.4,
+      "winner": "F",
+      "margin": 0.017062
+    },
+    {
+      "smooth_weight": 0.55,
+      "insight_weight": 0.35,
+      "winner": "F",
+      "margin": 0.016568
+    },
+    {
+      "smooth_weight": 0.6,
+      "insight_weight": 0.3,
+      "winner": "F",
+      "margin": 0.016074
+    },
+    {
+      "smooth_weight": 0.65,
+      "insight_weight": 0.25,
+      "winner": "F",
+      "margin": 0.01558
+    },
+    {
+      "smooth_weight": 0.7,
+      "insight_weight": 0.2,
+      "winner": "F",
+      "margin": 0.015086
+    },
+    {
+      "smooth_weight": 0.75,
+      "insight_weight": 0.15,
+      "winner": "F",
+      "margin": 0.014593
+    },
+    {
+      "smooth_weight": 0.8,
+      "insight_weight": 0.1,
+      "winner": "F",
+      "margin": 0.014099
+    },
+    {
+      "smooth_weight": 0.85,
+      "insight_weight": 0.05,
+      "winner": "F",
+      "margin": 0.013605
+    },
+    {
+      "smooth_weight": 0.9,
+      "insight_weight": 0.0,
+      "winner": "F",
+      "margin": 0.013111
+    }
+  ],
+  "sweep": {
+    "model_f_sweep": [
+      {
+        "cpuct": 0.25,
+        "solve_rate": 0.036,
+        "mean_confidence": 0.7556708988930703
+      },
+      {
+        "cpuct": 0.5,
+        "solve_rate": 0.036,
+        "mean_confidence": 0.7556708988930703
+      },
+      {
+        "cpuct": 1.0,
+        "solve_rate": 0.036,
+        "mean_confidence": 0.7556708988930703
+      },
+      {
+        "cpuct": 1.414,
+        "solve_rate": 0.036,
+        "mean_confidence": 0.7556708988930703
+      },
+      {
+        "cpuct": 2.0,
+        "solve_rate": 0.036,
+        "mean_confidence": 0.7556708988930703
+      },
+      {
+        "cpuct": 3.0,
+        "solve_rate": 0.036,
+        "mean_confidence": 0.7556708988930703
+      }
+    ],
+    "model_e_sweep": [
+      {
+        "stall_window": 2,
+        "solve_rate": 0.029,
+        "mean_confidence": 0.7146114157352895
+      },
+      {
+        "stall_window": 3,
+        "solve_rate": 0.018,
+        "mean_confidence": 0.6448276463605708
+      },
+      {
+        "stall_window": 4,
+        "solve_rate": 0.015,
+        "mean_confidence": 0.6099163117821609
+      },
+      {
+        "stall_window": 5,
+        "solve_rate": 0.016,
+        "mean_confidence": 0.6006678740417185
+      }
+    ],
+    "tier3_f_best": {
+      "cpuct": 0.25,
+      "solve_rate": 0.036
+    },
+    "tier3_e_best": {
+      "stall_window": 2,
+      "solve_rate": 0.029
+    },
+    "parameter_sensitive": false
+  }
+}
