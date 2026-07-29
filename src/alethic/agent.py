@@ -68,7 +68,10 @@ from alethic.prompts import (
     ADVERSARIAL_VERIFIER_ADDENDUM,
     DISPROOF_STRATEGY_ADDENDUM,
     GENERATOR_SYSTEM,
+    SATURATION_AWARENESS_ADDENDUM,
     STRATEGY_RESET_ADDENDUM,
+    SURVEY_GENERATOR_GUIDANCE,
+    SURVEY_VERIFIER_GUIDANCE,
     TOOL_GUIDANCE,
     VERIFIER_SYSTEM,
 )
@@ -79,6 +82,7 @@ from alethic.session import (
     write_tree_checkpoint,
 )
 from alethic.subagents import _strip_sentinels, generate, revise, verify
+from alethic.surveyor import SurveyResult, format_survey_block, survey
 
 logger = logging.getLogger("alethic")
 
@@ -112,6 +116,11 @@ class RunState:
     atom_history: list[list[AtomAnnotation]] = field(default_factory=list)
     confidence_history: list[float] = field(default_factory=list)
     breaker_falsified: bool = False
+    # Saturation tracking: (iteration_index, error_category) per iteration.
+    # Only category labels (e.g. "algebra", "interpretation") are recorded —
+    # never critique text — so this can safely cross into the verifier without
+    # breaking decoupling.
+    critique_category_history: list[tuple[int, str]] = field(default_factory=list)
 
     @property
     def best_solution_text(self) -> str | None:
@@ -200,6 +209,7 @@ class MathAgent:
             adversarial_addendum_fn=self._adversarial_addendum,
             reset_addendum_fn=self._reset_addendum,
             disproof_addendum_fn=self._disproof_addendum,
+            saturation_addendum_fn=self._saturation_addendum,
         )
         self._setup_logging()
 
@@ -262,6 +272,26 @@ class MathAgent:
         warranted. Override in subclasses for domain-specific disproof prompts.
         """
         return DISPROOF_STRATEGY_ADDENDUM
+
+    def _saturation_addendum(self) -> str:
+        """Return the saturation-awareness overlay for this domain.
+
+        Appended to verifier extra_system when a critique category has fired
+        repeatedly. Override in subclasses for domain-specific phrasing.
+        """
+        return SATURATION_AWARENESS_ADDENDUM
+
+    def _survey_guidance(self, role: str) -> str:
+        """Return role-specific guidance suffix for the surveyor scaffolding.
+
+        `role` is "generator" or "verifier". Override in subclasses for
+        domain-specific phrasing.
+        """
+        if role == "generator":
+            return SURVEY_GENERATOR_GUIDANCE
+        if role == "verifier":
+            return SURVEY_VERIFIER_GUIDANCE
+        return ""
 
     def _breaker_domain(self) -> str:
         """Return the domain string for the adversarial breaker. Override in subclasses."""
@@ -572,6 +602,18 @@ class MathAgent:
                 revision=rev_num,
             )
 
+            # Patch #2 (PR #9) observability: emit event when reviser declined/dismissed
+            # every issue. Solution is effectively unchanged; the orchestrator continues
+            # without special handling (respects decoupled-verification invariant).
+            triage = current_solution.triage_summary or {}
+            if triage and triage.get("accept", 0) == 0 and sum(triage.values()) > 0:
+                log.emit(
+                    EventType.REVISER_ALL_DECLINED,
+                    iteration,
+                    revision=rev_num,
+                    triage_summary=dict(triage),
+                )
+
             # Re-verify the revision
             self._log(f"[VERIFY] Re-verifying revision {rev_num}...")
             verification = verify(
@@ -707,6 +749,31 @@ class MathAgent:
         # Build verifier system prompt with tool guidance
         ver_base = prompts.get("verifier_system") or VERIFIER_SYSTEM
         prompts["verifier_system"] = self._build_system_prompt("verifier", ver_base)
+
+        # Pre-flight surveyor: one-shot pass that sees ONLY the problem statement.
+        # Output is appended to both generator and verifier system prompts.
+        # Decoupling is preserved because the surveyor never sees any solution.
+        survey_result: SurveyResult = SurveyResult()
+        if self.config.enable_surveyor:
+            self._log("[SURVEY] Running pre-flight surveyor")
+            survey_result = survey(problem, self.client, self.config)
+            if not survey_result.is_empty:
+                block = format_survey_block(survey_result, role="generator")
+                prompts["generator_system"] = (
+                    prompts["generator_system"] + block + self._survey_guidance("generator")
+                )
+                prompts["verifier_system"] = (
+                    prompts["verifier_system"]
+                    + format_survey_block(survey_result, role="verifier")
+                    + self._survey_guidance("verifier")
+                )
+                self._log(
+                    f"[SURVEY] {len(survey_result.pitfalls)} pitfalls, "
+                    f"{len(survey_result.methods)} methods, "
+                    f"{len(survey_result.sanity_checks)} sanity-check candidates"
+                )
+            else:
+                self._log("[SURVEY] Empty result — no scaffolding injected")
 
         # Initialize token ledger and context tracking
         ledger = TokenLedger()
@@ -941,6 +1008,7 @@ class MathAgent:
 
                 # Update EvidenceState for adaptive compute (next iter) and revision budget
                 error_cat = classify_errors(verification.critique)
+                state.critique_category_history.append((iteration, error_cat))
                 evidence_conf_history.append(state.best_confidence)
                 evidence_state = EvidenceState(
                     iteration=iteration,

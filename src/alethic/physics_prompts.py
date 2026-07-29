@@ -205,6 +205,21 @@ CRITIQUE:
 REASON: [If verdict is "unsolved" because the problem's premise is false or \
 the problem is ill-posed, explain why here. Otherwise write "N/A".]
 
+CHECKS PERFORMED:
+- [check name | type=constraint|conjecture | outcome=PASS|FAIL|N/A] short description
+- ...
+
+The CHECKS PERFORMED block is mandatory. One line per check.
+- `constraint` = the answer MUST satisfy this (dimensional analysis, sign \
+convention, base/limiting case, parity, conservation law, gauge invariance). \
+`conjecture` = a plausibility check that strengthens confidence but is not \
+strictly required.
+- A verdict of `correct` requires at least three `constraint` checks PASS \
+and zero `constraint` checks FAIL.
+- Silence is a positive claim: an empty CHECKS PERFORMED block means "I \
+checked nothing" and your CONFIDENCE must be below 0.30.
+- If you mark a check N/A, briefly say why.
+
 ISSUES:
 - [CRITICAL] Issue requiring fundamental rework
 - [MAJOR] Serious gap or error
@@ -277,20 +292,37 @@ raised in the critique while preserving any correct parts of the original.
 
 1. **Read the critique carefully.** Understand exactly what is wrong before \
    attempting to fix it.
-2. **Do not simply patch over errors.** If a fundamental approach is flawed, \
+2. **Triage every issue.** For each item in the critique's ISSUES list, choose \
+   exactly one verdict:
+   - `accept` — issue is real, you will change the derivation.
+   - `decline` — issue is real but the cost of acting exceeds the marginal \
+     value (e.g. stylistic nitpick, redundant with another fix).
+   - `dismiss` — issue is wrong (physical, mathematical, or factual error in \
+     the critique itself); provide a specific counter-argument.
+   `decline` is the channel for "real but low-value" — not an escape hatch for \
+   issues you prefer not to engage with. If every issue is `decline` or \
+   `dismiss`, returning the previous derivation verbatim is a legitimate \
+   outcome.
+3. **Do not simply patch over errors.** If a fundamental approach is flawed, \
    consider a different derivation approach entirely.
-3. **Preserve what is correct.** Do not gratuitously rewrite parts that the \
+4. **Preserve what is correct.** Do not gratuitously rewrite parts that the \
    verifier confirmed as sound.
-4. **Show your reasoning.** Each fix should be accompanied by justification \
+5. **Show your reasoning.** Each fix should be accompanied by justification \
    for why the revised version is now correct.
-5. **If you need to verify a computation,** you can write Python code inside \
+6. **If you need to verify a computation,** you can write Python code inside \
    <code> tags. The code will be executed and the output returned to you.
-6. **If you believe the critique is itself wrong,** explain why with a clear \
-   counterargument — but do so carefully and humbly.
+7. **If you believe the critique is itself wrong,** explain why with a clear \
+   counterargument — usually carried by a `dismiss` triage entry.
 
 ## Output format
 
-Begin with a brief summary of changes, then provide the complete revised derivation.
+Begin with the issue triage, then a brief summary of changes, then the \
+complete revised derivation.
+
+ISSUE TRIAGE:
+- [issue text | verdict=accept|decline|dismiss] one-line reason
+- ...
+(every issue from the critique's ISSUES list must appear exactly once)
 
 CHANGES MADE:
 [Brief summary of what was changed and why]
@@ -385,6 +417,69 @@ If you find evidence the claim is false, present a clear disproof:
 - Identify the specific physical principle, limiting case, or data point that contradicts it
 - Verify computationally using Python code
 - Explain the correct result if you can determine it
+"""
+
+# ---------------------------------------------------------------------------
+# Surveyor scaffolding guidance — role-specific suffixes appended after the
+# survey data block (produced by surveyor.format_survey_block).
+# ---------------------------------------------------------------------------
+
+PHYSICS_SURVEY_GENERATOR_GUIDANCE = """
+When using the surveyor scaffolding above:
+- Treat KNOWN_PITFALLS as adversarial — your derivation should explicitly \
+avoid or refute each one. Pay particular attention to dimensional, sign, \
+and limiting-case pitfalls.
+- Treat CANONICAL_METHODS as a prior, not a constraint — use one of them if \
+it fits, but justify departing if you do not.
+"""
+
+PHYSICS_SURVEY_VERIFIER_GUIDANCE = """
+When using the surveyor scaffolding above:
+- Add each SANITY_CHECK_CANDIDATE to your CHECKS PERFORMED list, marked with \
+the surveyor's suggested type. Mark outcome PASS only if you verified it; \
+N/A is acceptable if not applicable to the candidate; FAIL is a [MAJOR] \
+issue at minimum.
+- For each KNOWN_PITFALLS entry, explicitly check whether the candidate fell \
+into it. Record this as a constraint check named `pitfall:{short-name}`.
+"""
+
+# ---------------------------------------------------------------------------
+# Saturation awareness (appended to verifier extra_system when a critique
+# category has fired repeatedly across iterations). Category labels only —
+# never critique text or generator content — to preserve decoupling.
+# ---------------------------------------------------------------------------
+
+PHYSICS_SATURATION_AWARENESS_ADDENDUM = """
+
+## Loop Saturation Awareness
+
+The orchestrator has observed the following pattern of critique categories \
+across prior iterations of this problem (category labels only — you have NOT \
+seen any prior derivations or critique text):
+
+<critique-category-history>
+{category_history}
+</critique-category-history>
+
+If a category has fired three or more times, the loop is saturating on that \
+failure mode. When evaluating the current candidate, you MUST do one of:
+
+1. **Confirm resolution.** If the candidate clearly addresses the saturated \
+   category, say so explicitly in CRITIQUE and add a constraint check named \
+   `saturation_resolution:{top_category}` with outcome PASS.
+2. **Escalate to a structural objection.** If the candidate still fails the \
+   saturated category, do NOT file another routine instance of the same \
+   category — that perpetuates the loop. Instead, raise the level of \
+   abstraction: flag a strategic mismatch, a wrong choice of derivation \
+   method, or a problem-statement reinterpretation issue. Tag the issue \
+   [CRITICAL].
+3. **Recommend termination-as-best-effort.** If neither holds and the \
+   candidate is the strongest seen, return verdict `minor_issues` with a \
+   note `saturation_termination: best available given loop saturation on \
+   {top_category}`. The orchestrator will treat this as a strategic accept.
+
+Filing yet another routine [MAJOR] in a saturated category is the failure \
+mode this section exists to prevent.
 """
 
 # ---------------------------------------------------------------------------

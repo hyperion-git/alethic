@@ -78,6 +78,7 @@ class EventType(enum.Enum):
     BREAKER_FLAW_FOUND = "breaker_flaw_found"
     BREAKER_SUSPECTED = "breaker_suspected"
     BREAKER_SURVIVED = "breaker_survived"
+    REVISER_ALL_DECLINED = "reviser_all_declined"
     # v3.8 hierarchical proof search events (emitted only by search.py)
     BRIDGE_GENERATED = "bridge_generated"
     GAP_FILLED = "gap_filled"
@@ -315,6 +316,8 @@ class AgentConfig:
     breaker_temperature: float = 0.8        # higher than verifier — want creative attacks
     apply_calibration: bool = False         # apply confidence calibration before accept gate
     calibration_store: str | None = None    # path to calibration JSONL store (default: ~/.alethic/calibration.jsonl)
+    enable_surveyor: bool = False           # run pre-flight pitfall surveyor once before the GVR loop
+    enforce_checks_floor: bool = False      # patch #1 PR9: floor confidence at 0.30 if CHECKS PERFORMED block has <3 constraint PASS
     search_mode: str = "flat"               # "flat" = classic GVR loop; "tree" = v3.8 proof search
     search: SearchConfig | None = None      # tree-search knobs; None -> SearchConfig() at dispatch
 
@@ -386,6 +389,7 @@ class AgentConfig:
             "stall_reset": False,
             "reset_n_boost": 0,
             "context_threshold": 0.85,
+            "enforce_checks_floor": True,
         },
         "default": {
             "max_iterations": 5,
@@ -400,6 +404,7 @@ class AgentConfig:
             "reset_n_boost": 1,
             "context_threshold": 0.8,
             "adaptive_revision_budget": True,
+            "enforce_checks_floor": True,
         },
         "thorough": {
             "max_iterations": 8,
@@ -420,6 +425,8 @@ class AgentConfig:
             "adversarial_breaker": True,
             "breaker_model": "claude-sonnet-4-6",
             "apply_calibration": True,
+            "enable_surveyor": True,
+            "enforce_checks_floor": True,
         },
         "extreme": {
             "max_iterations": 12,
@@ -440,6 +447,8 @@ class AgentConfig:
             "adversarial_breaker": True,
             "breaker_model": "claude-sonnet-4-6",
             "apply_calibration": True,
+            "enable_surveyor": True,
+            "enforce_checks_floor": True,
         },
     }
 
@@ -562,12 +571,16 @@ class VerifierConfig:
 
 @dataclass
 class Solution:
-    """A candidate solution produced by the Generator."""
+    """A candidate solution produced by the Generator or Reviser."""
 
     problem: str
     solution_text: str
     iteration: int
     timestamp: float = field(default_factory=time.time)
+    # Populated when the Solution comes from a Reviser; counts ISSUE TRIAGE
+    # verdicts (accept/decline/dismiss) so the orchestrator can detect the
+    # all_declined no-op pattern from patch #2 (PR #9). None for generator output.
+    triage_summary: dict[str, int] | None = None
 
     def __str__(self) -> str:
         return self.solution_text

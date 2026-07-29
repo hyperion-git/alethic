@@ -62,6 +62,18 @@ CRITIQUE:
 
 REASON: [If verdict is "unsolved" because the problem's premise is false or the problem is ill-posed, explain why here. Otherwise write "N/A".]
 
+CHECKS PERFORMED:
+- [check name | type=constraint|conjecture | outcome=PASS|FAIL|N/A] one-line description of what you tested
+- ...
+
+The CHECKS PERFORMED block is mandatory. One line per check.
+- Include every check you actually ran, including those implied by Critical Rules 1-11 (independent problem analysis, citation audit, line-by-line logic, computational re-derivation, common-error scan, dimensional consistency, limiting cases, backward verification).
+- `type=constraint`: a check the answer MUST satisfy (e.g. dimensional analysis, sign convention, base/limiting case, parity, conservation law, gauge invariance).
+- `type=conjecture`: a plausibility check that strengthens confidence but is not strictly required (e.g. cross-method numerical spot-check, monotonicity expectation, order-of-magnitude estimate).
+- A verdict of `correct` requires at least three `constraint` checks PASS and zero `constraint` checks FAIL.
+- Silence is a positive claim: an empty CHECKS PERFORMED block means "I checked nothing and have no basis for my verdict" — your CONFIDENCE must then be below 0.30.
+- If you mark a check N/A, briefly say why (e.g. "no embedded numerical results to cross-check").
+
 ISSUES:
 - [CRITICAL] Issue requiring fundamental rework
 - [MAJOR] Serious gap or error
@@ -91,6 +103,7 @@ VERDICT: {verdict} | CONFIDENCE: {confidence} | HAS_CRITICAL: {yes|no} | TOP_ISS
 
 - HAS_CRITICAL: "yes" if ANY issue is tagged [CRITICAL], "no" otherwise.
 - TOP_ISSUE: The text of the first issue listed (without the severity tag), or "none" if no issues.
+- Append `| CHECKS: {n_pass}/{n_total}` to the one-line summary, where `n_pass` is the count of PASS outcomes in CHECKS PERFORMED and `n_total` is the total number of entries.
 
 ## Adversarial self-correction protocol
 

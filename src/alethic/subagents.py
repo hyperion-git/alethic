@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+from dataclasses import replace
 from typing import Any
 
 import anthropic
@@ -94,6 +95,99 @@ _CORRECTED_RE = re.compile(
 )
 _CHANGES_RE = re.compile(rf"{_B}CHANGES MADE:{_B}\s*\n(.*?)(?=\n{_B}REVISED SOLUTION:{_B}|\Z)", re.DOTALL)
 _REVISED_RE = re.compile(rf"{_B}REVISED SOLUTION:{_B}\s*\n(.*)", re.DOTALL)
+# CHECKS PERFORMED block (patch #1 from PR #9): terminates on the next section
+# heading. Order in prompt: ...REASON → CHECKS PERFORMED → ISSUES → ATOM/SECTION/CORRECTED.
+_CHECKS_BLOCK_RE = re.compile(
+    rf"{_B}CHECKS PERFORMED:{_B}\s*\n(.*?)(?=\n{_B}ISSUES:{_B}|\n{_B}ATOM CONFIDENCES:{_B}|\n{_B}SECTION CONFIDENCES:{_B}|\n{_B}CORRECTED SOLUTION:{_B}|\Z)",
+    re.DOTALL | re.IGNORECASE,
+)
+# Entry format: - [name | type=constraint|conjecture | outcome=PASS|FAIL|N/A] description
+_CHECKS_ENTRY_RE = re.compile(
+    r"\[\s*[^|\]]+?\s*\|\s*type\s*=\s*(constraint|conjecture)\s*\|\s*outcome\s*=\s*(PASS|FAIL|N/A)\s*\]",
+    re.IGNORECASE,
+)
+_CHECKS_FLOOR_CONFIDENCE = 0.30
+_CHECKS_FLOOR_MIN_CONSTRAINT_PASS = 3
+# ISSUE TRIAGE block (patch #2 from PR #9): terminates on the next section
+# heading. Order in reviser prompt: ISSUE TRIAGE -> CHANGES MADE -> REVISED SOLUTION.
+_TRIAGE_BLOCK_RE = re.compile(
+    rf"{_B}ISSUE TRIAGE:?{_B}\s*\n(.*?)(?=\n{_B}CHANGES MADE:{_B}|\n{_B}REVISED SOLUTION:{_B}|\Z)",
+    re.DOTALL | re.IGNORECASE,
+)
+# Entry verdict pattern: - [<issue text> | verdict=accept|decline|dismiss] reason
+_TRIAGE_VERDICT_RE = re.compile(
+    r"\|\s*verdict\s*=\s*(accept|decline|dismiss)\s*\]", re.IGNORECASE
+)
+
+
+def _parse_checks_performed(text: str) -> tuple[int, int, int]:
+    """Parse the verifier's CHECKS PERFORMED block (patch #1 from PR #9).
+
+    Returns (n_constraint_pass, n_constraint_fail, n_total_entries). Returns
+    (0, 0, 0) if no block is present — which is the signal that the verifier
+    either ignored the directive or had nothing to report. Per the prompt rule,
+    that case must cap CONFIDENCE below 0.30; see _apply_checks_floor.
+    """
+    block_match = _CHECKS_BLOCK_RE.search(text)
+    if not block_match:
+        return (0, 0, 0)
+    block = block_match.group(1)
+    n_pass = n_fail = n_total = 0
+    for m in _CHECKS_ENTRY_RE.finditer(block):
+        n_total += 1
+        type_ = m.group(1).lower()
+        outcome = m.group(2).upper()
+        if type_ == "constraint":
+            if outcome == "PASS":
+                n_pass += 1
+            elif outcome == "FAIL":
+                n_fail += 1
+    return (n_pass, n_fail, n_total)
+
+
+def _parse_triage_verdicts(text: str) -> dict[str, int]:
+    """Parse the reviser's ISSUE TRIAGE block (patch #2 from PR #9).
+
+    Returns counts keyed by verdict label: {"accept": N, "decline": N, "dismiss": N}.
+    Returns {} if no ISSUE TRIAGE block is present. The caller can detect the
+    all-declined pattern as: counts.get("accept", 0) == 0 and sum(counts.values()) > 0.
+    """
+    block_match = _TRIAGE_BLOCK_RE.search(text)
+    if not block_match:
+        return {}
+    block = block_match.group(1)
+    counts: dict[str, int] = {}
+    for m in _TRIAGE_VERDICT_RE.finditer(block):
+        verdict = m.group(1).lower()
+        counts[verdict] = counts.get(verdict, 0) + 1
+    return counts
+
+
+def _apply_checks_floor(result: VerificationResult, text: str) -> VerificationResult:
+    """Enforce patch #1's CHECKS PERFORMED confidence floor.
+
+    Rule from the verifier prompt: an empty or insufficient CHECKS PERFORMED
+    block (fewer than 3 `type=constraint outcome=PASS` entries) means the
+    verifier "checked nothing" and confidence MUST be below 0.30. We enforce
+    this parser-side because non-Claude models observed silently violating the
+    format (e.g., Kimi K2.6 emits prose Markdown headers instead of structured
+    rows). When the block is absent or under-populated, this is the only
+    backstop against a hallucinated high-confidence verdict.
+
+    Returns either the original result (if floor not triggered) or a copy with
+    confidence reduced to _CHECKS_FLOOR_CONFIDENCE.
+    """
+    n_pass, _n_fail, n_total = _parse_checks_performed(text)
+    if n_pass < _CHECKS_FLOOR_MIN_CONSTRAINT_PASS and result.confidence > _CHECKS_FLOOR_CONFIDENCE:
+        logger.warning(
+            "CHECKS PERFORMED block has %d constraint PASS (< %d required, %d total entries) "
+            "— flooring confidence at %.2f (was %.2f). The verifier prompt rule: "
+            "an empty/insufficient block requires CONFIDENCE below %.2f.",
+            n_pass, _CHECKS_FLOOR_MIN_CONSTRAINT_PASS, n_total,
+            _CHECKS_FLOOR_CONFIDENCE, result.confidence, _CHECKS_FLOOR_CONFIDENCE,
+        )
+        return replace(result, confidence=_CHECKS_FLOOR_CONFIDENCE)
+    return result
 
 
 def _strip_sentinels(text: str) -> str:
@@ -629,6 +723,13 @@ def verify(
 
     result = _parse_verification(text)
 
+    # Patch #1 (PR #9) parser-side enforcement: floor confidence at 0.30 when
+    # the CHECKS PERFORMED block is absent or has <3 constraint PASS entries.
+    # Opt-in via AgentConfig; default off on bare AgentConfig() for back-compat,
+    # default on in all presets where modern prompts are used.
+    if getattr(config, "enforce_checks_floor", False):
+        result = _apply_checks_floor(result, text)
+
     logger.info(
         "Verifier: verdict=%s confidence=%.0f%% issues=%d",
         result.verdict.value,
@@ -743,10 +844,17 @@ def revise(
     )
 
     revision = _parse_revision(text, revision_number, verification.critique)
+    triage_counts = _parse_triage_verdicts(text)
+    if triage_counts and triage_counts.get("accept", 0) == 0 and sum(triage_counts.values()) > 0:
+        logger.info(
+            "Reviser: all_declined revision (verdicts=%s) — solution returned likely unchanged",
+            triage_counts,
+        )
 
     # Return as a new Solution
     return Solution(
         problem=problem,
         solution_text=revision.revised_solution,
         iteration=solution.iteration,
+        triage_summary=triage_counts or None,
     )

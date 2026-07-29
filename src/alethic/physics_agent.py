@@ -15,7 +15,10 @@ from alethic.physics_prompts import (
     PHYSICS_GENERATOR_USER,
     PHYSICS_REVISER_SYSTEM,
     PHYSICS_REVISER_USER,
+    PHYSICS_SATURATION_AWARENESS_ADDENDUM,
     PHYSICS_STRATEGY_RESET_ADDENDUM,
+    PHYSICS_SURVEY_GENERATOR_GUIDANCE,
+    PHYSICS_SURVEY_VERIFIER_GUIDANCE,
     PHYSICS_TOOL_GUIDANCE,
     PHYSICS_VERIFIER_SYSTEM,
     PHYSICS_VERIFIER_USER,
@@ -57,6 +60,16 @@ class PhysicsAgent(MathAgent):
 
     def _disproof_addendum(self) -> str:
         return PHYSICS_DISPROOF_STRATEGY_ADDENDUM
+
+    def _saturation_addendum(self) -> str:
+        return PHYSICS_SATURATION_AWARENESS_ADDENDUM
+
+    def _survey_guidance(self, role: str) -> str:
+        if role == "generator":
+            return PHYSICS_SURVEY_GENERATOR_GUIDANCE
+        if role == "verifier":
+            return PHYSICS_SURVEY_VERIFIER_GUIDANCE
+        return ""
 
     def _adversarial_addendum(self) -> str | None:
         if not self.config.adversarial_self_correction:
