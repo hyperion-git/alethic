@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from dataclasses import fields as dataclass_fields
 from typing import Any, ClassVar
 
+from alethic.llm import validate_request_options
+
 VALID_TOOL_GUIDANCE: frozenset[str] = frozenset({"sympy", "numpy", "scipy", "matplotlib"})
 
 MODEL_CONTEXT_LIMITS: dict[str, int] = {
@@ -146,7 +148,7 @@ class TokenLedger:
         return self.input_tokens + self.output_tokens
 
     def record(self, usage: Any) -> None:
-        """Record token usage from an Anthropic API response."""
+        """Record token usage from a model response."""
         self.input_tokens += usage.input_tokens
         self.output_tokens += usage.output_tokens
         self.api_calls += 1
@@ -262,11 +264,54 @@ class SearchConfig:
 
 
 @dataclass(frozen=True)
-class AgentConfig:
+class ModelConfig:
+    """Shared model/backend settings for solving and standalone verification.
+
+    API keys stay outside serializable configuration. ``request_options`` holds
+    endpoint-specific knobs (e.g. reasoning_effort); None omits a parameter.
+    Set ``context_window`` to the actual serving limit for a custom model.
+    """
+
+    model: str = "claude-opus-4-6"
+    provider: str = "anthropic"
+    base_url: str | None = None
+    context_window: int | None = None
+    request_options: dict[str, Any] = field(default_factory=dict)
+    token_parameter: str | None = None
+    max_tokens: int = 16384
+    extended_thinking: bool = False
+    thinking_budget: int = 10000
+
+    def __post_init__(self) -> None:
+        if self.provider not in ("anthropic", "openai", "openrouter"):
+            raise ValueError("provider must be anthropic, openai or openrouter")
+        if not isinstance(self.model, str) or not self.model.strip():
+            raise ValueError("model must be a non-empty model ID")
+        if self.context_window is not None and self.context_window < 1:
+            raise ValueError("context_window must be >= 1")
+        if self.max_tokens < 1:
+            raise ValueError(f"max_tokens must be >= 1, got {self.max_tokens}")
+        if self.thinking_budget < 0:
+            raise ValueError(f"thinking_budget must be >= 0, got {self.thinking_budget}")
+        if self.token_parameter not in (None, "max_tokens", "max_completion_tokens"):
+            raise ValueError("token_parameter must be max_tokens or max_completion_tokens")
+        validate_request_options(self.request_options)
+
+    @property
+    def resolved_context_window(self) -> int:
+        return self.context_window or MODEL_CONTEXT_LIMITS.get(self.model, 200_000)
+
+    def model_settings(self) -> dict[str, Any]:
+        """Copy shared fields when adapting a verifier config or auxiliary call."""
+        return {f.name: getattr(self, f.name) for f in dataclass_fields(ModelConfig)}
+
+
+@dataclass(frozen=True)
+class AgentConfig(ModelConfig):
     """Configuration for the Alethic agent.
 
     Attributes:
-        model: Anthropic model ID.
+        model: Model ID accepted by the configured provider.
         max_iterations: Max generate-verify-revise cycles before giving up.
         max_revisions_per_cycle: Max revisions within a single cycle before
             restarting from the generator.
@@ -275,7 +320,7 @@ class AgentConfig:
         temperature_verifier: Sampling temperature for the verifier (lower = stricter).
         temperature_reviser: Sampling temperature for the reviser.
         max_tokens: Max tokens per API call.
-        extended_thinking: Enable Claude's extended thinking mode.
+        extended_thinking: Request provider-supported reasoning (see backend docs).
         thinking_budget: Token budget for extended thinking.
         confidence_threshold: Minimum confidence for accepting a solution.
         best_of_n: Number of candidates to generate per iteration (1 = sequential).
@@ -287,16 +332,12 @@ class AgentConfig:
         reset_n_boost: Additional candidates to generate on reset iterations.
     """
 
-    model: str = "claude-opus-4-6"
     max_iterations: int = 5
     max_revisions_per_cycle: int = 3
     enable_code_execution: bool = True
     temperature_generator: float = 1.0
     temperature_verifier: float = 0.2
     temperature_reviser: float = 0.7
-    max_tokens: int = 16384
-    extended_thinking: bool = False
-    thinking_budget: int = 10000
     confidence_threshold: float = 0.90
     best_of_n: int = 1
     tool_guidance: frozenset[str] = frozenset({"sympy", "numpy"})
@@ -312,7 +353,7 @@ class AgentConfig:
     adaptive_revision_budget: bool = False  # adapt max_revisions_per_cycle per iter based on category
     adaptive_budget_cap: int | None = None  # max total oracle calls; None = unlimited
     adversarial_breaker: bool = False       # enable adversarial breaker on CORRECT solutions
-    breaker_model: str | None = None        # model for breaker (default: claude-sonnet-4-6)
+    breaker_model: str | None = None        # None uses the configured primary model
     breaker_temperature: float = 0.8        # higher than verifier — want creative attacks
     apply_calibration: bool = False         # apply confidence calibration before accept gate
     calibration_store: str | None = None    # path to calibration JSONL store (default: ~/.alethic/calibration.jsonl)
@@ -322,6 +363,7 @@ class AgentConfig:
     search: SearchConfig | None = None      # tree-search knobs; None -> SearchConfig() at dispatch
 
     def __post_init__(self) -> None:
+        super().__post_init__()
         if self.best_of_n < 1:
             raise ValueError(f"best_of_n must be >= 1, got {self.best_of_n}")
         if self.max_iterations < 1:
@@ -343,10 +385,6 @@ class AgentConfig:
         for name in ("temperature_generator", "temperature_verifier", "temperature_reviser"):
             if getattr(self, name) < 0:
                 raise ValueError(f"{name} must be >= 0, got {getattr(self, name)}")
-        if self.max_tokens < 1:
-            raise ValueError(f"max_tokens must be >= 1, got {self.max_tokens}")
-        if self.thinking_budget < 0:
-            raise ValueError(f"thinking_budget must be >= 0, got {self.thinking_budget}")
         if self.stall_window < 1:
             raise ValueError(f"stall_window must be >= 1, got {self.stall_window}")
         if self.stall_epsilon < 0:
@@ -419,11 +457,9 @@ class AgentConfig:
             "stall_reset": True,
             "reset_n_boost": 1,
             "context_threshold": 0.8,
-            "variant_b": {"model": "claude-sonnet-4-6"},
             "adversarial_self_correction": True,
             "adaptive_compute": True,
             "adversarial_breaker": True,
-            "breaker_model": "claude-sonnet-4-6",
             "apply_calibration": True,
             "enable_surveyor": True,
             "enforce_checks_floor": True,
@@ -441,11 +477,9 @@ class AgentConfig:
             "stall_reset": True,
             "reset_n_boost": 2,
             "context_threshold": 0.75,
-            "variant_b": {"model": "claude-sonnet-4-6"},
             "adversarial_self_correction": True,
             "adaptive_compute": True,
             "adversarial_breaker": True,
-            "breaker_model": "claude-sonnet-4-6",
             "apply_calibration": True,
             "enable_surveyor": True,
             "enforce_checks_floor": True,
@@ -493,7 +527,7 @@ class AgentConfig:
 
 
 @dataclass(frozen=True)
-class VerifierConfig:
+class VerifierConfig(ModelConfig):
     """Configuration for standalone verify and check commands.
 
     Controls multi-verifier consensus: K independent verifiers run in parallel,
@@ -501,19 +535,17 @@ class VerifierConfig:
     the merged critique.
     """
 
-    model: str = "claude-opus-4-6"
     num_verifiers: int = 3
     tool_guidance: frozenset[str] = frozenset({"sympy", "numpy", "scipy", "matplotlib"})
     domain: str | None = None  # None = auto-detect
     enable_code_execution: bool = True
     temperature: float = 0.2
-    max_tokens: int = 16384
-    extended_thinking: bool = False
     thinking_budget: int = 15000
     verbose: bool = True
     verification_ladder: bool = True  # inject verification-ladder.md into each K verifier
 
     def __post_init__(self) -> None:
+        super().__post_init__()
         if self.num_verifiers < 1:
             raise ValueError(f"num_verifiers must be >= 1, got {self.num_verifiers}")
         invalid = self.tool_guidance - VALID_TOOL_GUIDANCE
@@ -522,12 +554,8 @@ class VerifierConfig:
                 f"Unknown tool_guidance values: {invalid}. "
                 f"Valid: {VALID_TOOL_GUIDANCE}"
             )
-        if self.max_tokens < 1:
-            raise ValueError(f"max_tokens must be >= 1, got {self.max_tokens}")
         if self.temperature < 0:
             raise ValueError(f"temperature must be >= 0, got {self.temperature}")
-        if self.thinking_budget < 0:
-            raise ValueError(f"thinking_budget must be >= 0, got {self.thinking_budget}")
 
     PRESETS: ClassVar[dict[str, dict[str, Any]]] = {
         "quick": {"num_verifiers": 2, "extended_thinking": False, "max_tokens": 16384},

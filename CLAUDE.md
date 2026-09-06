@@ -2,13 +2,31 @@
 
 ## Overview
 
-**Alethic** is a reasoning agent for mathematics and physics inspired by [Google DeepMind's Aletheia](https://arxiv.org/abs/2602.10177), built on Claude (Opus 4.6). It implements the Aletheia Generate → Verify → Revise loop with two key techniques from the paper: **decoupled verification** (the Verifier evaluates solutions independently, without access to the Generator's reasoning traces) and **best-of-N sampling** (each iteration generates N candidate solutions in parallel, verifies all, selects the best, and revises only the winner). The orchestrator logic is domain-neutral; only the prompt templates differ between math (`MathAgent`, `/alethic-solve`) and physics (`PhysicsAgent`, `/alethic-derive`).
+**Alethic** is a reasoning agent for mathematics and physics inspired by [Google DeepMind's Aletheia](https://arxiv.org/abs/2602.10177), with model-agnostic Python backends. It implements the Aletheia Generate → Verify → Revise loop with two key techniques from the paper: **decoupled verification** (the Verifier evaluates solutions independently, without access to the Generator's reasoning traces) and **best-of-N sampling** (each iteration generates N candidate solutions in parallel, verifies all, selects the best, and revises only the winner). The orchestrator logic is domain-neutral; only the prompt templates differ between math (`MathAgent`, `/alethic-solve`) and physics (`PhysicsAgent`, `/alethic-derive`).
 
 The Python library generates candidates in parallel via `ThreadPoolExecutor` when N > 1; Claude Code skills generate sequentially. Both support configurable N through presets (quick=1, default=2, thorough=3, extreme=5) or the `--best-of` flag.
 
 Additionally, `verify` and `check` commands provide standalone multi-verifier consensus: K independent verifiers evaluate a solution in parallel, results are mechanically aggregated (majority-vote verdict, mean confidence, issue union), then an LLM synthesizes a unified critique. `verify` assesses correctness against a problem statement; `check` audits internal consistency without one.
 
 Available as Claude Code skills (`/alethic-solve` for math, `/alethic-derive` for physics, `/alethic-verify` and `/alethic-check` for consensus verification, `/alethic-scientific-figure` for scientific figures) or as a standalone **Python library** with CLI.
+
+## Model backends
+
+The Python library and CLI use `ModelConfig` fields shared by `AgentConfig` and
+`VerifierConfig`: `provider`, `model`, `base_url`, `context_window`,
+`token_parameter`, and `request_options`. Install a provider extra; the base
+package has no mandatory SDK dependency. `llm.py` defines the common contract,
+`providers.py` handles native Anthropic and OpenAI-compatible translation, and
+`openrouter.py` is a thin compatibility wrapper. Inject clients with `client=`;
+keep the process-wide factory only for compatibility with existing scripts.
+
+Presets choose effort only: alternate generation and breaker models are explicit.
+Every request must honor its `model`. Never silently replace it with a client
+constructor default. Keep provider reasoning/signature metadata private to its
+original tool conversation. See `docs/providers.md` for the current contract;
+older architecture notes below describe the original Claude integration.
+
+Offline tests block unmocked provider calls; do not remove this guard to run tests.
 
 ## Dev Commands
 
@@ -19,7 +37,7 @@ micromamba activate alethic
 pip install -e ".[dev]"
 
 # Run tests (mocked API, no key needed)
-pytest
+pytest -m 'not live and not integration'
 
 # Run tests with coverage
 pytest --cov=alethic

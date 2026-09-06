@@ -655,11 +655,11 @@ class TestProbeC5VariantBClientCreation:
         agent._api_key = "test-key"
 
         with patch(
-            "alethic.agent.anthropic.Anthropic", return_value=variant_client
+            "alethic.agent.get_client", return_value=variant_client
         ) as mock_cls:
             result = agent.solve("Test problem")
 
-        mock_cls.assert_called_once_with(api_key="test-key"), (
+        mock_cls.assert_called_once_with(api_key="test-key", config=config.build_variant_b_config()), (
             f"Expected exactly 1 call to anthropic.Anthropic() for variant-B. "
             f"Got {mock_cls.call_count} calls. Multiple calls would indicate "
             f"per-worker client creation -- a concurrency hazard."
@@ -695,7 +695,7 @@ class TestProbeC5VariantBClientCreation:
         agent.client = mock_client
         agent._api_key = "test-key"
 
-        with patch("alethic.agent.anthropic.Anthropic") as mock_cls:
+        with patch("alethic.agent.get_client") as mock_cls:
             agent.solve("Test problem")
 
         mock_cls.assert_not_called(), (
@@ -731,7 +731,7 @@ class TestProbeC5VariantBClientCreation:
         agent.client = mock_client
         agent._api_key = "test-key"
 
-        with patch("alethic.agent.anthropic.Anthropic") as mock_cls:
+        with patch("alethic.agent.get_client") as mock_cls:
             result = agent.solve("Test problem")
 
         mock_cls.assert_not_called()
@@ -780,12 +780,12 @@ class TestProbeC5VariantBClientCreation:
                 pool_start_threads.append(threading.current_thread().name)
                 super().__init__(*args, **kwargs)
 
-        def tracking_anthropic(api_key=None):
+        def tracking_anthropic(api_key=None, *, config=None):
             anthropic_creation_threads.append(threading.current_thread().name)
             return variant_client
 
         with (
-            patch("alethic.agent.anthropic.Anthropic", side_effect=tracking_anthropic),
+            patch("alethic.agent.get_client", side_effect=tracking_anthropic),
             patch("alethic.agent.ThreadPoolExecutor", TrackingTPE),
         ):
             agent.solve("Test")

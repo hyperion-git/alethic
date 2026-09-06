@@ -20,8 +20,8 @@ class TestStopReasonMapping:
     def test_tool_calls_maps_to_tool_use(self):
         assert _map_stop_reason("tool_calls") == "tool_use"
 
-    def test_content_filter_maps_to_end_turn(self):
-        assert _map_stop_reason("content_filter") == "end_turn"
+    def test_content_filter_maps_to_refusal(self):
+        assert _map_stop_reason("content_filter") == "refusal"
 
     def test_none_maps_to_end_turn(self):
         assert _map_stop_reason(None) == "end_turn"
@@ -101,9 +101,9 @@ class TestTranslateResponse:
         """S-15: empty choices array."""
         resp = MagicMock()
         resp.choices = []
-        msg = translate_response(resp)
-        assert msg.content == []
-        assert msg.stop_reason == "end_turn"
+        from alethic.exceptions import ModelResponseError
+        with pytest.raises(ModelResponseError, match="no completion choices"):
+            translate_response(resp)
 
     def test_truncated_response(self):
         """S-6: finish_reason='length' → stop_reason='max_tokens'."""
@@ -206,28 +206,26 @@ class TestTranslateKwargs:
         assert "system" not in result
         assert result["messages"][0]["role"] == "system"
 
-    def test_thinking_mapped_to_nemotron_reasoning(self):
-        """Anthropic thinking → Nemotron enable_thinking + reasoning_budget."""
+    def test_thinking_mapped_to_openrouter_reasoning(self):
+        """Reasoning uses the endpoint protocol, independent of the model name."""
         kw = {"model": "nvidia/nemotron-3-nano-30b-a3b:free", "messages": [], "thinking": {"type": "enabled", "budget_tokens": 15000}, "temperature": 1}
         result = translate_kwargs(kw)
         assert "thinking" not in result
         assert result["temperature"] == 1  # Keep 1.0 — required for Nemotron reasoning
-        assert result["extra_body"]["reasoning_budget"] == 15000
-        assert result["extra_body"]["chat_template_kwargs"]["enable_thinking"] is True
-        assert result["extra_body"]["chat_template_kwargs"]["force_nonempty_content"] is True
+        assert result["extra_body"] == {"reasoning": {"max_tokens": 15000}}
 
-    def test_thinking_stripped_for_non_nemotron(self):
-        """Non-Nemotron models: thinking param is stripped, no Nemotron-specific extras."""
+    def test_thinking_protocol_is_the_same_for_other_models(self):
+        """The reasoning request is independent of the selected model."""
         kw = {"model": "qwen/qwen3.6-plus-preview:free", "messages": [], "thinking": {"type": "enabled", "budget_tokens": 15000}, "temperature": 1}
         result = translate_kwargs(kw)
         assert "thinking" not in result
-        assert "extra_body" not in result or "reasoning_budget" not in result.get("extra_body", {})
+        assert result["extra_body"] == {"reasoning": {"max_tokens": 15000}}
 
-    def test_no_thinking_nemotron_still_forces_nonempty(self):
-        """force_nonempty_content set for Nemotron even without thinking mode."""
+    def test_model_name_does_not_inject_options(self):
+        """No model-specific magic options are added."""
         kw = {"model": "nvidia/nemotron-3-nano-30b-a3b:free", "messages": [], "temperature": 0.5}
         result = translate_kwargs(kw)
-        assert result["extra_body"]["chat_template_kwargs"]["force_nonempty_content"] is True
+        assert "extra_body" not in result
         assert "reasoning_budget" not in result
 
     def test_no_thinking_non_nemotron_no_extras(self):
@@ -275,7 +273,7 @@ class TestOpenRouterClient:
         assert result.stop_reason == "end_turn"
         assert result.usage.input_tokens == 50
         call_kwargs = mock_openai.chat.completions.create.call_args.kwargs
-        assert call_kwargs["model"] == "test-model"
+        assert call_kwargs["model"] == "ignored"  # explicit request beats constructor default
         assert call_kwargs["messages"][0]["role"] == "system"
 
     def test_stream_raises_not_implemented(self):
@@ -288,12 +286,12 @@ class TestOpenRouterClient:
 
 class TestExceptionMapping:
     def test_rate_limit_tuple_contains_anthropic(self):
-        from alethic.subagents import _RATE_LIMIT_ERRORS
+        from alethic.llm import RATE_LIMIT_ERRORS as _RATE_LIMIT_ERRORS
         import anthropic
         assert anthropic.RateLimitError in _RATE_LIMIT_ERRORS
 
     def test_rate_limit_tuple_contains_openai(self):
-        from alethic.subagents import _RATE_LIMIT_ERRORS
+        from alethic.llm import RATE_LIMIT_ERRORS as _RATE_LIMIT_ERRORS
         try:
             import openai
             assert openai.RateLimitError in _RATE_LIMIT_ERRORS
@@ -301,12 +299,12 @@ class TestExceptionMapping:
             pytest.skip("openai not installed")
 
     def test_api_error_tuple_contains_anthropic(self):
-        from alethic.agent import _API_ERRORS
+        from alethic.llm import API_ERRORS as _API_ERRORS
         import anthropic
         assert anthropic.APIError in _API_ERRORS
 
     def test_api_error_tuple_contains_openai(self):
-        from alethic.agent import _API_ERRORS
+        from alethic.llm import API_ERRORS as _API_ERRORS
         try:
             import openai
             assert openai.APIError in _API_ERRORS

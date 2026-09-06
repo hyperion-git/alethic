@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import TYPE_CHECKING
 
 from alethic.check_prompts import CHECKER_SYSTEM, CHECKER_USER
 from alethic.client_factory import get_client
@@ -25,15 +26,21 @@ from alethic.prompts import VERIFIER_SYSTEM, VERIFIER_USER
 from alethic.subagents import verify as verify_subagent
 from alethic.synthesizer import aggregate_mechanical, synthesize_critique
 
+if TYPE_CHECKING:
+    from alethic.llm import ModelClient
+
 logger = logging.getLogger("alethic")
 
 
 class VerifierAgent:
     """Runs K independent verifications and synthesizes a consensus."""
 
-    def __init__(self, config: VerifierConfig | None = None, *, api_key: str | None = None):
+    def __init__(
+        self, config: VerifierConfig | None = None, *, api_key: str | None = None,
+        client: ModelClient | None = None,
+    ):
         self.config = config or VerifierConfig()
-        self.client = get_client(api_key=api_key)
+        self.client = client if client is not None else get_client(api_key=api_key, config=self.config)
 
     def _select_prompts(self, domain: str) -> tuple[str, str]:
         """Return (system_prompt, user_template) for the detected domain."""
@@ -44,12 +51,9 @@ class VerifierAgent:
     def _build_agent_config(self) -> AgentConfig:
         """Adapt VerifierConfig to AgentConfig for the verify() subagent."""
         return AgentConfig(
-            model=self.config.model,
+            **self.config.model_settings(),
             enable_code_execution=self.config.enable_code_execution,
             temperature_verifier=self.config.temperature,
-            max_tokens=self.config.max_tokens,
-            extended_thinking=self.config.extended_thinking,
-            thinking_budget=self.config.thinking_budget,
             tool_guidance=self.config.tool_guidance,
             verbose=False,
         )

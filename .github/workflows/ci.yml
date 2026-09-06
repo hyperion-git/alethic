@@ -20,8 +20,8 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Tests
-        # No ANTHROPIC_API_KEY: the suite is fully mocked and must stay that way.
-        run: pytest -q
+        # No provider credentials; conftest rejects unmocked SDK calls.
+        run: pytest -q -m 'not live and not integration'
 
       - name: Type check
         run: mypy src/alethic

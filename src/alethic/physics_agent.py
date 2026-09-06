@@ -26,7 +26,7 @@ from alethic.physics_prompts import (
 
 
 class PhysicsAgent(MathAgent):
-    """Alethic physics derivation agent powered by Claude.
+    """Alethic physics derivation agent with configurable model backends.
 
     Thin subclass of MathAgent that injects physics-specific prompt templates
     into the Generate → Verify → Revise loop. All orchestrator logic is

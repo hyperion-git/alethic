@@ -261,9 +261,9 @@ def run_breaker(
             system=system,
             user_message=user_msg,
             config=breaker_config,
-            temperature=0.2,  # Low temperature for deterministic attack
+            temperature=config.breaker_temperature,
             ledger=ledger,
-            context_limit=200_000,
+            context_limit=breaker_config.resolved_context_window,
             context_threshold=config.context_threshold,
         )
     except ContextExhaustedError:

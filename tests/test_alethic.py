@@ -1021,8 +1021,8 @@ class TestExtractText:
 
 class TestTemperatureOverrideLogging:
     @patch("alethic.subagents.process_tool_calls", return_value=[])
-    def test_logs_debug_when_temperature_overridden(self, mock_tools):
-        """Extended thinking should log debug when overriding non-1 temperature."""
+    def test_core_preserves_role_temperature(self, mock_tools):
+        """Provider adapters, not the reasoning loop, apply temperature restrictions."""
         from alethic.subagents import _call_model
 
         config = AgentConfig(
@@ -1049,11 +1049,9 @@ class TestTemperatureOverrideLogging:
                 config=config,
                 temperature=0.5,
             )
-            mock_logger.debug.assert_called_once()
-            assert (
-                "temperature=0.5"
-                in mock_logger.debug.call_args[0][0] % mock_logger.debug.call_args[0][1:]
-            )
+            mock_logger.debug.assert_not_called()
+            assert mock_client.messages.create.call_args.kwargs["temperature"] == 0.5
+            assert mock_client.messages.create.call_args.kwargs["thinking"]["budget_tokens"] == 10000
 
     @patch("alethic.subagents.process_tool_calls", return_value=[])
     def test_no_log_when_temperature_is_one(self, mock_tools):
@@ -1183,10 +1181,9 @@ class TestVariantB:
         assert config.variant_b is None
 
     def test_config_variant_b_preset_thorough(self):
-        """Thorough preset has variant_b with model."""
+        """Thorough preset leaves alternate model selection explicit."""
         config = AgentConfig.from_preset("thorough")
-        assert config.variant_b is not None
-        assert config.variant_b["model"] == "claude-sonnet-4-6"
+        assert config.variant_b is None
 
     def test_build_variant_b_config(self):
         """build_variant_b_config produces correct merged config."""

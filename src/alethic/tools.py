@@ -1,6 +1,6 @@
 """Tool definitions for Alethic subagents.
 
-Provides Python code execution via Anthropic's tool_use API, mirroring
+Provides Python code execution through the shared tool-call interface, mirroring
 Alethic's use of computational verification alongside natural-language reasoning.
 """
 
@@ -12,7 +12,7 @@ import subprocess
 import sys
 import textwrap
 
-# Anthropic tool schema for Python code execution
+# Provider-independent tool schema for Python code execution
 PYTHON_TOOL = {
     "name": "execute_python",
     "description": (
@@ -271,7 +271,7 @@ def extract_code_blocks(text: str) -> list[str]:
 
 
 def process_tool_calls(response) -> list[dict]:
-    """Process tool_use blocks from an Anthropic API response.
+    """Process tool_use blocks from a model response.
 
     Args:
         response: Anthropic message response object.

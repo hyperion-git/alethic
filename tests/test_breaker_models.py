@@ -31,7 +31,7 @@ class TestAgentConfigBreakerFields:
     def test_thorough_preset_breaker_on(self):
         config = AgentConfig.from_preset("thorough")
         assert config.adversarial_breaker is True
-        assert config.breaker_model == "claude-sonnet-4-6"
+        assert config.breaker_model is None  # inherit the selected model
 
     def test_extreme_preset_breaker_on(self):
         config = AgentConfig.from_preset("extreme")

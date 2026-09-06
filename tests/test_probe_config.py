@@ -347,7 +347,7 @@ class TestE2CLIOverridePrecedence:
         assert cfg.stall_reset is True
         assert cfg.reset_n_boost == 1
         assert cfg.context_threshold == 0.8
-        assert cfg.variant_b == {"model": "claude-sonnet-4-6"}
+        assert cfg.variant_b is None  # effort presets do not choose a model
         assert cfg.adversarial_self_correction is True
         assert cfg.adaptive_compute is True
 

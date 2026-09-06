@@ -30,27 +30,17 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
-import anthropic
-
-from alethic.client_factory import get_client
-
-_API_ERRORS: tuple[type[BaseException], ...] = (anthropic.APIError,)
-try:
-    import openai
-    _API_ERRORS = (anthropic.APIError, openai.APIError)
-except ImportError:
-    pass
-
 from alethic.atoms import (
     AtomAnnotation,
     content_hash,
     parse_atoms,
 )
 from alethic.breaker import BreakerResult, run_breaker
+from alethic.client_factory import get_client
 from alethic.error_taxonomy import classify_errors, classify_inconsistency, get_revision_addendum
 from alethic.exceptions import CheckpointError, ContextExhaustedError, TruncatedResponseError
+from alethic.llm import API_ERRORS, ModelClient
 from alethic.models import (
-    MODEL_CONTEXT_LIMITS,
     AgentConfig,
     AgentEvent,
     AgentResult,
@@ -199,10 +189,13 @@ class MathAgent:
         self,
         config: AgentConfig | None = None,
         api_key: str | None = None,
+        *,
+        client: ModelClient | None = None,
     ):
         self.config = config or AgentConfig()
-        self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        self.client = get_client(api_key=self._api_key)
+        self._api_key = api_key
+        self._client_injected = client is not None
+        self.client = client if client is not None else get_client(api_key=api_key, config=self.config)
         self.router = OracleRouter(
             config=self.config,
             domain=self._domain(),
@@ -428,7 +421,7 @@ class MathAgent:
     ) -> list[tuple[Solution, float]]:
         """Generate N candidates. Parallel (ThreadPoolExecutor) when N>1, sequential when N=1."""
 
-        def _gen_one(client: anthropic.Anthropic, config: AgentConfig) -> tuple[Solution, float]:
+        def _gen_one(client: ModelClient, config: AgentConfig) -> tuple[Solution, float]:
             t0 = time.time()
             sol = generate(
                 client,
@@ -452,11 +445,23 @@ class MathAgent:
 
         # Build variant B config and client when variant_b is set
         variant_b_config: AgentConfig | None = None
-        variant_b_client: anthropic.Anthropic | None = None
+        variant_b_client: ModelClient | None = None
         if self.config.variant_b is not None:
             variant_b_config = self.config.build_variant_b_config()
-            if variant_b_config.model != self.config.model:
-                variant_b_client = get_client(api_key=self._api_key)
+            same_endpoint = (
+                variant_b_config.provider == self.config.provider
+                and variant_b_config.base_url == self.config.base_url
+            )
+            same_options = (
+                variant_b_config.request_options == self.config.request_options
+                and variant_b_config.token_parameter == self.config.token_parameter
+            )
+            if not (same_endpoint and same_options and (
+                self._client_injected or variant_b_config.model == self.config.model
+            )):
+                variant_b_client = get_client(
+                    api_key=self._api_key if same_endpoint else None, config=variant_b_config,
+                )
             else:
                 variant_b_client = self.client
 
@@ -777,7 +782,7 @@ class MathAgent:
 
         # Initialize token ledger and context tracking
         ledger = TokenLedger()
-        context_limit = MODEL_CONTEXT_LIMITS.get(self.config.model, 200_000)
+        context_limit = self.config.resolved_context_window
 
         # Resume from checkpoint if requested
         start_iteration = 1
@@ -1293,7 +1298,7 @@ class MathAgent:
                 log.emit(EventType.ERROR, iteration, error=f"truncated: {e}")
                 continue
 
-            except _API_ERRORS as e:
+            except API_ERRORS as e:
                 logger.warning("Iteration %d failed: %s", iteration, e)
                 log.emit(EventType.ERROR, iteration, error=str(e))
                 continue
@@ -1329,7 +1334,7 @@ class MathAgent:
             try:
                 from alethic.autopsy import generate_autopsy
 
-                autopsy = generate_autopsy(result, api_key=self._api_key, model=self.config.model)
+                autopsy = generate_autopsy(result, client=self.client, config=self.config)
                 autopsy_path = os.path.join(result.session_dir, "worklog", "autopsy.md")
                 os.makedirs(os.path.dirname(autopsy_path), exist_ok=True)
                 with open(autopsy_path, "w", encoding="utf-8") as f:

@@ -507,7 +507,7 @@ class TestVariantBClient:
         agent.client = mock_client
         agent._api_key = "test-key"
 
-        with patch("alethic.agent.anthropic.Anthropic") as mock_anthropic_cls:
+        with patch("alethic.agent.get_client") as mock_anthropic_cls:
             result = agent.solve("test problem")
 
         # No new Anthropic() client should have been created
@@ -549,11 +549,11 @@ class TestVariantBClient:
         agent.client = primary_client
         agent._api_key = "test-key"
 
-        with patch("alethic.agent.anthropic.Anthropic", return_value=variant_client) as mock_cls:
+        with patch("alethic.agent.get_client", return_value=variant_client) as mock_cls:
             result = agent.solve("test problem")
 
         # A new Anthropic client should have been created for the variant
-        mock_cls.assert_called_once_with(api_key="test-key")
+        mock_cls.assert_called_once_with(api_key="test-key", config=config.build_variant_b_config())
         # Variant client should have been called for at least one generate
         assert variant_client.messages.create.call_count >= 1
         assert result.solved

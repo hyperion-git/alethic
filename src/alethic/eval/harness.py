@@ -293,12 +293,13 @@ def run_benchmark(
     preset: str = "quick",
     verbose: bool = False,
     search_mode: str = "flat",
+    model_options: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run all problems in a benchmark file and return a score report.
 
     Args:
         path: Path to the benchmark JSON file.
-        api_key: Anthropic API key (default: ANTHROPIC_API_KEY env var).
+        api_key: API key for the selected provider.
         preset: AgentConfig preset to use for all problems.
         verbose: Print progress to stdout.
         search_mode: "flat" (default) or "tree" — runs every problem through
@@ -318,7 +319,7 @@ def run_benchmark(
             f"search_mode must be 'flat' or 'tree', got {search_mode!r}"
         )
     benchmark = load_benchmark(path)
-    config_overrides: dict[str, Any] = {"verbose": verbose}
+    config_overrides: dict[str, Any] = {**(model_options or {}), "verbose": verbose}
     if search_mode == "tree":
         config_overrides["search_mode"] = "tree"
         config_overrides["search"] = (

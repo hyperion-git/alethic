@@ -280,7 +280,7 @@ class TestMaxIterationsExhaustion:
         assert result.solution == "Second attempt derivation"
 
         # Only 4 API calls: 2x (generate + verify), no revisions
-        assert mock_client.messages.create.call_count == 4
+        assert mock_client.messages.create.call_count == 5  # four loop calls + autopsy
 
 
 # ---------------------------------------------------------------------------
@@ -639,4 +639,4 @@ class TestZeroRevisionsConfig:
         assert not result.solved
         assert result.admitted_failure is True
         assert result.total_revisions == 0
-        assert mock_client.messages.create.call_count == 2
+        assert mock_client.messages.create.call_count == 3  # two loop calls + autopsy

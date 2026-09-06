@@ -1,6 +1,6 @@
 """The three Alethic subagents: Generator, Verifier, Reviser.
 
-Each subagent wraps a Claude API call with role-specific prompt scaffolding.
+Each subagent wraps a model call with role-specific prompt scaffolding.
 The Verifier is deliberately isolated from the Generator's thinking traces —
 this is the core architectural insight from DeepMind's Aletheia.
 """
@@ -13,16 +13,8 @@ import time
 from dataclasses import replace
 from typing import Any
 
-import anthropic
-
-_RATE_LIMIT_ERRORS: tuple[type[BaseException], ...] = (anthropic.RateLimitError,)
-try:
-    import openai
-    _RATE_LIMIT_ERRORS = (anthropic.RateLimitError, openai.RateLimitError)
-except ImportError:
-    pass
-
 from alethic.exceptions import ContextExhaustedError, TruncatedResponseError
+from alethic.llm import RATE_LIMIT_ERRORS
 from alethic.models import (
     AgentConfig,
     AtomConfidence,
@@ -218,7 +210,7 @@ _SEVERITY_MAP: dict[str, IssueSeverity] = {s.name: s for s in IssueSeverity}
 
 
 def _extract_text(response) -> str:
-    """Extract concatenated text blocks from an Anthropic response."""
+    """Extract concatenated text blocks from a model response."""
     parts = [b.text for b in response.content if getattr(b, "type", None) == "text"]
     if not parts:
         block_types = [getattr(b, "type", "unknown") for b in response.content]
@@ -258,7 +250,7 @@ def _create_with_retry(client, kwargs: dict):
     for attempt in range(_MAX_RETRIES + 1):
         try:
             return _do_create(client, kwargs)
-        except _RATE_LIMIT_ERRORS:
+        except RATE_LIMIT_ERRORS:
             if attempt < _MAX_RETRIES:
                 # Exponential backoff with jitter; free-tier needs longer waits
                 import random
@@ -286,10 +278,10 @@ def _call_model(
     temperature: float,
     tools: list[dict] | None = None,
     ledger: TokenLedger | None = None,
-    context_limit: int = 200_000,
+    context_limit: int | None = None,
     context_threshold: float = 0.8,
 ) -> str:
-    """Make an API call to Claude, handling tool use loops.
+    """Make a model call, handling tool use loops.
 
     Returns the final text response after all tool calls have been resolved.
 
@@ -302,6 +294,9 @@ def _call_model(
         ContextExhaustedError: If estimated input tokens exceed the threshold.
         TruncatedResponseError: If the API response was truncated (stop_reason=max_tokens).
     """
+    context_limit = context_limit or config.resolved_context_window
+    if config.context_window is not None:
+        context_limit = min(context_limit, config.context_window)
     # Pre-flight estimate: chars/4 heuristic for token count
     estimated_input = len(system + user_message) // 4
     if estimated_input > context_threshold * context_limit:
@@ -318,21 +313,12 @@ def _call_model(
         "messages": messages,
     }
     if config.extended_thinking:
-        # Extended thinking requires temperature=1 and uses a budget_tokens param.
-        # SDK 0.79+ emits a deprecation warning suggesting "adaptive" type, but
-        # adaptive doesn't accept budget_tokens — we need explicit budget control.
         kwargs["thinking"] = {
             "type": "enabled",
             "budget_tokens": config.thinking_budget,
         }
-        kwargs["temperature"] = 1  # Required by the API when thinking is enabled
-        if temperature != 1:
-            logger.debug(
-                "Extended thinking enabled; ignoring temperature=%.1f (API requires 1)",
-                temperature,
-            )
-    else:
-        kwargs["temperature"] = temperature
+    # Backends, rather than the reasoning loop, enforce provider restrictions.
+    kwargs["temperature"] = temperature
     if tools:
         kwargs["tools"] = tools
 
@@ -353,16 +339,14 @@ def _call_model(
         ]
         accumulated_text.extend(round_text)
 
+        # Never execute a tool call from a truncated response.
+        if getattr(response, "stop_reason", None) == "max_tokens":
+            raise TruncatedResponseError("Response truncated (stop_reason=max_tokens)")
+
         # Check for tool use
         tool_results = process_tool_calls(response) if tools else []
 
         if not tool_results:
-            # Check for truncation before returning
-            if getattr(response, "stop_reason", None) == "max_tokens":
-                raise TruncatedResponseError(
-                    f"Response truncated (stop_reason=max_tokens) after "
-                    f"{ledger.api_calls if ledger else '?'} calls"
-                )
             # No tool calls — return all accumulated text
             return "\n".join(accumulated_text) if accumulated_text else "[No response generated]"
 
@@ -415,14 +399,14 @@ def generate(
     user_template: str | None = None,
     balanced_addendum: str | None = None,
     ledger: TokenLedger | None = None,
-    context_limit: int = 200_000,
+    context_limit: int | None = None,
     context_threshold: float = 0.8,
     partial_solution: str | None = None,
 ) -> Solution:
     """Generate a candidate solution.
 
     Args:
-        client: Anthropic client instance.
+        client: Client implementing the Alethic messages interface.
         problem: The problem statement.
         config: Agent configuration.
         iteration: Current iteration number (for logging).
@@ -674,7 +658,7 @@ def verify(
     user_template: str | None = None,
     extra_system: str | None = None,
     ledger: TokenLedger | None = None,
-    context_limit: int = 200_000,
+    context_limit: int | None = None,
     context_threshold: float = 0.8,
 ) -> VerificationResult:
     """Independently verify a candidate solution.
@@ -684,7 +668,7 @@ def verify(
     is the key architectural insight from DeepMind's Aletheia.
 
     Args:
-        client: Anthropic client instance.
+        client: Client implementing the Alethic messages interface.
         problem: Original problem statement.
         solution: The candidate solution to verify.
         config: Agent configuration.
@@ -774,13 +758,13 @@ def revise(
     critique_addendum: str | None = None,
     atom_context: str | None = None,
     ledger: TokenLedger | None = None,
-    context_limit: int = 200_000,
+    context_limit: int | None = None,
     context_threshold: float = 0.8,
 ) -> Solution:
     """Revise a solution based on verifier feedback.
 
     Args:
-        client: Anthropic client instance.
+        client: Client implementing the Alethic messages interface.
         problem: Original problem statement.
         solution: The solution to revise.
         verification: The verifier's critique and issues.

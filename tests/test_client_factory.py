@@ -12,7 +12,7 @@ class TestClientFactory:
     def teardown_method(self):
         reset_client_factory()
 
-    @patch("alethic.client_factory.anthropic.Anthropic")
+    @patch("anthropic.Anthropic")
     def test_default_returns_anthropic(self, mock_anthropic):
         mock_anthropic.return_value = MagicMock()
         client = get_client(api_key="test-key")
@@ -23,7 +23,7 @@ class TestClientFactory:
         set_client_factory(lambda api_key: mock_client)
         assert get_client("key") is mock_client
 
-    @patch("alethic.client_factory.anthropic.Anthropic")
+    @patch("anthropic.Anthropic")
     def test_reset_restores_default(self, mock_anthropic):
         set_client_factory(lambda api_key: MagicMock())
         reset_client_factory()

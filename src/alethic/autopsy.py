@@ -8,9 +8,14 @@ the session directory (if available) and returned as a Markdown string.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from alethic.client_factory import get_client
-from alethic.models import AgentResult, EventType
+from alethic.models import AgentResult, EventType, ModelConfig
 from alethic.subagents import _create_with_retry, _extract_text
+
+if TYPE_CHECKING:
+    from alethic.llm import ModelClient
 
 
 def _best_per_iteration(raw_verify_events: list) -> list:
@@ -126,15 +131,17 @@ def generate_autopsy(
     *,
     api_key: str | None = None,
     model: str = "claude-opus-4-6",
+    client: ModelClient | None = None,
+    config: ModelConfig | None = None,
 ) -> str:
     """Generate a structured autopsy report for a failed (UNSOLVED) solve loop.
 
-    Classifies the failure pattern deterministically, then uses Claude to
+    Classifies the failure pattern deterministically, then uses the configured model to
     synthesize actionable recommendations.
 
     Args:
         result: AgentResult (typically with verdict == UNSOLVED).
-        api_key: Anthropic API key (default: ANTHROPIC_API_KEY env var).
+        api_key: API key for the configured provider.
         model: Model ID for the synthesis call.
 
     Returns:
@@ -149,11 +156,12 @@ def generate_autopsy(
         f"{context}"
     )
 
-    client = get_client(api_key=api_key)
+    cfg = config or ModelConfig(model=model)
+    client = client if client is not None else get_client(api_key=api_key, config=cfg)
     response = _create_with_retry(
         client,
         {
-            "model": model,
+            "model": cfg.model,
             "max_tokens": 1024,
             "system": _AUTOPSY_SYSTEM,
             "messages": [{"role": "user", "content": user}],

@@ -2,7 +2,7 @@
 Alethic — A reasoning agent for mathematics and physics inspired by Google
 DeepMind's Aletheia.
 
-Built on Claude (Opus 4.6) with a Generate → Verify → Revise architecture
+Model-agnostic, with a Generate → Verify → Revise architecture
 that decouples reasoning from verification for robust mathematical proofs
 and physics derivations.
 
@@ -36,8 +36,10 @@ from alethic.exceptions import (
     AlethicError,
     CheckpointError,
     ContextExhaustedError,
+    ModelResponseError,
     TruncatedResponseError,
 )
+from alethic.llm import ModelClient
 from alethic.models import (
     AgentConfig,
     AgentEvent,
@@ -49,6 +51,7 @@ from alethic.models import (
     EventType,
     Issue,
     IssueSeverity,
+    ModelConfig,
     Revision,
     SearchConfig,
     SectionConfidence,
@@ -60,10 +63,16 @@ from alethic.models import (
 )
 from alethic.oracle_router import OracleRouter, RoutingDecision
 from alethic.physics_agent import PhysicsAgent
+from alethic.providers import AnthropicClient, OpenAICompatibleClient
 from alethic.verifier_agent import CheckerAgent, VerifierAgent
 
 __all__ = [
     "AgentConfig",
+    "AnthropicClient",
+    "ModelClient",
+    "ModelConfig",
+    "ModelResponseError",
+    "OpenAICompatibleClient",
     "AgentEvent",
     "AgentResult",
     "AlethicError",

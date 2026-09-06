@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "alethic"
 version = "3.8.0"
-description = "A reasoning agent for mathematics and physics inspired by Google DeepMind's Aletheia, built on Claude (Opus 4.6)"
+description = "Model-agnostic mathematical reasoning and physics derivations with independent verification"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"
@@ -18,8 +18,6 @@ keywords = [
     "physics",
     "reasoning",
     "agent",
-    "claude",
-    "anthropic",
     "theorem-proving",
     "derivation",
     "verification",
@@ -36,9 +34,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Mathematics",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-dependencies = [
-    "anthropic>=0.40.0",
-]
+dependencies = []
 
 [project.optional-dependencies]
 dev = [
@@ -50,6 +46,7 @@ dev = [
     # import time. Without this, the documented `pip install -e ".[dev]"` then
     # `pytest` fails collection on three test modules in a clean environment.
     "alethic[scientific]",
+    "alethic[anthropic,openai]",
 ]
 scientific = [
     "numpy>=1.26",
@@ -58,8 +55,14 @@ scientific = [
     "mpmath>=1.3",
     "matplotlib>=3.8",
 ]
-openrouter = [
+anthropic = [
+    "anthropic>=0.40.0,<1.0",
+]
+openai = [
     "openai>=1.0,<3.0",
+]
+openrouter = [
+    "alethic[openai]",
 ]
 
 [project.scripts]
@@ -127,6 +130,6 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 addopts = "-v --tb=short"
 markers = [
-    "live: tests requiring a real Anthropic API key (deselect with -m 'not live')",
+    "live: tests requiring a real provider API key (deselect with -m 'not live')",
     "integration: tests requiring external API keys (deselect with -m 'not integration')",
 ]

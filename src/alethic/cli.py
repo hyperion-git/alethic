@@ -26,12 +26,47 @@ if TYPE_CHECKING:
 
 _SEARCH_CHOICES = ("flat", "tree")
 
+_MODEL_FLAGS = (
+    "model", "provider", "base_url", "context_window", "token_parameter", "request_options",
+)
+
+
+def _json_options(value: str) -> dict:
+    try:
+        options = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise argparse.ArgumentTypeError(f"Invalid JSON: {exc.msg}") from exc
+    if not isinstance(options, dict):
+        raise argparse.ArgumentTypeError("Request options must be a JSON object")
+    return options
+
+
+def _add_model_arguments(parser: argparse.ArgumentParser) -> None:
+    """One provider/configuration surface for solve, verify, check and eval."""
+    parser.add_argument("--model", "-m", default=os.environ.get("ALETHIC_MODEL"),
+                        help="Provider model ID (or ALETHIC_MODEL; default: claude-opus-4-6)")
+    parser.add_argument("--provider", choices=("anthropic", "openai", "openrouter"),
+                        default=os.environ.get("ALETHIC_PROVIDER"),
+                        help="API provider (or ALETHIC_PROVIDER; default: anthropic)")
+    parser.add_argument("--base-url", default=None,
+                        help="Custom API endpoint, including its API path (e.g. http://localhost:8000/v1)")
+    parser.add_argument("--context-window", type=int, default=None,
+                        help="Actual model/server context limit in tokens")
+    parser.add_argument("--token-parameter", choices=("max_tokens", "max_completion_tokens"),
+                        help="Token-limit field supported by the Chat Completions endpoint")
+    parser.add_argument("--request-options", type=_json_options, default=None,
+                        help='Endpoint options as JSON; null omits a parameter, e.g. {"temperature":null}')
+
+
+def _model_overrides(args: argparse.Namespace) -> dict[str, Any]:
+    return {name: getattr(args, name) for name in _MODEL_FLAGS if getattr(args, name, None) is not None}
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="alethic",
         description=(
-            "Alethic — A reasoning agent powered by Claude.\n"
+            "Alethic — A model-agnostic reasoning agent.\n"
             "Implements a Generate → Verify → Revise loop with decoupled verification.\n\n"
             "Subcommands (optional):\n"
             "  solve   Solve a mathematical problem (default)\n"
@@ -73,12 +108,7 @@ Examples:
         choices=list(AgentConfig.PRESETS),
         help="Use a named preset (quick, default, thorough, extreme)",
     )
-    parser.add_argument(
-        "--model",
-        "-m",
-        default=None,
-        help="Anthropic model ID (default: claude-opus-4-6)",
-    )
+    _add_model_arguments(parser)
     parser.add_argument(
         "--iterations",
         "-n",
@@ -140,7 +170,7 @@ Examples:
     )
     parser.add_argument(
         "--api-key",
-        help="Anthropic API key (default: ANTHROPIC_API_KEY env var)",
+        help="API key (default: the selected provider's *_API_KEY environment variable)",
     )
     parser.add_argument(
         "--max-tokens",
@@ -207,7 +237,7 @@ Examples:
     parser.add_argument(
         "--breaker-model",
         default=None,
-        help="Model ID for the adversarial breaker (default: claude-sonnet-4-6)",
+        help="Model ID for the adversarial breaker (default: primary model)",
     )
     parser.add_argument(
         "--context-threshold",
@@ -276,7 +306,7 @@ _FLAG_TO_CONFIG = {
 def _build_config(args: argparse.Namespace) -> AgentConfig:
     """Build AgentConfig from parsed CLI args with preset -> explicit flag precedence."""
     # Collect overrides from explicit CLI flags (non-None values only)
-    overrides: dict[str, Any] = {}
+    overrides: dict[str, Any] = _model_overrides(args)
 
     for arg_name, config_name in _FLAG_TO_CONFIG.items():
         val = getattr(args, arg_name, None)
@@ -344,6 +374,11 @@ _FLAGS_WITH_VALUE = frozenset(
         "--preset",
         "-m",
         "--model",
+        "--provider",
+        "--base-url",
+        "--context-window",
+        "--token-parameter",
+        "--request-options",
         "-n",
         "--iterations",
         "--revisions",
@@ -417,7 +452,7 @@ _VERIFIER_DEFAULT_TOOLS = frozenset({"sympy", "numpy", "scipy", "matplotlib"})
 
 def _build_verifier_config(args: argparse.Namespace) -> VerifierConfig:
     """Build VerifierConfig from parsed CLI args."""
-    overrides: dict[str, Any] = {}
+    overrides: dict[str, Any] = _model_overrides(args)
 
     for arg_name, config_name in _VERIFIER_FLAG_TO_CONFIG.items():
         val = getattr(args, arg_name, None)
@@ -529,6 +564,7 @@ def _eval_handler(argv: list[str]) -> int:
     eval_sub = eval_parser.add_subparsers(dest="eval_command", required=True)
 
     eval_run_parser = eval_sub.add_parser("run", help="Run a benchmark file")
+    _add_model_arguments(eval_run_parser)
     eval_run_parser.add_argument("benchmark_file", help="Path to benchmark JSON file")
     eval_run_parser.add_argument(
         "--preset",
@@ -551,7 +587,7 @@ def _eval_handler(argv: list[str]) -> int:
     eval_run_parser.add_argument(
         "--api-key",
         default=None,
-        help="Anthropic API key (default: ANTHROPIC_API_KEY env var)",
+        help="API key for the selected provider",
     )
     eval_run_parser.add_argument(
         "--search",
@@ -570,6 +606,7 @@ def _eval_handler(argv: list[str]) -> int:
         preset=args.preset,
         verbose=args.verbose,
         search_mode=args.search,
+        model_options=_model_overrides(args),
     )
     output_json = json.dumps(report, indent=2)
     if args.output:

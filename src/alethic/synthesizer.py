@@ -20,6 +20,7 @@ from alethic.models import (
     Verdict,
     VerificationResult,
 )
+from alethic.subagents import _create_with_retry
 
 logger = logging.getLogger("alethic")
 
@@ -179,13 +180,13 @@ def synthesize_critique(
     )
 
     try:
-        response = client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            system=system,
-            messages=[{"role": "user", "content": user_msg}],
-            temperature=0.3,
-        )
+        response = _create_with_retry(client, {
+            "model": model,
+            "max_tokens": max_tokens,
+            "system": system,
+            "messages": [{"role": "user", "content": user_msg}],
+            "temperature": 0.3,
+        })
         parts = [b.text for b in response.content if hasattr(b, "text")]
         return "\n".join(parts) if parts else "[Synthesis failed]"
     except Exception as e:

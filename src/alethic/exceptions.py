@@ -15,3 +15,7 @@ class ContextExhaustedError(AlethicError):
 
 class CheckpointError(AlethicError):
     """Raised when checkpoint state cannot be written to disk."""
+
+
+class ModelResponseError(AlethicError):
+    """The provider returned no usable completion (e.g. refusal or empty choices)."""
