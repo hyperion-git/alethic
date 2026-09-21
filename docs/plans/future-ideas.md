@@ -19,3 +19,13 @@ Ideas for future Alethic development. Each needs a proper design phase (brainsto
 **Complexity:** High. Multiplies API calls, requires section extraction/splicing logic, and shifts the architecture away from whole-solution verification.
 
 **See also:** `docs/comparison.md` — Vibefeld/Alethfeld operate at per-step granularity with structured nodes; Alethic operates at whole-solution granularity.
+
+
+## 2. Fast semantic advice between research steps
+
+**Design note:** [JEV as a fast advisory layer](2026-09-21-jev-latency-opportunities.md).
+
+Profile saved runs first, then evaluate semantic repeated-failure detection and
+next-check recommendations in shadow mode against the existing deterministic
+router. The note records additional opportunities, source-code observations,
+measurement limits and promotion criteria; no JEV integration is implemented.
